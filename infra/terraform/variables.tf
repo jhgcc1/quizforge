@@ -45,6 +45,15 @@ variable "worker_max" {
   type        = number
   default     = 4
 }
+variable "cpu_architecture" {
+  description = "ARM64 (Graviton, ~20% cheaper; what the pipeline builds) or X86_64 (for images built on an amd64 machine)"
+  type        = string
+  default     = "ARM64"
+  validation {
+    condition     = contains(["ARM64", "X86_64"], var.cpu_architecture)
+    error_message = "cpu_architecture must be ARM64 or X86_64."
+  }
+}
 variable "task_cpu" {
   type    = number
   default = 512

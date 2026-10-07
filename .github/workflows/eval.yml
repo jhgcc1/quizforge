@@ -1,0 +1,56 @@
+name: LLM evaluation
+
+# Regression test for the AI itself: runs the golden set against the real model, scores it
+# (grounding, lint, LLM-judge, injection resistance, language), logs an experiment in Langfuse and
+# FAILS when quality drops below the thresholds in evals/src/metrics.ts. Costs a few cents per run,
+# so it is not part of the per-PR gate: it runs on merges to main, nightly, and on demand
+# (e.g. before changing a prompt or switching model).
+on:
+  push:
+    branches: [main]
+    paths: ["packages/llm/**", "evals/**", "packages/core/**"]
+  schedule:
+    - cron: "43 5 * * *"
+  workflow_dispatch:
+    inputs:
+      model:
+        description: "MiniMax model to evaluate (default: the one in the repo)"
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: llm-eval
+  cancel-in-progress: false
+
+jobs:
+  eval:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: llm-eval # holds MINIMAX_API_KEY, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22", cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: Golden-set evaluation (real model)
+        env:
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+          MINIMAX_MODEL: ${{ inputs.model }}
+          LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+          LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
+          LANGFUSE_BASE_URL: https://us.cloud.langfuse.com
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          [ -n "$MINIMAX_MODEL" ] || unset MINIMAX_MODEL
+          pnpm --filter @quizforge/evals exec tsx src/run.ts | tee eval.txt
+      - name: Summary
+        if: always()
+        run: |
+          echo '### LLM evaluation' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"; cat eval.txt >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true; echo '```' >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: eval-report, path: evals/report.json, retention-days: 30 }

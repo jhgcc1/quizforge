@@ -125,7 +125,7 @@ resource "aws_iam_role_policy" "worker" {
 ############################ Task definitions ############################
 
 locals {
-  runtime = { cpu_architecture = "ARM64", operating_system_family = "LINUX" }
+  runtime = { cpu_architecture = var.cpu_architecture, operating_system_family = "LINUX" }
   log = { for k, g in aws_cloudwatch_log_group.svc : k => {
     logDriver = "awslogs"
     options   = { "awslogs-group" = g.name, "awslogs-region" = var.region, "awslogs-stream-prefix" = k }

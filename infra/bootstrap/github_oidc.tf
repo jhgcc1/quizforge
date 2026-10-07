@@ -124,9 +124,29 @@ data "aws_iam_policy_document" "deploy" {
     actions = [
       "ec2:*", "elasticloadbalancing:*", "ecs:*", "rds:*", "sqs:*", "sns:*", "logs:*", "cloudwatch:*", "cloudfront:*",
       "wafv2:*", "cognito-idp:*", "secretsmanager:*", "servicediscovery:*", "application-autoscaling:*", "scheduler:*",
-      "budgets:*", "events:*", "kms:Describe*", "kms:List*", "kms:CreateGrant", "kms:Decrypt", "kms:GenerateDataKey*", "tag:*",
+      "budgets:*", "events:*", "tag:*",
     ]
     resources = ["*"]
+  }
+  statement {
+    sid       = "KmsCreate"
+    actions   = ["kms:CreateKey", "kms:ListAliases", "kms:ListKeys"]
+    resources = ["*"]
+  }
+  statement {
+    sid       = "KmsProjectKeys"
+    actions   = ["kms:*"]
+    resources = ["*"]
+    condition {
+      test     = "StringEquals"
+      variable = "aws:ResourceTag/Project"
+      values   = [var.project]
+    }
+  }
+  statement {
+    sid       = "KmsProjectAliases"
+    actions   = ["kms:CreateAlias", "kms:DeleteAlias", "kms:UpdateAlias"]
+    resources = ["arn:${data.aws_partition.current.partition}:kms:${var.region}:${local.account_id}:alias/${var.project}-*"]
   }
   statement {
     sid     = "IAMProjectRoles"

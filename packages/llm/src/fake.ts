@@ -13,7 +13,7 @@ const sentencesOf = (doc: string, minWords: number): string[] =>
     .replace(/```[\s\S]*?```/g, " ")
     .replace(/<[^>]+>/g, " ")
     .split(/(?<=[.!?])\s+|\n+/)
-    .map((s) => s.replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/[*_`#>|]/g, "").replace(/\s+/g, " ").replace(/^[^\p{L}\p{N}]+/u, "").replace(/^\d+[.)]\s+/, "").trim())
+    .map((s) => s.replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/[*_`#>|]/g, " ").replace(/\s+/g, " ").replace(/^[^\p{L}\p{N}]+/u, "").replace(/^\d+[.)]\s+/, "").trim())
     .filter((s) => s.split(" ").length >= minWords && s.length <= 180);
 
 function makeQuestions(doc: string, n: number) {

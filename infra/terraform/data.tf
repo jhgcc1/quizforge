@@ -117,6 +117,20 @@ resource "aws_secretsmanager_secret" "cognito_web" {
   recovery_window_in_days = 0
 }
 
+# Placeholders only, so tasks can start on the very first deployment. scripts/set-secrets.sh writes the real
+# values; ignore_changes stops Terraform from ever reverting them.
+resource "aws_secretsmanager_secret_version" "llm_placeholder" {
+  secret_id     = aws_secretsmanager_secret.llm.id
+  secret_string = jsonencode({ MINIMAX_API_KEY = "not-set-run-scripts-set-secrets" })
+  lifecycle { ignore_changes = [secret_string] }
+}
+
+resource "aws_secretsmanager_secret_version" "langfuse_placeholder" {
+  secret_id     = aws_secretsmanager_secret.langfuse.id
+  secret_string = jsonencode({ LANGFUSE_PUBLIC_KEY = "", LANGFUSE_SECRET_KEY = "" })
+  lifecycle { ignore_changes = [secret_string] }
+}
+
 resource "aws_secretsmanager_secret_version" "cognito_web" {
   secret_id     = aws_secretsmanager_secret.cognito_web.id
   secret_string = jsonencode({ client_secret = aws_cognito_user_pool_client.web.client_secret })

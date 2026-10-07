@@ -6,8 +6,9 @@ terraform {
       version = "~> 6.0"
     }
   }
-  # Bootstrap itself uses LOCAL state on purpose (it creates the bucket that holds every other state).
-  # After the first apply, run `terraform init -migrate-state` with backend.hcl to move it into S3.
+  # The very first apply ran with local state (this stack creates the bucket). Then:
+  #   terraform init -migrate-state -backend-config=...   moved the state into that bucket.
+  backend "s3" {}
 }
 
 provider "aws" {
