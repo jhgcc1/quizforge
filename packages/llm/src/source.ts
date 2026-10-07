@@ -145,6 +145,7 @@ export async function fetchMarkdown(
 ): Promise<FetchedSource> {
   const allowed = opts.allowedHosts ?? DEFAULT_ALLOWED_HOSTS;
   const maxBytes = opts.maxBytes ?? MAX_SOURCE_BYTES;
+  assertAllowedUrl(inputUrl, allowed); // validate the URL as given, before any rewriting
   const rawUrl = toRawUrl(inputUrl);
   let current = assertAllowedUrl(rawUrl, allowed);
 
