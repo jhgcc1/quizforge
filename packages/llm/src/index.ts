@@ -13,3 +13,4 @@ export * from "./lint.js";
 export * from "./judge.js";
 export * from "./observability.js";
 export * from "./generate.js";
+export * from "./fake.js";

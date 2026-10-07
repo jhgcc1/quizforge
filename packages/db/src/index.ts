@@ -11,3 +11,4 @@ export function createDb(connectionString: string, opts: { max?: number } = {}) 
 }
 
 export type Db = ReturnType<typeof createDb>["db"];
+export * from "./repo.js";
