@@ -15,7 +15,7 @@ resource "aws_vpc_security_group_ingress_rule" "alb_from_cloudfront" {
   from_port         = 80
   to_port           = 80
   ip_protocol       = "tcp"
-  description       = "CloudFront -> ALB"
+  description       = "CloudFront to ALB"
 }
 
 resource "aws_security_group" "web" {
@@ -51,7 +51,7 @@ resource "aws_vpc_security_group_ingress_rule" "api_from_web" {
   from_port                    = 8080
   to_port                      = 8080
   ip_protocol                  = "tcp"
-  description                  = "BFF -> API over Cloud Map DNS"
+  description                  = "BFF to API over Cloud Map DNS"
 }
 
 resource "aws_security_group" "worker" {
@@ -74,7 +74,7 @@ resource "aws_vpc_security_group_ingress_rule" "db_from_tasks" {
   from_port                    = 5432
   to_port                      = 5432
   ip_protocol                  = "tcp"
-  description                  = "${each.key} -> Postgres"
+  description                  = "${each.key} to Postgres"
 }
 
 # Tasks need outbound HTTPS (ECR, SQS, Secrets Manager, Cognito, MiniMax, Langfuse, GitHub) and the DB.

@@ -327,7 +327,7 @@ resource "aws_ecs_service" "web" {
     container_port   = 3000
   }
   # the execution role must be able to read the secrets BEFORE the first task starts
-  depends_on = [aws_lb_listener_rule.web, aws_iam_role_policy.exec_secrets, aws_iam_role_policy_attachment.exec, aws_secretsmanager_secret_version.cognito_web]
+  depends_on = [aws_lb_listener_rule.web, aws_iam_role_policy.exec_secrets, aws_iam_role_policy_attachment.exec, terraform_data.seed_cognito_secret]
   lifecycle { ignore_changes = [desired_count] } # owned by autoscaling
 }
 
@@ -386,7 +386,7 @@ resource "aws_ecs_service" "worker" {
     security_groups  = [aws_security_group.worker.id]
     assign_public_ip = false
   }
-  depends_on = [aws_iam_role_policy.exec_secrets, aws_iam_role_policy_attachment.exec, aws_iam_role_policy.worker, aws_secretsmanager_secret_version.llm_placeholder, aws_secretsmanager_secret_version.langfuse_placeholder]
+  depends_on = [aws_iam_role_policy.exec_secrets, aws_iam_role_policy_attachment.exec, aws_iam_role_policy.worker, terraform_data.seed_llm_secrets]
   lifecycle { ignore_changes = [desired_count] }
 }
 

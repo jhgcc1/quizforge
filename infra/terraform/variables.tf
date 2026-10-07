@@ -68,6 +68,11 @@ variable "db_instance_class" {
   type    = string
   default = "db.t4g.micro"
 }
+variable "db_backup_retention_days" {
+  description = "Automated backup retention. AWS free-plan accounts are capped at 1; use 7+ on a paid account."
+  type        = number
+  default     = 7
+}
 variable "db_multi_az" {
   type    = bool
   default = false
