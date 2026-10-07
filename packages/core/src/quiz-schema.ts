@@ -54,7 +54,7 @@ export type GeneratedQuiz = z.output<typeof GeneratedQuizSchema>;
  * source document (whitespace- and case-insensitive). Positions in `ungrounded` are 1-based.
  */
 export function checkGrounding(
-  quiz: GeneratedQuiz,
+  quiz: { questions: readonly { sourceQuote: string }[] },
   sourceText: string,
 ): { ok: boolean; ungrounded: number[] } {
   const haystack = norm(sourceText);
