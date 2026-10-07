@@ -11,6 +11,8 @@ RUN --mount=type=cache,target=/pnpm-store pnpm install --frozen-lockfile --filte
 RUN pnpm --filter @quizforge/api deploy --prod --legacy /out
 
 FROM node:${NODE_VERSION}-slim AS runtime
+# security patches for the OS packages of the base image (Trivy gate: no fixable HIGH/CRITICAL)
+RUN apt-get update && apt-get -y --no-install-recommends upgrade && rm -rf /var/lib/apt/lists/*
 # the runtime never installs packages: dropping npm/corepack removes their bundled dependencies (and CVEs) from the image
 RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /opt/yarn* /usr/local/bin/yarn*
 ENV NODE_ENV=production PORT=8080
