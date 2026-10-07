@@ -2,6 +2,7 @@
 # Public ALB, but its security group only admits CloudFront, and the listener also demands a secret header.
 # (Without a custom domain there is no certificate for the ALB, so CloudFront -> ALB is HTTP inside AWS.)
 
+#trivy:ignore:AVD-AWS-0053 deliberate: internet-facing, but its security group admits ONLY the CloudFront origin-facing prefix list and every rule demands the secret x-origin-verify header
 resource "aws_lb" "main" {
   name                       = local.name
   load_balancer_type         = "application"
@@ -46,6 +47,7 @@ resource "aws_lb_target_group" "api" {
   }
 }
 
+#trivy:ignore:AVD-AWS-0054 deliberate: no custom domain means no certificate for the ALB; viewers always use HTTPS to CloudFront, and this hop never leaves AWS. Terminate TLS here once a domain exists
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.main.arn
   port              = 80

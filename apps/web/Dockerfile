@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1.7
 # Build context: repository root.  docker build -f apps/web/Dockerfile -t quizforge-web .
-ARG NODE_VERSION=22.12.0
+# current Node 22 LTS patch release; the Trivy gate in CI fails the build on fixable HIGH/CRITICAL findings
+ARG NODE_VERSION=22
 FROM node:${NODE_VERSION}-slim AS build
 RUN npm install -g pnpm@10.34.6 && pnpm config set store-dir /pnpm-store
 WORKDIR /repo
@@ -10,6 +11,8 @@ ENV NEXT_OUTPUT=standalone NEXT_TELEMETRY_DISABLED=1
 RUN pnpm --filter @quizforge/web build
 
 FROM node:${NODE_VERSION}-slim AS runtime
+# the runtime never installs packages: dropping npm/corepack removes their bundled dependencies (and CVEs) from the image
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /opt/yarn* /usr/local/bin/yarn*
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0
 WORKDIR /app
 COPY --from=build --chown=node:node /repo/apps/web/.next/standalone ./

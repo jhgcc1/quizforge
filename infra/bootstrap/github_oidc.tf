@@ -45,6 +45,11 @@ resource "aws_iam_role_policy_attachment" "plan_readonly" {
 
 data "aws_iam_policy_document" "plan_state" {
   statement {
+    sid       = "StateKey"
+    actions   = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"]
+    resources = [aws_kms_key.state.arn]
+  }
+  statement {
     sid       = "StateReadAndLock"
     actions   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"] # PutObject/DeleteObject only for the *.tflock lock file
     resources = ["${aws_s3_bucket.state.arn}/*.tflock"]
@@ -90,6 +95,11 @@ resource "aws_iam_role" "deploy" {
 }
 
 data "aws_iam_policy_document" "deploy" {
+  statement {
+    sid       = "StateKey"
+    actions   = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"]
+    resources = [aws_kms_key.state.arn]
+  }
   statement {
     sid       = "TerraformState"
     actions   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"]

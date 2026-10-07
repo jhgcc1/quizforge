@@ -1,0 +1,322 @@
+name: CI/CD
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# a new push to a PR cancels its older run; main runs are never cancelled
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "22"
+
+jobs:
+  # ---------------------------------------------------------------- quality
+  quality:
+    name: quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "${{ env.NODE_VERSION }}", cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: Typecheck (all workspaces)
+        run: pnpm typecheck
+      - name: Unit tests (scoring, schemas, SSRF guard, JSON extraction, graph, migration policy ...)
+        run: pnpm test
+
+  # ---------------------------------------------------------------- integration (real Postgres)
+  integration:
+    name: integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_USER: quizforge, POSTGRES_PASSWORD: quizforge, POSTGRES_DB: postgres }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U quizforge" --health-interval 3s --health-timeout 3s --health-retries 20
+    env:
+      TEST_ADMIN_DATABASE_URL: postgres://quizforge:quizforge@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "${{ env.NODE_VERSION }}", cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: Integration tests (idempotency, concurrency, API, worker, sweeper, migrate entrypoint)
+        run: pnpm test:integration
+
+  # ---------------------------------------------------------------- migrations
+  migrations:
+    name: migrations
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_USER: quizforge, POSTGRES_PASSWORD: quizforge, POSTGRES_DB: quizforge }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U quizforge" --health-interval 3s --health-timeout 3s --health-retries 20
+    env:
+      DATABASE_URL: postgres://quizforge:quizforge@localhost:5432/quizforge
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 } # the policy check diffs against the base branch
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "${{ env.NODE_VERSION }}", cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+
+      - name: Schema and migrations are in sync (no uncommitted drift)
+        run: |
+          pnpm --filter @quizforge/db db:generate
+          if [ -n "$(git status --porcelain -- packages/db)" ]; then
+            echo "::error::schema.ts changed without a committed migration. Run 'pnpm --filter @quizforge/db db:generate' and commit the result."
+            git status --porcelain -- packages/db
+            exit 1
+          fi
+
+      - name: Migration policy (expand/contract, released migrations are immutable)
+        if: github.event_name == 'pull_request'
+        env: { BASE_REF: "origin/${{ github.base_ref }}" }
+        run: node scripts/check-migrations.mjs
+
+      - name: Apply all migrations to an empty database with the production entrypoint
+        run: pnpm --filter @quizforge/db db:migrate
+
+      - name: Running them again is a no-op (idempotent)
+        run: pnpm --filter @quizforge/db db:migrate
+
+  # ---------------------------------------------------------------- end-to-end (real browser)
+  e2e:
+    name: e2e
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "${{ env.NODE_VERSION }}", cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: Start Postgres and the SQS emulator
+        run: |
+          docker compose up -d postgres elasticmq
+          for i in $(seq 1 40); do docker compose ps postgres --format '{{.Health}}' | grep -q healthy && break; sleep 2; done
+          for i in $(seq 1 30); do curl -sf "http://localhost:9324/?Action=ListQueues" >/dev/null && break; sleep 2; done
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Build the web app
+        run: AUTH_MODE=local APP_URL=http://localhost:13000 pnpm --filter @quizforge/web build
+      - name: Playwright (login -> generate -> answer -> reload -> submit -> score)
+        run: pnpm test:e2e
+        env: { CI: "true" }
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            playwright-report
+            test-results
+          retention-days: 7
+
+  # ---------------------------------------------------------------- images build + vulnerability scan
+  docker-build:
+    name: docker-build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build web, api and worker images
+        run: |
+          for s in api worker web; do
+            docker buildx build -f apps/$s/Dockerfile -t quizforge-$s:ci --load \
+              --cache-from type=gha,scope=$s --cache-to type=gha,scope=$s,mode=max .
+          done
+      - name: Scan images (fail on fixable HIGH/CRITICAL)
+        run: |
+          for s in api worker web; do
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD/.trivyignore:/.trivyignore:ro" \
+              aquasec/trivy:0.58.1 image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --ignorefile /.trivyignore quizforge-$s:ci
+          done
+
+  # ---------------------------------------------------------------- terraform static checks
+  terraform-validate:
+    name: terraform-validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: "1.x" }
+      - name: fmt, init, validate (bootstrap, platform, github)
+        run: |
+          terraform fmt -check -recursive infra
+          for d in infra/bootstrap infra/terraform infra/github; do
+            (cd $d && terraform init -backend=false -input=false >/dev/null && terraform validate)
+          done
+      - name: Security scan of the infrastructure code
+        run: |
+          docker run --rm -v "$PWD:/src" aquasec/trivy:0.58.1 config --severity HIGH,CRITICAL --exit-code 1 \
+            --ignorefile /src/.trivyignore /src/infra
+
+  # ---------------------------------------------------------------- secrets
+  secrets-scan:
+    name: secrets-scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: gitleaks (full history)
+        run: docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.21.2 detect --source /repo --redact --verbose
+
+  # ---------------------------------------------------------------- terraform plan on PRs (comment)
+  terraform-plan:
+    name: terraform-plan
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      id-token: write # OIDC: short-lived read-only credentials
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: "1.x", terraform_wrapper: false }
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: terraform plan (read-only role, no lock)
+        working-directory: infra/terraform
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" -backend-config="key=quizforge/prod/terraform.tfstate" \
+            -backend-config="region=${{ vars.AWS_REGION }}" -backend-config="use_lockfile=true" -backend-config="encrypt=true"
+          set +e
+          terraform plan -input=false -lock=false -no-color -detailed-exitcode -var "image_tag=pr-${{ github.event.pull_request.number }}" -out=tfplan > plan.txt 2>&1
+          echo "code=$?" >> "$GITHUB_OUTPUT"
+        id: plan
+      - name: Comment the plan on the PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let plan = fs.readFileSync('infra/terraform/plan.txt', 'utf8');
+            if (plan.length > 60000) plan = plan.slice(0, 60000) + '\n... (truncated, see the job log)';
+            const code = '${{ steps.plan.outputs.code }}';
+            const status = code === '0' ? 'No changes' : code === '2' ? 'Changes pending' : 'Plan FAILED';
+            const body = `### Terraform plan: ${status}\n<details><summary>Show plan</summary>\n\n\`\`\`\n${plan}\n\`\`\`\n</details>`;
+            await github.rest.issues.createComment({ ...context.repo, issue_number: context.issue.number, body });
+      - name: Fail the check if the plan errored
+        if: steps.plan.outputs.code == '1'
+        run: exit 1
+
+  # ---------------------------------------------------------------- deploy (main only, after EVERY gate)
+  deploy:
+    name: deploy
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [quality, integration, migrations, e2e, docker-build, terraform-validate, secrets-scan]
+    runs-on: ubuntu-24.04-arm # native arm64 images for Graviton Fargate
+    timeout-minutes: 60
+    environment: production # manual approval + the only context the deploy IAM role trusts
+    concurrency: { group: deploy-production, cancel-in-progress: false }
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      TAG: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: "1.x", terraform_wrapper: false }
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build and push images (tag = commit sha, immutable)
+        run: |
+          for s in api worker web; do
+            repo="${{ steps.ecr.outputs.registry }}/quizforge/$s"
+            if aws ecr describe-images --repository-name "quizforge/$s" --image-ids imageTag=$TAG >/dev/null 2>&1; then
+              echo "$s:$TAG already in ECR, skipping"; continue
+            fi
+            docker buildx build -f apps/$s/Dockerfile -t "$repo:$TAG" --push \
+              --cache-from type=gha,scope=$s-arm --cache-to type=gha,scope=$s-arm,mode=max .
+          done
+
+      - name: terraform init (remote state, native S3 locking)
+        working-directory: infra/terraform
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" -backend-config="key=quizforge/prod/terraform.tfstate" \
+            -backend-config="region=${{ vars.AWS_REGION }}" -backend-config="use_lockfile=true" -backend-config="encrypt=true"
+
+      - name: Drift check (state vs reality) before changing anything
+        working-directory: infra/terraform
+        run: |
+          set +e
+          terraform plan -input=false -no-color -detailed-exitcode -refresh-only -var "image_tag=$TAG" > drift.txt 2>&1
+          code=$?
+          cat drift.txt | tail -40
+          if [ $code -eq 1 ]; then echo "::error::terraform could not read the state/infrastructure"; exit 1; fi
+          if [ $code -eq 2 ]; then echo "::warning::out-of-band changes detected (see the log); the apply below will reconcile them"; fi
+
+      - name: Database migration BEFORE the new code (expand/contract keeps the old code working)
+        id: premigrate
+        working-directory: infra/terraform
+        run: |
+          if terraform state show aws_ecs_task_definition.migrate >/dev/null 2>&1; then
+            terraform apply -input=false -auto-approve -var "image_tag=$TAG" -target=aws_ecs_task_definition.migrate
+            ../../scripts/run-migration.sh
+            echo "first=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "first deployment: the migration runs right after the infrastructure exists"
+            echo "first=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: terraform apply (rolling deploy with circuit breaker; waits for steady state)
+        working-directory: infra/terraform
+        run: terraform apply -input=false -auto-approve -var "image_tag=$TAG"
+
+      - name: "Database migration (first deployment only, the database did not exist before the apply)"
+        if: steps.premigrate.outputs.first == 'true'
+        working-directory: infra/terraform
+        run: ../../scripts/run-migration.sh
+
+      - name: Smoke test through CloudFront
+        working-directory: infra/terraform
+        run: |
+          url=$(terraform output -raw app_url)
+          echo "app: $url"
+          expect() { # <description> <expected http code> <curl args...>
+            local what=$1 want=$2; shift 2
+            local got; got=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$@")
+            if [ "$got" != "$want" ]; then echo "::error::$what: expected HTTP $want, got $got"; exit 1; fi
+            echo "ok  $what ($got)"
+          }
+          expect "web landing page"            200 "$url/"
+          expect "API spec is served"          200 "$url/openapi.json"
+          expect "API requires a token"        401 "$url/v1/quizzes"
+          expect "bad token is rejected"       401 -H "Authorization: Bearer not.a.jwt" "$url/v1/quizzes"
+          expect "BFF refuses anonymous calls" 401 "$url/bff/v1/quizzes"
+          expect "app pages need a session"    307 "$url/app"
+          expect "ALB cannot be reached around CloudFront" 403 --resolve "x:80:$(dig +short "$(terraform output -raw alb_dns)" | head -1)" -H "Host: x" "http://x/"
+          echo "### Deployed \`${TAG::7}\` to $url" >> "$GITHUB_STEP_SUMMARY"

@@ -36,3 +36,8 @@ output "migrate_run_task" {
     security_group  = aws_security_group.worker.id
   }
 }
+
+output "alb_dns" {
+  description = "Used by the deploy smoke test to prove the ALB refuses traffic that bypasses CloudFront"
+  value       = aws_lb.main.dns_name
+}

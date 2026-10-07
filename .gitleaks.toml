@@ -1,0 +1,7 @@
+# Default gitleaks rules plus ONE narrow exception. Do not widen it: a leak must fail the build.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "the dummy Idempotency-Key literal used by an e2e test (not a credential)"
+regexes = ['''abcdefgh12345678''']

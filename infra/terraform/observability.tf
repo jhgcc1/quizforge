@@ -1,8 +1,65 @@
 ############################ Alerting ############################
 
+# CloudWatch alarms and Budgets can only publish to an encrypted topic if the KEY POLICY lets them use the key:
+# the AWS-managed alias/aws/sns key does not, so alerts would be silently dropped. Hence a customer-managed key.
+data "aws_iam_policy_document" "alarms_key" {
+  statement {
+    sid       = "AccountAdmin"
+    actions   = ["kms:*"]
+    resources = ["*"]
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
+    }
+  }
+  statement {
+    sid       = "AlarmServicesMayPublish"
+    actions   = ["kms:GenerateDataKey*", "kms:Decrypt"]
+    resources = ["*"]
+    principals {
+      type        = "Service"
+      identifiers = ["cloudwatch.amazonaws.com", "budgets.amazonaws.com", "events.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_kms_key" "alarms" {
+  description             = "${local.name} alarm topic"
+  enable_key_rotation     = true
+  deletion_window_in_days = 7
+  policy                  = data.aws_iam_policy_document.alarms_key.json
+}
+
+resource "aws_kms_alias" "alarms" {
+  name          = "alias/${local.name}-alarms"
+  target_key_id = aws_kms_key.alarms.key_id
+}
+
 resource "aws_sns_topic" "alarms" {
   name              = "${local.name}-alarms"
-  kms_master_key_id = "alias/aws/sns"
+  kms_master_key_id = aws_kms_key.alarms.arn
+}
+
+data "aws_iam_policy_document" "alarms_topic" {
+  statement {
+    sid       = "AllowAlarmsAndBudgets"
+    actions   = ["sns:Publish"]
+    resources = [aws_sns_topic.alarms.arn]
+    principals {
+      type        = "Service"
+      identifiers = ["cloudwatch.amazonaws.com", "budgets.amazonaws.com"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [data.aws_caller_identity.current.account_id]
+    }
+  }
+}
+
+resource "aws_sns_topic_policy" "alarms" {
+  arn    = aws_sns_topic.alarms.arn
+  policy = data.aws_iam_policy_document.alarms_topic.json
 }
 
 resource "aws_sns_topic_subscription" "email" {

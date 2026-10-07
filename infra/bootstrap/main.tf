@@ -20,11 +20,25 @@ resource "aws_s3_bucket_versioning" "state" {
   versioning_configuration { status = "Enabled" }
 }
 
+resource "aws_kms_key" "state" {
+  description             = "${var.project} terraform state"
+  enable_key_rotation     = true
+  deletion_window_in_days = 30
+}
+
+resource "aws_kms_alias" "state" {
+  name          = "alias/${var.project}-tfstate"
+  target_key_id = aws_kms_key.state.key_id
+}
+
 resource "aws_s3_bucket_server_side_encryption_configuration" "state" {
   bucket = aws_s3_bucket.state.id
   rule {
-    apply_server_side_encryption_by_default { sse_algorithm = "AES256" }
-    bucket_key_enabled = true
+    apply_server_side_encryption_by_default {
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = aws_kms_key.state.arn
+    }
+    bucket_key_enabled = true # one KMS call per bucket key, not per object
   }
 }
 

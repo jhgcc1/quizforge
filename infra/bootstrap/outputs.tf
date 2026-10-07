@@ -11,5 +11,6 @@ output "backend_hcl" {
     region       = "${var.region}"
     use_lockfile = true
     encrypt      = true
+    kms_key_id   = "${aws_kms_key.state.arn}"
   EOT
 }
