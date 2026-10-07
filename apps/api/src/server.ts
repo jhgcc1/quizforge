@@ -5,7 +5,7 @@ import { loadConfig } from "./config.js";
 import { MemoryQuizQueue, SqsQuizQueue } from "./queue.js";
 
 const config = loadConfig();
-const { db, pool } = createDb(config.DATABASE_URL, { max: 10 });
+const { db, pool } = createDb(config.databaseUrl, { max: 10 });
 const queue = config.QUEUE_MODE === "sqs" ? new SqsQuizQueue(config.SQS_QUEUE_URL!) : new MemoryQuizQueue();
 
 const app = await buildApp({ config, db, queue, verifier: createVerifier(config) });

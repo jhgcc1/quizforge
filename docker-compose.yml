@@ -1,3 +1,16 @@
+x-common-env: &common
+  NODE_ENV: development # AUTH_MODE=local is refused when NODE_ENV=production
+  DATABASE_URL: "postgres://quizforge:quizforge@postgres:5432/quizforge"
+  AWS_ENDPOINT_URL_SQS: "http://elasticmq:9324"
+  AWS_REGION: us-east-2
+  AWS_ACCESS_KEY_ID: local
+  AWS_SECRET_ACCESS_KEY: local
+  SQS_QUEUE_URL: "http://elasticmq:9324/000000000000/quizforge-jobs"
+  LOCAL_JWT_SECRET: "compose-local-secret-compose-local-secret"
+  LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+  LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+  LANGFUSE_BASE_URL: ${LANGFUSE_BASE_URL:-https://us.cloud.langfuse.com}
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -23,6 +36,55 @@ services:
       - "9325:9325"
     volumes:
       - ./docker/elasticmq.conf:/opt/elasticmq.conf:ro
+
+  # ---- full stack in containers (the same images that run on ECS):  docker compose --profile app up --build
+  # Local auth + fake LLM by default so it runs offline; set LLM_MODE=minimax and MINIMAX_API_KEY to use the real model.
+  migrate:
+    profiles: ["app"]
+    build: { context: ., dockerfile: apps/api/Dockerfile }
+    image: quizforge-api:local
+    command: ["node", "--import", "tsx", "node_modules/@quizforge/db/src/migrate.ts"]
+    environment: { DATABASE_URL: "postgres://quizforge:quizforge@postgres:5432/quizforge" }
+    depends_on: { postgres: { condition: service_healthy } }
+    restart: "no"
+
+  api:
+    profiles: ["app"]
+    image: quizforge-api:local
+    command: ["node", "--import", "tsx", "src/server.ts"]
+    ports: ["18080:8080"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      elasticmq: { condition: service_started }
+    environment:
+      <<: *common
+      AUTH_MODE: local
+      QUEUE_MODE: sqs
+
+  worker:
+    profiles: ["app"]
+    build: { context: ., dockerfile: apps/worker/Dockerfile }
+    image: quizforge-worker:local
+    environment:
+      <<: *common
+      LLM_MODE: ${LLM_MODE:-fake}
+      MINIMAX_API_KEY: ${MINIMAX_API_KEY:-}
+      MINIMAX_MODEL: ${MINIMAX_MODEL:-MiniMax-M2.7}
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      elasticmq: { condition: service_started }
+
+  web:
+    profiles: ["app"]
+    build: { context: ., dockerfile: apps/web/Dockerfile }
+    image: quizforge-web:local
+    environment:
+      AUTH_MODE: local
+      LOCAL_JWT_SECRET: "compose-local-secret-compose-local-secret"
+      APP_URL: "http://localhost:13000"
+      API_URL: "http://api:8080"
+    ports: ["13000:3000"]
+    depends_on: [api]
 
 volumes:
   pgdata:

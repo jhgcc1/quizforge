@@ -1,10 +1,15 @@
+import { resolveDatabaseUrl } from "@quizforge/db";
 import { z } from "zod";
 
 const Schema = z
   .object({
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
     LOG_LEVEL: z.enum(["error", "warn", "info", "debug"]).default("info"),
-    DATABASE_URL: z.string().min(1),
+    DATABASE_URL: z.string().optional(),
+    DB_HOST: z.string().optional(),
+    DB_USER: z.string().optional(),
+    DB_PASSWORD: z.string().optional(),
+    DB_NAME: z.string().optional(),
 
     SQS_QUEUE_URL: z.string().min(1),
     /** Must match the queue's redrive policy (maxReceiveCount). On the last receive a failure marks the quiz failed. */
@@ -31,12 +36,12 @@ const Schema = z
     if (c.LLM_MODE === "fake" && c.NODE_ENV === "production") ctx.addIssue({ code: "custom", message: "LLM_MODE=fake is not allowed in production" });
   });
 
-export type Config = z.output<typeof Schema> & { allowedHosts: string[] };
+export type Config = z.output<typeof Schema> & { allowedHosts: string[]; databaseUrl: string };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const parsed = Schema.safeParse(env);
   if (!parsed.success) {
     throw new Error(`Invalid configuration:\n${parsed.error.issues.map((i) => `- ${i.path.join(".") || "(root)"}: ${i.message}`).join("\n")}`);
   }
-  return { ...parsed.data, allowedHosts: parsed.data.SOURCE_ALLOWED_HOSTS.split(",").map((h) => h.trim().toLowerCase()).filter(Boolean) };
+  return { ...parsed.data, databaseUrl: resolveDatabaseUrl(env), allowedHosts: parsed.data.SOURCE_ALLOWED_HOSTS.split(",").map((h) => h.trim().toLowerCase()).filter(Boolean) };
 }

@@ -12,8 +12,8 @@ const config = loadConfig();
 const log = createLogger(config.LOG_LEVEL);
 initTracing();
 
-const { db, pool } = createDb(config.DATABASE_URL, { max: config.WORKER_CONCURRENCY + 2 });
-const checkpointer = PostgresSaver.fromConnString(config.DATABASE_URL, { schema: "langgraph" });
+const { db, pool } = createDb(config.databaseUrl, { max: config.WORKER_CONCURRENCY + 2 });
+const checkpointer = PostgresSaver.fromConnString(config.databaseUrl, { schema: "langgraph" });
 await checkpointer.setup();
 
 const llm =

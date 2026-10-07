@@ -387,9 +387,9 @@ export async function failQuiz(db: Db, p: { quizId: string; jobId?: string | und
 }
 
 /** Sweeper helpers: quizzes stuck in queued/generating are re-queued or failed by a scheduled task. */
-export async function findStaleQuizzes(db: Db, olderThan: Date): Promise<Pick<QuizRow, "id" | "status">[]> {
+export async function findStaleQuizzes(db: Db, olderThan: Date): Promise<Pick<QuizRow, "id" | "status" | "updatedAt">[]> {
   return db
-    .select({ id: t.quizzes.id, status: t.quizzes.status })
+    .select({ id: t.quizzes.id, status: t.quizzes.status, updatedAt: t.quizzes.updatedAt })
     .from(t.quizzes)
     .where(and(inArray(t.quizzes.status, ["queued", "generating"]), sql`${t.quizzes.updatedAt} < ${olderThan}`));
 }

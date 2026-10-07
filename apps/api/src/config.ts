@@ -1,3 +1,4 @@
+import { resolveDatabaseUrl } from "@quizforge/db";
 import { z } from "zod";
 
 const bool = z.enum(["true", "false"]).transform((v) => v === "true");
@@ -7,7 +8,11 @@ const Schema = z
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
     PORT: z.coerce.number().int().default(8080),
     LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
-    DATABASE_URL: z.string().min(1),
+    DATABASE_URL: z.string().optional(),
+    DB_HOST: z.string().optional(),
+    DB_USER: z.string().optional(),
+    DB_PASSWORD: z.string().optional(),
+    DB_NAME: z.string().optional(),
 
     /** `cognito` verifies real Cognito access tokens. `local` accepts HS256 tokens and is refused in production. */
     AUTH_MODE: z.enum(["cognito", "local"]).default("cognito"),
@@ -37,7 +42,7 @@ const Schema = z
     if (c.QUEUE_MODE === "memory" && c.NODE_ENV === "production") ctx.addIssue({ code: "custom", message: "QUEUE_MODE=memory is not allowed in production" });
   });
 
-export type Config = z.output<typeof Schema> & { allowedHosts: string[]; clientIds: string[] };
+export type Config = z.output<typeof Schema> & { allowedHosts: string[]; clientIds: string[]; databaseUrl: string };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const parsed = Schema.safeParse(env);
@@ -47,6 +52,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const c = parsed.data;
   return {
     ...c,
+    databaseUrl: resolveDatabaseUrl(env),
     allowedHosts: c.SOURCE_ALLOWED_HOSTS.split(",").map((h) => h.trim().toLowerCase()).filter(Boolean),
     clientIds: (c.COGNITO_CLIENT_IDS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
   };
