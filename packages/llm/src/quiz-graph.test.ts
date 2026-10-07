@@ -1,3 +1,4 @@
+import { MemorySaver } from "@langchain/langgraph";
 import { describe, expect, it } from "vitest";
 import { JobBudget } from "./budget.js";
 import { BudgetExceededError } from "./errors.js";
@@ -141,6 +142,45 @@ describe("budget", () => {
     await expect(
       runQuizGraph({ llm: f.llm, budget }, { sourceText: SHORT_DOC, numQuestions: 5, strategy: "single-shot" }),
     ).rejects.toBeInstanceOf(BudgetExceededError);
+    expect(f.calls).toHaveLength(2);
+  });
+});
+
+describe("checkpoint resume (SQS redelivery)", () => {
+  it("a crash mid-graph resumes from the checkpoint without repeating the LLM calls that succeeded", async () => {
+    const bad = [...five];
+    bad[0] = q(0, { sourceQuote: "made up quote that is nowhere in it" });
+    let reviseCalls = 0;
+    const f = scripted({
+      "generate:single-shot": ok(...bad),
+      "revise:round-1": () => {
+        reviseCalls++;
+        if (reviseCalls === 1) throw new Error("worker killed (ECONNRESET)"); // first delivery dies here
+        return ok(q(0));
+      },
+    });
+    const checkpointer = new MemorySaver();
+    const budget1 = new JobBudget();
+    await expect(
+      runQuizGraph({ llm: f.llm, budget: budget1 }, { sourceText: SHORT_DOC, numQuestions: 5, strategy: "single-shot" }, { threadId: "job-1", checkpointer }),
+    ).rejects.toThrow(/ECONNRESET/);
+    expect(f.calls).toEqual(["generate:single-shot", "revise:round-1"]);
+
+    // redelivery: brand-new process (fresh budget object), same thread
+    const budget2 = new JobBudget();
+    const r = await runQuizGraph({ llm: f.llm, budget: budget2 }, { sourceText: SHORT_DOC, numQuestions: 5, strategy: "single-shot" }, { threadId: "job-1", checkpointer });
+    expect(r.resumed).toBe(true);
+    expect(f.calls).toEqual(["generate:single-shot", "revise:round-1", "revise:round-1"]); // generate NOT repeated
+    expect(r.questions).toHaveLength(5);
+    expect(budget2.snapshot().calls).toBeGreaterThanOrEqual(1); // allowance carried over from the checkpoint
+  });
+
+  it("a different thread (new job attempt) starts fresh", async () => {
+    const f = scripted({ "generate:single-shot": ok(...five) });
+    const checkpointer = new MemorySaver();
+    const run = (threadId: string) => runQuizGraph({ llm: f.llm, budget: new JobBudget() }, { sourceText: SHORT_DOC, numQuestions: 5, strategy: "single-shot" }, { threadId, checkpointer });
+    expect((await run("a")).resumed).toBe(false);
+    expect((await run("b")).resumed).toBe(false);
     expect(f.calls).toHaveLength(2);
   });
 });

@@ -12,3 +12,7 @@ export function createDb(connectionString: string, opts: { max?: number } = {}) 
 
 export type Db = ReturnType<typeof createDb>["db"];
 export * from "./repo.js";
+
+// Re-exported so apps and tests share ONE drizzle-orm instance (duplicates break the types).
+export { and, eq, sql } from "drizzle-orm";
+export { migrate } from "drizzle-orm/node-postgres/migrator";

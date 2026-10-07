@@ -60,6 +60,11 @@ export class JobBudget {
     };
   }
 
+  /** Resume from a persisted snapshot (checkpoint/DB) after a redelivered message. */
+  restore(state: BudgetState): void {
+    this.state = { calls: state.calls, usage: { ...state.usage }, startedAt: state.startedAt };
+  }
+
   snapshot(): BudgetState {
     return { calls: this.state.calls, usage: { ...this.state.usage }, startedAt: this.state.startedAt };
   }

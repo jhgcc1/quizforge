@@ -266,6 +266,8 @@ export interface QuizGraphResult {
   usage: Usage;
   trail: string[];
   budget: BudgetState;
+  /** True when this run continued from a checkpoint of an earlier, interrupted attempt. */
+  resumed: boolean;
 }
 
 export async function runQuizGraph(
@@ -274,23 +276,28 @@ export async function runQuizGraph(
   config?: { threadId?: string; checkpointer?: BaseCheckpointSaver; callbacks?: unknown[]; metadata?: Record<string, unknown> },
 ): Promise<QuizGraphResult> {
   const graph = buildQuizGraph(deps, config?.checkpointer);
-  const out = await graph.invoke(
-    {
-      input,
-      routeReason: "",
-      context: "",
-      questions: [],
-      issues: {},
-      round: 0,
-      repairs: 0,
-      usage: emptyUsage(),
-      trail: [],
-    },
-    {
-      configurable: { thread_id: config?.threadId ?? "local" },
-      ...(config?.callbacks ? { callbacks: config.callbacks as never } : {}),
-      ...(config?.metadata ? { metadata: config.metadata } : {}),
-    },
+  const runConfig = {
+    configurable: { thread_id: config?.threadId ?? "local" },
+    ...(config?.callbacks ? { callbacks: config.callbacks as never } : {}),
+    ...(config?.metadata ? { metadata: config.metadata } : {}),
+  };
+
+  let out: Awaited<ReturnType<typeof graph.invoke>> | undefined;
+  let resumed = false;
+  if (config?.checkpointer) {
+    // A previous attempt of this same job may have died mid-graph: continue from its last
+    // checkpoint instead of paying again for the LLM calls that already succeeded.
+    const snap = await graph.getState(runConfig);
+    if (snap.next.length > 0) {
+      const saved = snap.values.budget as BudgetState | undefined;
+      if (saved) deps.budget.restore(saved);
+      out = await graph.invoke(null, runConfig);
+      resumed = true;
+    }
+  }
+  out ??= await graph.invoke(
+    { input, routeReason: "", context: "", questions: [], issues: {}, round: 0, repairs: 0, usage: emptyUsage(), trail: [] },
+    runConfig,
   );
   return {
     questions: out.questions,
@@ -301,5 +308,6 @@ export async function runQuizGraph(
     usage: out.usage,
     trail: out.trail,
     budget: deps.budget.snapshot(),
+    resumed,
   };
 }

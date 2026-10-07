@@ -29,6 +29,7 @@ export interface GeneratedQuizResult {
   usage: Usage;
   budget: BudgetState;
   trail: string[];
+  resumed: boolean;
   metrics: QuizMetrics;
   judge?: JudgeResult;
   /** 0..1 blend of deterministic metrics and (if run) the judge. Drives alerts. */
@@ -93,6 +94,7 @@ export async function generateQuiz(p: GenerateQuizParams): Promise<GeneratedQuiz
         usage: addUsage(run.usage, judge?.usage),
         budget: budget.snapshot(),
         trail: run.trail,
+        resumed: run.resumed,
         metrics,
         ...(judge ? { judge } : {}),
         quality,
