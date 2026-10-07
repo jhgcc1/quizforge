@@ -16,6 +16,11 @@
     "@langchain/core": "^1.2.17",
     "@langchain/langgraph": "^1.4.21",
     "@langchain/openai": "^1.6.2",
+    "@langfuse/client": "^5.13.1",
+    "@langfuse/langchain": "^5.13.1",
+    "@langfuse/otel": "^5.13.1",
+    "@langfuse/tracing": "^5.13.1",
+    "@opentelemetry/sdk-node": "^0.223.0",
     "@quizforge/core": "workspace:*",
     "zod": "^3.24.0"
   },

@@ -19,13 +19,15 @@ const FACTS = [
 const DOC = FACTS.map((f, i) => `## Topic ${i + 1}\n${f}. ${"Additional filler sentence for this section of the documentation. ".repeat(6)}`).join("\n\n");
 const SHORT_DOC = "# Pipecat\n\n" + FACTS.join(".\n") + ".\n";
 
+const quoteOf = (i: number) => FACTS[i % FACTS.length]!.split(" ").slice(0, 8).join(" ");
+
 type QJson = { prompt: string; options: string[]; correct: number[]; explanation: string; sourceQuote: string; difficulty: string };
 const q = (i: number, over: Partial<QJson> = {}): QJson => ({
   prompt: `Which statement about topic ${i + 1} is correct according to the docs?`,
   options: [`right ${i}`, `wrong a ${i}`, `wrong b ${i}`, `wrong c ${i}`],
   correct: [0],
   explanation: `Because the documentation states it for topic ${i + 1}.`,
-  sourceQuote: FACTS[i % FACTS.length]!.slice(0, 60),
+  sourceQuote: quoteOf(i),
   difficulty: ["easy", "medium", "hard"][i % 3]!,
   ...over,
 });
@@ -73,7 +75,8 @@ describe("single-shot", () => {
     const r = await runQuizGraph({ llm: f.llm, budget: new JobBudget() }, { sourceText: SHORT_DOC, numQuestions: 5, strategy: "single-shot" });
     expect(f.calls).toEqual(["generate:single-shot", "revise:round-1"]);
     expect(r.rounds).toBe(1);
-    expect(r.questions[2]!.sourceQuote).toBe(FACTS[2]!.slice(0, 60));
+    expect(r.questions.map((x) => x.sourceQuote)).toContain(quoteOf(2));
+    expect(r.questions.map((x) => x.sourceQuote)).not.toContain("this sentence does not exist in the document");
   });
 
   it("fails with QualityGateError when grounding is still broken after the max rounds", async () => {

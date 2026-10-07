@@ -50,17 +50,38 @@ export type GeneratedQuestion = z.output<typeof GeneratedQuestionSchema>;
 export type GeneratedQuiz = z.output<typeof GeneratedQuizSchema>;
 
 /**
- * Deterministic groundedness check: each question's `sourceQuote` must literally appear in the
- * source document (whitespace- and case-insensitive). Positions in `ungrounded` are 1-based.
+ * Visible text of a markdown document: link/image syntax collapses to its label, URLs and HTML tags
+ * disappear, and only letters/digits survive (lowercased, single-spaced). Models quote what a reader
+ * sees ("Agents: Build autonomous agents"), not raw markdown ("[**Agents**](https://...): Build ..."),
+ * so grounding is compared on this form while still requiring the same words in the same order.
+ */
+export function visibleText(markdown: string): string {
+  return markdown
+    .normalize("NFKC")
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/https?:\/\/\S+/g, " ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim()
+    .toLowerCase();
+}
+
+const MIN_QUOTE_WORDS = 3;
+
+/**
+ * Deterministic groundedness check: each question's `sourceQuote` must appear in the document's
+ * visible text (>= 3 words, same order). Positions in `ungrounded` are 1-based.
  */
 export function checkGrounding(
   quiz: { questions: readonly { sourceQuote: string }[] },
   sourceText: string,
 ): { ok: boolean; ungrounded: number[] } {
-  const haystack = norm(sourceText);
+  const haystack = ` ${visibleText(sourceText)} `;
   const ungrounded: number[] = [];
   quiz.questions.forEach((q, i) => {
-    if (!haystack.includes(norm(q.sourceQuote))) ungrounded.push(i + 1);
+    const quote = visibleText(q.sourceQuote);
+    const words = quote ? quote.split(" ").length : 0;
+    if (words < MIN_QUOTE_WORDS || !haystack.includes(` ${quote} `)) ungrounded.push(i + 1);
   });
   return { ok: ungrounded.length === 0, ungrounded };
 }

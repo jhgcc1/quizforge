@@ -6,7 +6,7 @@ const q = (over: Record<string, unknown> = {}) => ({
   options: ["WebRTC", "FTP", "SMTP", "SNMP"],
   correct: [0],
   explanation: "Pipecat supports WebRTC transports.",
-  sourceQuote: "supports WebRTC",
+  sourceQuote: "It supports WebRTC and websockets",
   difficulty: "easy",
   ...over,
 });
@@ -67,9 +67,22 @@ describe("checkGrounding", () => {
     const parsed = GeneratedQuizSchema.parse(quiz());
     expect(checkGrounding(parsed, source)).toEqual({ ok: true, ungrounded: [] });
     const spaced = GeneratedQuizSchema.parse({
-      questions: quiz().questions.map((x) => ({ ...x, sourceQuote: "SUPPORTS   webrtc" })),
+      questions: quiz().questions.map((x) => ({ ...x, sourceQuote: "IT SUPPORTS   webrtc and WebSockets" })),
     });
     expect(checkGrounding(spaced, source).ok).toBe(true);
+  });
+
+  it("compares visible text: markdown links, emphasis and urls in the source do not break a quote", () => {
+    const md = "- [**Agents**](https://mastra.ai/docs/agents): Build autonomous agents that use LLMs and tools.\n- **Workflows**: use `graph-based` engines.";
+    const mk = (sourceQuote: string) => GeneratedQuizSchema.parse({ questions: quiz().questions.map((x) => ({ ...x, sourceQuote })) });
+    expect(checkGrounding(mk("Agents: Build autonomous agents that use LLMs"), md).ok).toBe(true);
+    expect(checkGrounding(mk("Workflows: use graph-based engines"), md).ok).toBe(true);
+    expect(checkGrounding(mk("Agents build manual agents that ignore tools"), md).ok).toBe(false); // words/order matter
+  });
+
+  it("rejects quotes too short to verify (< 3 words)", () => {
+    const parsed = GeneratedQuizSchema.parse({ questions: quiz().questions.map((x) => ({ ...x, sourceQuote: "WebRTC ok" })) });
+    expect(checkGrounding(parsed, "WebRTC ok and more words").ok).toBe(false);
   });
 
   it("flags hallucinated quotes by question position", () => {

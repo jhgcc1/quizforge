@@ -19,7 +19,8 @@ import {
   singleShotUser,
 } from "./prompts.js";
 import { chooseStrategy, type Strategy } from "./router.js";
-import { pickSections, selectQuestions } from "./select.js";
+import { lintQuestion } from "./lint.js";
+import { pickSections, selectQuestions, sortByDifficulty } from "./select.js";
 import { splitSections } from "./source.js";
 import { generateStructured } from "./structured.js";
 
@@ -160,7 +161,7 @@ export function buildQuizGraph(deps: QuizGraphDeps, checkpointer?: BaseCheckpoin
       options: { name: "generate:single-shot", temperature: 0.4 },
     });
     return {
-      questions: r.value.questions,
+      questions: sortByDifficulty(r.value.questions),
       context: doc,
       repairs: s.repairs + r.repairs,
       ...track(r.usage, s),
@@ -174,6 +175,7 @@ export function buildQuizGraph(deps: QuizGraphDeps, checkpointer?: BaseCheckpoin
     const add = (i: number, msg: string) => (issues[i] = [...(issues[i] ?? []), msg]);
     const grounding = checkGrounding({ questions: s.questions }, s.input.sourceText);
     for (const i of grounding.ungrounded) add(i, "sourceQuote is not an exact excerpt of the document; copy it verbatim");
+    s.questions.forEach((q, i) => lintQuestion(q).forEach((m) => add(i + 1, m)));
     const parsed = GeneratedQuizSchema.safeParse({ questions: s.questions });
     if (!parsed.success) {
       for (const iss of parsed.error.issues) {

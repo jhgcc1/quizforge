@@ -1,5 +1,5 @@
 /** Bump on any prompt change: it is stored with each quiz and used as a cache/eval dimension. */
-export const PROMPT_VERSION = "2026-10-07.1";
+export const PROMPT_VERSION = "2026-10-07.2";
 
 export const QUESTIONS_JSON_SPEC = `Return ONE JSON object and nothing else (no prose, no code fences):
 {"questions":[{
@@ -7,7 +7,7 @@ export const QUESTIONS_JSON_SPEC = `Return ONE JSON object and nothing else (no 
   "options": ["option 1","option 2","option 3","option 4"],
   "correct": [0],
   "explanation": "one or two sentences saying why the correct option(s) are right",
-  "sourceQuote": "an EXACT, verbatim excerpt (5-200 chars) copied from the document that supports the answer",
+  "sourceQuote": "a word-for-word excerpt (at least 3 words, up to ~200 chars) from the document that supports the answer. Copy the visible text exactly; leave out markdown symbols and link URLs, and never paraphrase",
   "difficulty": "easy" | "medium" | "hard"
 }]}
 Field rules: "options" has EXACTLY 4 distinct strings; "correct" lists the zero-based indexes of the correct options (1 to 3 of them); the key names must be exactly as shown.`;

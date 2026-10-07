@@ -50,7 +50,12 @@ export function selectQuestions(candidatesBySection: GeneratedQuestion[][], n: n
       if (chosen.length >= n) break;
     }
   }
-  return chosen
+  return sortByDifficulty(chosen);
+}
+
+/** Stable easy -> hard ordering: later questions weigh more, so harder ones should come later. */
+export function sortByDifficulty(questions: GeneratedQuestion[]): GeneratedQuestion[] {
+  return questions
     .map((q, i) => ({ q, i }))
     .sort((a, b) => DIFFICULTY_RANK[a.q.difficulty] - DIFFICULTY_RANK[b.q.difficulty] || a.i - b.i)
     .map((x) => x.q);
