@@ -1,0 +1,21 @@
+# secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.tfvars
+!*.tfvars.example
+
+# tooling
+.playwright-mcp/
+node_modules/
+.next/
+dist/
+coverage/
+.turbo/
+
+# terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log

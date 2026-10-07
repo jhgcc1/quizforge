@@ -1,0 +1,26 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: quizforge
+      POSTGRES_PASSWORD: quizforge
+      POSTGRES_DB: quizforge
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quizforge -d quizforge"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  # SQS-compatible queue for local dev (same API as AWS SQS).
+  elasticmq:
+    image: softwaremill/elasticmq-native:1.6.11
+    ports:
+      - "9324:9324"
+      - "9325:9325"
+
+volumes:
+  pgdata:
