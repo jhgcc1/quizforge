@@ -7,7 +7,10 @@ resource "aws_iam_openid_connect_provider" "github" {
 }
 
 locals {
-  oidc_arn = var.create_oidc_provider ? aws_iam_openid_connect_provider.github[0].arn : "arn:${data.aws_partition.current.partition}:iam::${local.account_id}:oidc-provider/token.actions.githubusercontent.com"
+  # GitHub's immutable subject: survives a repository rename or transfer, so a re-created repo with the same
+  # name can never assume these roles. Format: repo:<owner>@<owner id>/<repo>@<repo id>:<context>
+  sub_prefix = "repo:${split("/", var.github_repo)[0]}@${var.github_owner_id}/${split("/", var.github_repo)[1]}@${var.github_repo_id}"
+  oidc_arn   = var.create_oidc_provider ? aws_iam_openid_connect_provider.github[0].arn : "arn:${data.aws_partition.current.partition}:iam::${local.account_id}:oidc-provider/token.actions.githubusercontent.com"
 }
 
 # PLAN role: read-only. PRs and branches of THIS repository may assume it. Fork PRs cannot: GitHub gives
@@ -27,7 +30,7 @@ data "aws_iam_policy_document" "plan_trust" {
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repo}:pull_request", "repo:${var.github_repo}:ref:refs/heads/*"]
+      values   = ["${local.sub_prefix}:pull_request", "${local.sub_prefix}:ref:refs/heads/*"]
     }
   }
 }
@@ -83,7 +86,7 @@ data "aws_iam_policy_document" "deploy_trust" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repo}:environment:production"]
+      values   = ["${local.sub_prefix}:environment:production"]
     }
   }
 }

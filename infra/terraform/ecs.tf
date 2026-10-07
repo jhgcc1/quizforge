@@ -326,7 +326,8 @@ resource "aws_ecs_service" "web" {
     container_name   = "web"
     container_port   = 3000
   }
-  depends_on = [aws_lb_listener_rule.web]
+  # the execution role must be able to read the secrets BEFORE the first task starts
+  depends_on = [aws_lb_listener_rule.web, aws_iam_role_policy.exec_secrets, aws_iam_role_policy_attachment.exec, aws_secretsmanager_secret_version.cognito_web]
   lifecycle { ignore_changes = [desired_count] } # owned by autoscaling
 }
 
@@ -360,7 +361,7 @@ resource "aws_ecs_service" "api" {
   service_registries {
     registry_arn = aws_service_discovery_service.api.arn
   }
-  depends_on = [aws_lb_listener_rule.api]
+  depends_on = [aws_lb_listener_rule.api, aws_iam_role_policy.exec_secrets, aws_iam_role_policy_attachment.exec, aws_iam_role_policy.api]
   lifecycle { ignore_changes = [desired_count] }
 }
 
@@ -385,6 +386,7 @@ resource "aws_ecs_service" "worker" {
     security_groups  = [aws_security_group.worker.id]
     assign_public_ip = false
   }
+  depends_on = [aws_iam_role_policy.exec_secrets, aws_iam_role_policy_attachment.exec, aws_iam_role_policy.worker, aws_secretsmanager_secret_version.llm_placeholder, aws_secretsmanager_secret_version.langfuse_placeholder]
   lifecycle { ignore_changes = [desired_count] }
 }
 

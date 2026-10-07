@@ -19,3 +19,15 @@ variable "create_oidc_provider" {
   type        = bool
   default     = true
 }
+
+variable "github_owner_id" {
+  description = "Numeric id of the GitHub owner (gh api users/<owner> --jq .id). New repositories put it in the OIDC subject."
+  type        = number
+  default     = 46584477
+}
+
+variable "github_repo_id" {
+  description = "Numeric id of the repository (gh api repos/<owner>/<repo> --jq .id)"
+  type        = number
+  default     = 1409267817
+}
