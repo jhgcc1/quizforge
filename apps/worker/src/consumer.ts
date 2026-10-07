@@ -67,6 +67,8 @@ export class Consumer {
   private stopping = false;
   private inFlight = new Set<Promise<void>>();
   private loop: Promise<void> | undefined;
+  /** Last time the poll loop made progress; the health endpoint uses it to detect a wedged worker. */
+  lastActivity = Date.now();
 
   constructor(private readonly o: ConsumerOptions) {}
 
@@ -81,6 +83,7 @@ export class Consumer {
 
   private async run(): Promise<void> {
     while (!this.stopping) {
+      this.lastActivity = Date.now();
       const free = this.o.concurrency - this.inFlight.size;
       if (free <= 0) {
         await Promise.race(this.inFlight);

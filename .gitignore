@@ -19,3 +19,7 @@ coverage/
 *.tfstate
 *.tfstate.*
 crash.log
+
+# test artifacts
+playwright-report/
+test-results/

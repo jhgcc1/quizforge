@@ -21,6 +21,8 @@ services:
     ports:
       - "9324:9324"
       - "9325:9325"
+    volumes:
+      - ./docker/elasticmq.conf:/opt/elasticmq.conf:ro
 
 volumes:
   pgdata:

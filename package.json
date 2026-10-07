@@ -3,18 +3,26 @@
   "private": true,
   "version": "0.1.0",
   "packageManager": "pnpm@10.34.6",
-  "engines": { "node": ">=20.19" },
+  "engines": {
+    "node": ">=20.19"
+  },
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "db:up": "docker compose up -d postgres elasticmq",
+    "test:e2e": "tsx e2e/prepare.ts && playwright test --config e2e/playwright.config.ts",
     "typecheck": "pnpm -r typecheck",
     "lint": "eslint ."
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@quizforge/db": "workspace:*",
     "@types/node": "^20.17.0",
+    "@types/pg": "^8.23.1",
     "fast-check": "^3.23.0",
+    "pg": "^8.23.1",
+    "tsx": "^4.23.15",
     "typescript": "^5.6.0",
     "vitest": "^2.1.0"
   }

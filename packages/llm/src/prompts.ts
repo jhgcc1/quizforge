@@ -25,20 +25,28 @@ Rules:
 
 ${QUESTIONS_JSON_SPEC}`;
 
+/**
+ * The document is untrusted and is wrapped in <document> tags. A README must not be able to close the
+ * tag early (and then "speak" as the prompt), so any <document / </document sequence inside the text is
+ * broken with a zero-width space, and attribute values lose quotes and angle brackets.
+ */
+export const neutralize = (text: string): string => text.replace(/<(\/?)(document)/gi, "<\u200b$1$2");
+const attr = (v: string): string => v.replace(/["<>\r\n]/g, " ").slice(0, 120);
+
 const topicLine = (topic?: string) => (topic ? `Focus on this topic where the document allows: ${topic}\n` : "");
 
 export const singleShotUser = (p: { doc: string; n: number; topic?: string | undefined }) =>
   `${topicLine(p.topic)}Write exactly ${p.n} questions covering the document broadly.
 
 <document>
-${p.doc}
+${neutralize(p.doc)}
 </document>`;
 
 export const sectionUser = (p: { heading: string; text: string; n: number; topic?: string | undefined }) =>
   `${topicLine(p.topic)}Write exactly ${p.n} question(s) about the section below. Each must be answerable from this section alone.
 
-<document section="${p.heading.replace(/"/g, "'")}">
-${p.text}
+<document section="${attr(p.heading)}">
+${neutralize(p.text)}
 </document>`;
 
 export const CRITIQUE_SYSTEM = `You are a strict reviewer of multiple-choice quiz questions. Judge each question against the document only.
@@ -55,7 +63,7 @@ Return ONE JSON object and nothing else:
 
 export const critiqueUser = (p: { context: string; questionsJson: string }) =>
   `<document>
-${p.context}
+${neutralize(p.context)}
 </document>
 
 Questions to review (JSON):
@@ -67,7 +75,7 @@ You are now REVISING questions that a reviewer flagged. Return the corrected ver
 
 export const reviseUser = (p: { context: string; flagged: { index: number; question: unknown; issues: string[] }[] }) =>
   `<document>
-${p.context}
+${neutralize(p.context)}
 </document>
 
 Rewrite these ${p.flagged.length} flagged question(s) so they fix the listed issues. Keep the same topic when possible. Return exactly ${p.flagged.length} question(s).

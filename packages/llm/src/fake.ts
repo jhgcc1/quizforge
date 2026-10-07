@@ -8,15 +8,21 @@ import type { ChatMessage, CompleteOptions, LlmClient, LlmResponse } from "./llm
  */
 const USAGE: Usage = { promptTokens: 100, completionTokens: 50, cachedTokens: 0 };
 
-const sentencesOf = (doc: string): string[] =>
+const sentencesOf = (doc: string, minWords: number): string[] =>
   doc
     .replace(/```[\s\S]*?```/g, " ")
+    .replace(/<[^>]+>/g, " ")
     .split(/(?<=[.!?])\s+|\n+/)
-    .map((s) => s.replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/[*_`#>|]/g, "").replace(/\s+/g, " ").trim())
-    .filter((s) => s.split(" ").length >= 6 && s.length <= 180 && /^[\p{L}\p{N}"'(]/u.test(s));
+    .map((s) => s.replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/[*_`#>|]/g, "").replace(/\s+/g, " ").replace(/^[^\p{L}\p{N}]+/u, "").replace(/^\d+[.)]\s+/, "").trim())
+    .filter((s) => s.split(" ").length >= minWords && s.length <= 180);
 
 function makeQuestions(doc: string, n: number) {
-  const sents = [...new Set(sentencesOf(doc))];
+  // Link-heavy sections have few full sentences: relax the minimum length until there is enough material.
+  let sents: string[] = [];
+  for (const minWords of [6, 4, 3]) {
+    sents = [...new Set(sentencesOf(doc, minWords))];
+    if (sents.length >= n) break;
+  }
   if (sents.length < n) throw new Error(`fake llm: document has only ${sents.length} usable sentences`);
   const step = Math.max(1, Math.floor(sents.length / n));
   return Array.from({ length: n }, (_, i) => {
@@ -43,7 +49,7 @@ export function createFakeLlm(): LlmClient {
     async complete(messages: ChatMessage[], opts: CompleteOptions = {}): Promise<LlmResponse> {
       const name = opts.name ?? "";
       const user = messages.find((m) => m.role === "user")?.content ?? "";
-      const doc = /<document[^>]*>\n?([\s\S]*?)\n?<\/document>/.exec(user)?.[1] ?? "";
+      const doc = /<document(?: section="[^\n]*")?>\n([\s\S]*?)\n<\/document>/.exec(user)?.[1] ?? "";
       const reply = (v: unknown): LlmResponse => ({ text: `<think>fake reasoning</think>\n\`\`\`json\n${JSON.stringify(v)}\n\`\`\``, usage: USAGE });
 
       if (name.startsWith("generate:single-shot")) {

@@ -23,6 +23,7 @@ const Schema = z
     SOURCE_ALLOWED_HOSTS: z.string().default("github.com,raw.githubusercontent.com"),
     /** Jobs processed at once by this task (the fleet cap is this x max tasks). */
     WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(4).default(1),
+    HEALTH_PORT: z.coerce.number().int().default(8081),
     SHUTDOWN_GRACE_MS: z.coerce.number().int().default(100_000),
   })
   .superRefine((c, ctx) => {

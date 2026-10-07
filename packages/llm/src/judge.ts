@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { GeneratedQuestion } from "@quizforge/core";
 import type { JobBudget, Usage } from "./budget.js";
 import type { LlmClient } from "./llm.js";
-import { JUDGE_SYSTEM } from "./prompts.js";
+import { JUDGE_SYSTEM, neutralize } from "./prompts.js";
 import { generateStructured } from "./structured.js";
 
 const Score = z.number().min(1).max(5);
@@ -58,7 +58,7 @@ export async function judgeQuiz(p: {
     budget: p.budget,
     schema: JudgeSchema,
     system: JUDGE_SYSTEM,
-    user: `<document>\n${p.context}\n</document>\n\nQuiz to evaluate (JSON):\n${JSON.stringify(quiz, null, 1)}`,
+    user: `<document>\n${neutralize(p.context)}\n</document>\n\nQuiz to evaluate (JSON):\n${JSON.stringify(quiz, null, 1)}`,
     maxRepairs: 1,
     options: { name: "judge", temperature: 0 },
   });
