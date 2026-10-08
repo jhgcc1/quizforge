@@ -85,6 +85,8 @@ export const generationJobs = pgTable("generation_jobs", {
   completionTokens: integer("completion_tokens"),
   cachedTokens: integer("cached_tokens"),
   costUsd: numeric("cost_usd", { precision: 10, scale: 6 }),
+  /** Serialized JobBudget: a redelivered SQS message resumes with what was already spent. */
+  budgetState: jsonb("budget_state"),
   error: text("error"),
   startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
   finishedAt: timestamp("finished_at", { withTimezone: true }),

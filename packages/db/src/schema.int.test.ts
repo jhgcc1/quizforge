@@ -68,7 +68,7 @@ describe("schema invariants (real Postgres)", () => {
     await seedQuiz("alice", key);
     await expect(
       ctx.db.insert(schema.quizzes).values({ ownerSub: "alice", sourceUrl: "x", numQuestions: 5, idempotencyKey: key, requestHash: "h" }),
-    ).rejects.toThrow(/quizzes_owner_idem_uq|duplicate key/);
+    ).rejects.toMatchObject({ cause: { code: "23505", constraint: "quizzes_owner_idem_uq" } });
     await expect(
       ctx.db.insert(schema.quizzes).values({ ownerSub: "bob", sourceUrl: "x", numQuestions: 5, idempotencyKey: key, requestHash: "h" }),
     ).resolves.toBeDefined();
@@ -173,7 +173,7 @@ describe("retry safety (real Postgres)", () => {
     const mk = (user: string) =>
       ctx.db.insert(schema.attempts).values({ quizId: quiz.id, userSub: user, idempotencyKey: randomUUID(), requestHash: "h" }).returning();
     const [first] = await mk("carol");
-    await expect(mk("carol")).rejects.toThrow(/attempts_one_active_uq|duplicate key/);
+    await expect(mk("carol")).rejects.toMatchObject({ cause: { code: "23505", constraint: "attempts_one_active_uq" } });
     await expect(mk("dave")).resolves.toBeDefined(); // other user unaffected
     await ctx.db.update(schema.attempts).set({ status: "submitted", submittedAt: new Date(), finalScore: "3.5" }).where(eq(schema.attempts.id, first!.id));
     await expect(mk("carol")).resolves.toBeDefined(); // retake after submitting

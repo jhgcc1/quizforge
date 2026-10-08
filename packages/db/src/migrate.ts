@@ -5,13 +5,14 @@
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { fileURLToPath } from "node:url";
 import { createDb } from "./index.js";
+import { resolveDatabaseUrl } from "./url.js";
 
 const MIGRATION_LOCK_ID = 7_243_001;
 
 async function main() {
-  const url = process.env.DATABASE_URL;
-  if (!url) throw new Error("DATABASE_URL is required");
-  const { db, pool } = createDb(url, { max: 1 });
+  const url = resolveDatabaseUrl();
+  // 2 connections: one holds the advisory lock, the other runs the migrations (max: 1 would deadlock)
+  const { db, pool } = createDb(url, { max: 2 });
   const client = await pool.connect();
   try {
     await client.query("select pg_advisory_lock($1)", [MIGRATION_LOCK_ID]);

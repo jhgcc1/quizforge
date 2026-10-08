@@ -1,0 +1,19 @@
+{
+  "name": "@quizforge/evals",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "eval": "tsx --env-file=../.env src/run.ts",
+    "eval:offline": "tsx src/run.ts --offline"
+  },
+  "dependencies": {
+    "@langfuse/client": "^5.13.1",
+    "@quizforge/core": "workspace:*",
+    "@quizforge/llm": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0"
+  }
+}

@@ -19,3 +19,15 @@ coverage/
 *.tfstate
 *.tfstate.*
 crash.log
+
+# test artifacts
+playwright-report/
+test-results/
+
+*.tsbuildinfo
+next-env.d.ts
+.local/
+
+*.tfplan
+backend.hcl
+!prod.auto.tfvars

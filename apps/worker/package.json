@@ -1,0 +1,26 @@
+{
+  "name": "@quizforge/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "dev": "tsx watch --env-file=../../.env src/main.ts",
+    "start": "node --import tsx src/main.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-sqs": "^3.1147.0",
+    "@langchain/langgraph": "^1.4.21",
+    "@langchain/langgraph-checkpoint-postgres": "^1.0.6",
+    "@quizforge/core": "workspace:*",
+    "@quizforge/db": "workspace:*",
+    "@quizforge/llm": "workspace:*",
+    "pg": "^8.23.1",
+    "tsx": "^4.23.15",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "@types/pg": "^8.23.1"
+  }
+}
