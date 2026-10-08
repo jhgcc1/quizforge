@@ -93,7 +93,7 @@ Alarms (SNS e-mail): DLQ, oldest job age, 5xx, CPU, RDS, **quality < 0.6**, job 
 ## CI/CD
 
 `.github/workflows/ci.yml` — on every PR: `quality`, `integration`, `migrations` (schema drift, policy, apply twice), `e2e`, `docker-build` (+Trivy), `terraform-validate` (+Trivy), `secrets-scan`, `terraform-plan` (commented on the PR).
-`main` is protected by a ruleset (`infra/github`): no direct pushes, PR + **all checks green**, linear history, no bypass. After merge the `deploy` job **needs every check**, waits for approval, builds arm64 images, runs the **migration as a one-off task before the new code**, applies Terraform, and smoke-tests through CloudFront. `drift.yml` runs nightly.
+`main` is protected by a ruleset (`infra/github`): no direct pushes, PR + **all checks green**, linear history, no bypass. After merge a real-model **`llm-eval` gate** (golden set on MiniMax, logged as a Langfuse experiment; fails if grounding, lint, judge score, prompt-injection resistance or language drop below the thresholds) joins the checks; the `deploy` job **needs every check including it**, waits for approval, builds arm64 images, runs the **migration as a one-off task before the new code**, applies Terraform, and smoke-tests through CloudFront. `drift.yml` (infrastructure drift) and `eval.yml` (model/provider drift) run nightly. Every workflow runs `bash -eo pipefail`, so a failure can never be hidden behind a pipe.
 
 ### First deployment
 
