@@ -2,6 +2,9 @@
  * LLM regression run over the golden set.
  *   pnpm --filter @quizforge/evals eval            real MiniMax (needs MINIMAX_API_KEY), traced + scored in Langfuse
  *   pnpm --filter @quizforge/evals eval:offline    fake LLM: proves the harness itself works, costs nothing
+ * The golden set lives in code (golden.ts) AND is mirrored to a Langfuse Dataset, so every run is an Experiment you can
+ * compare in the UI (per item, per metric, across prompt/model versions).
+ * The agent under test is the production one (generateQuiz); the judge is a DIFFERENT model (MINIMAX_JUDGE_MODEL, default MiniMax-M3).
  * Exit code 1 when any gated metric is below its threshold, so CI can block a prompt/model change that makes quizzes worse.
  */
 import { readFileSync, writeFileSync } from "node:fs";
@@ -43,6 +46,11 @@ interface Outcome {
 }
 
 const llm = makeLlm();
+/** A different model judges the generator's output (avoids self-preference bias). Offline = the fake plays both roles. */
+const judgeLlm: LlmClient | undefined = offline
+  ? undefined
+  : createMiniMaxClient({ apiKey: process.env.MINIMAX_API_KEY!, baseUrl: process.env.MINIMAX_BASE_URL ?? "https://api.minimax.io/v1", model: process.env.MINIMAX_JUDGE_MODEL ?? "MiniMax-M3" });
+const DATASET = "quizforge-golden";
 const items = GOLDEN.filter((g) => !only || g.id === only);
 const outcomes = new Map<string, Outcome>();
 
@@ -53,10 +61,11 @@ async function runItem(item: GoldenItem): Promise<Outcome> {
     const sourceText = await loadText(item);
     const r = await generateQuiz({
       llm,
+      ...(judgeLlm ? { judgeLlm } : {}),
       input: { sourceText, numQuestions: item.numQuestions, strategy: item.strategy, critique: item.critique },
       trace: { sessionId: `golden-${item.id}`, userId: "eval", tags: ["eval", offline ? "offline" : "live", item.id] },
     });
-    const ev = evaluateQuiz({ questions: r.questions, sourceText, judgeOverall: r.judge?.overall, expect: item.expect });
+    const ev = await evaluateQuiz({ questions: r.questions, sourceText, judgeOverall: r.judge?.overall, expect: item.expect });
     const cost = (r.usage.promptTokens * 0.3 + r.usage.completionTokens * 1.2) / 1e6;
     return { id: item.id, ok: ev.failures.length === 0, eval: ev, strategy: r.strategy, rounds: r.rounds, repairs: r.repairs, calls: r.budget.calls, costUsd: cost, seconds: (Date.now() - started) / 1000, traceId: r.traceId };
   } catch (err) {
@@ -65,15 +74,28 @@ async function runItem(item: GoldenItem): Promise<Outcome> {
 }
 
 initTracing();
-if (tracingEnabled() && !offline) {
-  // Langfuse experiment: one run per execution, each item linked to its trace, metrics stored as scores.
+if (tracingEnabled() && !offline && !only) {
   const lf = new LangfuseClient();
-  await lf.experiment.run({
+
+  // 1. mirror the golden set into a Langfuse Dataset (items are upserted by id, so this is idempotent)
+  await lf.api.datasets.create({ name: DATASET, description: "QuizForge golden set: documents the quiz generator must handle well", metadata: { thresholds: THRESHOLDS } });
+  for (const g of items) {
+    await lf.api.datasetItems.create({
+      datasetName: DATASET,
+      id: `golden-${g.id}`,
+      input: { id: g.id, source: g.source, numQuestions: g.numQuestions, strategy: g.strategy, critique: g.critique },
+      expectedOutput: { thresholds: THRESHOLDS, expect: g.expect ?? null },
+      metadata: { modelOnly: g.modelOnly ?? false },
+    });
+  }
+
+  // 2. run the production agent over the dataset: one Experiment run, each item linked to its trace, metrics as scores
+  const dataset = await lf.dataset.get(DATASET);
+  await dataset.runExperiment({
     name: "quizforge-golden-set",
-    runName: `${llm.model}-${new Date().toISOString().slice(0, 16)}`,
-    description: "Regression run of the quiz generator over the golden set",
-    metadata: { model: llm.model, sha: process.env.GITHUB_SHA ?? "local" },
-    data: items.map((g) => ({ input: { id: g.id }, metadata: { id: g.id } })),
+    runName: `${llm.model}+judge-${judgeLlm?.model}-${new Date().toISOString().slice(0, 16)}`,
+    description: "Regression run of the quiz generator over the golden dataset",
+    metadata: { model: llm.model, judge: judgeLlm?.model, sha: process.env.GITHUB_SHA ?? "local" },
     task: async (item) => {
       const id = (item.input as { id: string }).id;
       const out = await runItem(items.find((g) => g.id === id)!);
@@ -93,12 +115,12 @@ await flushTracing();
 /* ---------------------------------------------------------------- report + gate */
 const rows = [...outcomes.values()];
 const pad = (s: string, n: number) => s.padEnd(n);
-console.log(`\nmodel=${llm.model}${offline ? " (offline harness check)" : ""}  thresholds=${JSON.stringify(THRESHOLDS)}\n`);
-console.log(pad("item", 18), pad("result", 8), pad("strategy", 20), "grounded lint  judge  lang  inject  calls  cost$   secs");
+console.log(`\nmodel=${llm.model} judge=${judgeLlm?.model ?? "(same)"}${offline ? " (offline harness check)" : ""}  thresholds=${JSON.stringify(THRESHOLDS)}\n`);
+console.log(pad("item", 18), pad("result", 8), pad("strategy", 20), "grounded lint  judge  divers relev  cover lang  inject calls cost$   secs");
 for (const o of rows) {
   const s = o.eval?.scores ?? {};
   const f = (k: string) => (s[k] === undefined ? "  -  " : s[k]!.toFixed(2).padStart(5));
-  console.log(pad(o.id, 18), pad(o.skipped ? "skipped" : o.ok ? "PASS" : "FAIL", 8), pad(o.strategy ?? "-", 20), f("grounded"), f("lint_pass"), f("judge_overall"), f("language_match"), f("injection_resisted"), String(o.calls ?? "-").padStart(5), (o.costUsd ?? 0).toFixed(4), (o.seconds ?? 0).toFixed(0).padStart(5));
+  console.log(pad(o.id, 18), pad(o.skipped ? "skipped" : o.ok ? "PASS" : "FAIL", 8), pad(o.strategy ?? "-", 20), f("grounded"), f("lint_pass"), f("judge_overall"), f("question_diversity"), f("relevance"), f("coverage"), f("language_match"), f("injection_resisted"), String(o.calls ?? "-").padStart(5), (o.costUsd ?? 0).toFixed(4), (o.seconds ?? 0).toFixed(0).padStart(5));
   for (const m of o.eval?.failures ?? []) console.log(`   ✘ ${m}`);
   if (o.error) console.log(`   ✘ ${o.error}`);
   if (o.skipped) console.log(`   · ${o.skipped}`);

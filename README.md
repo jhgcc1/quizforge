@@ -30,6 +30,9 @@ Real model: `LLM_MODE=minimax MINIMAX_API_KEY=… docker compose --profile app u
 | `pnpm test:integration` | real Postgres: idempotency, concurrency, API, worker, sweeper, migrate entrypoint |
 | `pnpm test:e2e` | Playwright against the whole stack: login → generate → answer → **reload** → submit → score |
 | `pnpm --filter @quizforge/llm smoke <url>` | live run against MiniMax, traced in Langfuse |
+| `pnpm --filter @quizforge/evals eval` | **LLM regression suite** over a golden set (grounding, lint, LLM-judge, prompt-injection, language) with thresholds; also runs nightly in CI |
+| `scripts/audit-aws.sh` | read-only audit of the *deployed* infrastructure against the security claims below (39 checks) |
+| `scripts/smoke-api.mjs` | black-box API test usable against local containers and AWS |
 
 ## REST API
 
@@ -61,7 +64,9 @@ Tables: `sources` → `quizzes` → `questions` → `options`; `quizzes` → `ge
 * **Strategies**: a deterministic router picks `single-shot` (short docs) or `section-map-reduce` (long docs); `generate → critique → revise` wraps either.
 * **Structured output is enforced by the application**, not trusted to the provider: MiniMax ignores `json_schema` field names and emits `<think>` blocks, so output goes extract → zod-validate → *repair loop that feeds the exact errors back*.
 * **Hard gates** (no LLM): every question must carry a `sourceQuote` that exists in the document's visible text; lint catches "select all" with one correct option, give-away option lengths, duplicates…
-* **LLM-as-judge** rubric (faithfulness counts double) → scores on the Langfuse trace + `eval_scores` + CloudWatch metric `QuizQuality` (alarm below 0.6).
+* **LLM-as-judge** rubric (faithfulness counts double), run by a **different model** than the generator (`MINIMAX_JUDGE_MODEL`, default M3) to avoid self-preference bias → scores on the Langfuse trace + `eval_scores` + CloudWatch metric `QuizQuality` (alarm below 0.6).
+* **Similarity metrics** (TF-IDF cosine, deterministic and free; the MiniMax Token Plan key has no usable embeddings, and the `Embedder` interface accepts real ones later): *question diversity* (catches near-duplicate questions), *relevance* (each question vs. the document) and *section coverage*. Honest limit: lexical similarity catches near-verbatim duplicates, not paraphrases.
+* **Regression suite** (`evals/`): a golden set (two real READMEs, a short doc, a Portuguese doc, a **prompt-injection** document) mirrored to the Langfuse Dataset `quizforge-golden`; every run is a Langfuse Experiment on it. The production agent is the system under test. Gated metrics: grounded = 1, injection resisted = 1, language match = 1, lint ≥ 0.85, judge ≥ 0.65, diversity ≥ 0.25, relevance ≥ 0.15, coverage ≥ 0.5. Real run: all pass, mean judge 0.83, ~US$0.03.
 * **Budget per job** (16 LLM calls / 120k tokens / 5 min) so layered retries (HTTP × repair × critique × SQS redelivery) cannot multiply; the allowance survives redelivery.
 * Scoring itself is deterministic code — no LLM involved.
 
@@ -90,7 +95,7 @@ Alarms (SNS e-mail): DLQ, oldest job age, 5xx, CPU, RDS, **quality < 0.6**, job 
 ## CI/CD
 
 `.github/workflows/ci.yml` — on every PR: `quality`, `integration`, `migrations` (schema drift, policy, apply twice), `e2e`, `docker-build` (+Trivy), `terraform-validate` (+Trivy), `secrets-scan`, `terraform-plan` (commented on the PR).
-`main` is protected by a ruleset (`infra/github`): no direct pushes, PR + **all checks green**, linear history, no bypass. After merge the `deploy` job **needs every check**, waits for approval, builds arm64 images, runs the **migration as a one-off task before the new code**, applies Terraform, and smoke-tests through CloudFront. `drift.yml` runs nightly.
+`main` is protected by a ruleset (`infra/github`): no direct pushes, PR + **all checks green**, linear history, no bypass. After merge a real-model **`llm-eval` gate** (golden set on MiniMax, logged as a Langfuse experiment; fails if grounding, lint, judge score, prompt-injection resistance or language drop below the thresholds) joins the checks; the `deploy` job **needs every check including it**, waits for approval, builds arm64 images, runs the **migration as a one-off task before the new code**, applies Terraform, and smoke-tests through CloudFront. `drift.yml` (infrastructure drift) and `eval.yml` (model/provider drift) run nightly. Every workflow runs `bash -eo pipefail`, so a failure can never be hidden behind a pipe.
 
 ### First deployment
 

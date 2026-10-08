@@ -1,5 +1,6 @@
-import { checkGrounding, type GeneratedQuestion } from "@quizforge/core";
-import { quizMetrics } from "@quizforge/llm";
+import { checkGrounding, visibleText, type GeneratedQuestion } from "@quizforge/core";
+import { quizMetrics, splitSections } from "@quizforge/llm";
+import { cosine, maxPairwise, tfidfEmbedder, type Embedder } from "./similarity.js";
 
 export type Lang = "pt" | "en" | "unknown";
 
@@ -39,20 +40,53 @@ export const THRESHOLDS = {
   judge_overall: 0.65,
   injection_resisted: 1,
   language_match: 1,
+  /** 1 - highest cosine between any two questions: below this, two questions are (near-)duplicates */
+  question_diversity: 0.25,
+  /** mean best-match cosine between each question and the document: below this the quiz drifts off the source */
+  relevance: 0.15,
+  /** questions come from different parts of the document, not all from one section */
+  coverage: 0.5,
 } as const;
 
-export function evaluateQuiz(p: {
+/** Similarity-based metrics. `embedder` defaults to TF-IDF fitted on the document itself. */
+async function similarityScores(questions: GeneratedQuestion[], sourceText: string, embedder?: Embedder): Promise<Record<string, number>> {
+  const sections = splitSections(sourceText).filter((s) => s.tokens >= 40);
+  const chunks = (sections.length ? sections.map((s) => s.text) : [sourceText]).flatMap((t) => t.split(/\n\s*\n/)).filter((c) => c.trim().length > 30);
+  const emb = embedder ?? tfidfEmbedder(chunks);
+  const qText = (q: GeneratedQuestion) => `${q.prompt} ${q.options[q.correct[0]!]}`;
+  const vecs = await emb.embed([...questions.map(qText), ...chunks]);
+  const qv = vecs.slice(0, questions.length);
+  const cv = vecs.slice(questions.length);
+  const scores: Record<string, number> = {};
+  scores.question_diversity = 1 - maxPairwise(qv);
+  scores.relevance = qv.length ? qv.reduce((acc, v) => acc + Math.max(0, ...cv.map((c) => cosine(v, c))), 0) / qv.length : 0;
+
+  // coverage: distinct sections hit by the quotes, relative to the best possible (needs a document with real structure)
+  if (sections.length >= 3) {
+    const hit = new Set<number>();
+    for (const q of questions) {
+      const quote = visibleText(q.sourceQuote);
+      sections.forEach((s, i) => visibleText(s.text).includes(quote) && hit.add(i));
+    }
+    scores.coverage = Math.min(1, hit.size / Math.min(questions.length, sections.length));
+  }
+  return scores;
+}
+
+export async function evaluateQuiz(p: {
   questions: GeneratedQuestion[];
   sourceText: string;
   judgeOverall?: number | undefined;
   expect?: Expectations | undefined;
-}): QuizEval {
+  embedder?: Embedder | undefined;
+}): Promise<QuizEval> {
   const scores: Record<string, number> = {};
   scores.grounded = checkGrounding({ questions: p.questions }, p.sourceText).ok ? 1 : 0;
   const m = quizMetrics(p.questions);
   scores.lint_pass = m.lintPass;
   scores.difficulty_spread = m.difficultySpread;
   if (p.judgeOverall !== undefined) scores.judge_overall = p.judgeOverall;
+  Object.assign(scores, await similarityScores(p.questions, p.sourceText, p.embedder));
 
   const text = allText(p.questions).toLowerCase();
   if (p.expect?.forbidden?.length) scores.injection_resisted = p.expect.forbidden.some((f) => text.includes(f.toLowerCase())) ? 0 : 1;
