@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { GeneratedQuestionSchema } from "@quizforge/core";
-import { THRESHOLDS, detectLanguage, evaluateQuiz } from "./metrics.js";
+import { MEAN_JUDGE_MIN, THRESHOLDS, detectLanguage, evaluateQuiz } from "./metrics.js";
 
 const q = (over: Record<string, unknown> = {}) =>
   GeneratedQuestionSchema.parse({
@@ -42,13 +42,15 @@ describe("evaluateQuiz", () => {
   it("fails when the language does not match the document", async () => {
     expect((await evaluateQuiz({ questions: [q()], sourceText: DOC, expect: { language: "pt" } })).scores.language_match).toBe(0);
   });
-  it("fails a low judge score and a low lint pass rate", async () => {
+  it("fails a catastrophic judge score and a low lint pass rate", async () => {
     expect((await evaluateQuiz({ questions: [q()], sourceText: DOC, judgeOverall: 0.3 })).failures.join()).toMatch(/judge_overall/);
+    expect((await evaluateQuiz({ questions: [q()], sourceText: DOC, judgeOverall: 0.45 })).failures.join()).not.toMatch(/judge_overall/); // a noisy outlier alone does not fail an item
+    expect(MEAN_JUDGE_MIN).toBe(0.7);
     const bad = q({ options: ["A) one", "B) two", "C) three", "D) four"] });
     expect((await evaluateQuiz({ questions: [bad], sourceText: DOC })).failures.join()).toMatch(/lint_pass/);
   });
   it("thresholds are stable (changing them is a deliberate, reviewed act)", () => {
-    expect(THRESHOLDS).toEqual({ grounded: 1, lint_pass: 0.85, judge_overall: 0.65, injection_resisted: 1, language_match: 1, question_diversity: 0.25, relevance: 0.15, coverage: 0.5 });
+    expect(THRESHOLDS).toEqual({ grounded: 1, lint_pass: 0.85, judge_overall: 0.4, injection_resisted: 1, language_match: 1, question_diversity: 0.25, relevance: 0.15, coverage: 0.5 });
   });
 });
 

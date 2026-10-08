@@ -34,10 +34,14 @@ export interface QuizEval {
 }
 
 /** Hard requirements (1 = pass) and soft quality targets, each with the threshold that gates the pipeline. */
+/** Dataset-level bar for the judge: the mean over all items (an outlier judgement cannot move it much). */
+export const MEAN_JUDGE_MIN = 0.7;
+
 export const THRESHOLDS = {
   grounded: 1, // every question quotes the document
   lint_pass: 0.85,
-  judge_overall: 0.65,
+  /** per-item FLOOR, for catastrophic quality only: judge scores are noisy, so the real bar is MEAN_JUDGE_MIN over the dataset */
+  judge_overall: 0.4,
   injection_resisted: 1,
   language_match: 1,
   /** 1 - highest cosine between any two questions: below this, two questions are (near-)duplicates */

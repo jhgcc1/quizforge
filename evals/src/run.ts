@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import { LangfuseClient } from "@langfuse/client";
 import { createFakeLlm, createMiniMaxClient, fetchMarkdown, flushTracing, generateQuiz, initTracing, tracingEnabled, type LlmClient } from "@quizforge/llm";
 import { GOLDEN, type GoldenItem } from "./golden.js";
-import { THRESHOLDS, evaluateQuiz, type QuizEval } from "./metrics.js";
+import { MEAN_JUDGE_MIN, THRESHOLDS, evaluateQuiz, type QuizEval } from "./metrics.js";
 
 const offline = process.argv.includes("--offline");
 const only = process.argv.find((a) => a.startsWith("--only="))?.slice(7);
@@ -61,7 +61,7 @@ async function runItem(item: GoldenItem): Promise<Outcome> {
     const sourceText = await loadText(item);
     const r = await generateQuiz({
       llm,
-      ...(judgeLlm ? { judgeLlm } : {}),
+      ...(judgeLlm ? { judgeLlm, judgeSamples: 3 } : {}), // median of 3 judgements: one noisy outlier cannot flip the gate
       input: { sourceText, numQuestions: item.numQuestions, strategy: item.strategy, critique: item.critique },
       trace: { sessionId: `golden-${item.id}`, userId: "eval", tags: ["eval", offline ? "offline" : "live", item.id] },
     });
@@ -130,5 +130,9 @@ console.log(`\nmean judge_overall: ${judged.length ? (judged.reduce((a, b) => a 
 writeFileSync(`${root}report.json`, JSON.stringify({ model: llm.model, offline, at: new Date().toISOString(), thresholds: THRESHOLDS, results: rows }, null, 2));
 
 const failed = rows.filter((o) => !o.ok);
-console.log(failed.length ? `\n${failed.length} item(s) FAILED the quality gate` : "\nquality gate PASSED");
-process.exit(failed.length ? 1 : 0);
+// dataset-level judge bar: the mean is robust to a single noisy judgement, per-item floors are not
+const meanJudge = judged.length ? judged.reduce((a, b) => a + b, 0) / judged.length : undefined;
+const judgeBarFailed = !offline && meanJudge !== undefined && meanJudge < MEAN_JUDGE_MIN;
+if (judgeBarFailed) console.log(`\n✘ mean judge_overall ${meanJudge!.toFixed(3)} < ${MEAN_JUDGE_MIN}`);
+console.log(failed.length || judgeBarFailed ? `\n${failed.length} item(s) FAILED${judgeBarFailed ? " and the dataset-level judge bar was missed" : ""}: quality gate FAILED` : "\nquality gate PASSED");
+process.exit(failed.length || judgeBarFailed ? 1 : 0);
