@@ -306,10 +306,10 @@ jobs:
         run: |
           url=$(terraform output -raw app_url)
           echo "app: $url"
-          expect() { # <description> <expected http code> <curl args...>
+          expect() { # <description> <allowed http codes, regex> <curl args...>
             local what=$1 want=$2; shift 2
-            local got; got=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$@")
-            if [ "$got" != "$want" ]; then echo "::error::$what: expected HTTP $want, got $got"; exit 1; fi
+            local got; got=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$@" || true)
+            if ! [[ "$got" =~ ^($want)$ ]]; then echo "::error::$what: expected HTTP $want, got $got"; exit 1; fi
             echo "ok  $what ($got)"
           }
           expect "web landing page"            200 "$url/"
@@ -318,5 +318,8 @@ jobs:
           expect "bad token is rejected"       401 -H "Authorization: Bearer not.a.jwt" "$url/v1/quizzes"
           expect "BFF refuses anonymous calls" 401 "$url/bff/v1/quizzes"
           expect "app pages need a session"    307 "$url/app"
-          expect "ALB cannot be reached around CloudFront" 403 --resolve "x:80:$(dig +short "$(terraform output -raw alb_dns)" | head -1)" -H "Host: x" "http://x/"
+          # the ALB must not be reachable around CloudFront: its security group drops the connection (000)
+          # and, even past that, the listener answers 403 without the secret header
+          alb_ip=$(getent ahostsv4 "$(terraform output -raw alb_dns)" | awk '{print $1; exit}')
+          expect "ALB cannot be reached around CloudFront" "000|403" --connect-timeout 6 "http://$alb_ip/"
           echo "### Deployed \`${TAG::7}\` to $url" >> "$GITHUB_STEP_SUMMARY"
