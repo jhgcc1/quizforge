@@ -17,6 +17,11 @@ permissions:
 env:
   NODE_VERSION: "22"
 
+# `shell: bash` makes GitHub run `bash -eo pipefail`: a failure on the left of a pipe can never be masked
+defaults:
+  run:
+    shell: bash
+
 jobs:
   # ---------------------------------------------------------------- quality
   quality:
@@ -33,6 +38,8 @@ jobs:
         run: pnpm typecheck
       - name: Unit tests (scoring, schemas, SSRF guard, JSON extraction, graph, migration policy ...)
         run: pnpm test
+      - name: LLM-evaluation harness, offline (fake model, free): proves the golden-set runner itself still works
+        run: pnpm --filter @quizforge/evals eval:offline
 
   # ---------------------------------------------------------------- integration (real Postgres)
   integration:
@@ -182,6 +189,37 @@ jobs:
       - name: gitleaks (full history)
         run: docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.21.2 detect --source /repo --redact --verbose
 
+  # ---------------------------------------------------------------- LLM quality gate (real model, main only)
+  # Real MiniMax + Langfuse experiment over the golden set. Needs the secrets of the `llm-eval` environment, which
+  # only `main` may use, and costs a few cents, so it gates the DEPLOY rather than every PR.
+  llm-eval:
+    name: llm-eval
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: llm-eval
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "${{ env.NODE_VERSION }}", cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: Golden-set evaluation (fails the pipeline if quality drops below the thresholds)
+        env:
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+          LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+          LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
+          LANGFUSE_BASE_URL: https://us.cloud.langfuse.com
+          GITHUB_SHA: ${{ github.sha }}
+        run: pnpm --filter @quizforge/evals exec tsx src/run.ts | tee eval.txt
+      - name: Summary
+        if: always()
+        run: |
+          { echo '### LLM evaluation (golden set)'; echo '```'; cat eval.txt 2>/dev/null || true; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: eval-report, path: evals/report.json, retention-days: 30 }
+
   # ---------------------------------------------------------------- terraform plan on PRs (comment)
   terraform-plan:
     name: terraform-plan
@@ -229,7 +267,7 @@ jobs:
   deploy:
     name: deploy
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [quality, integration, migrations, e2e, docker-build, terraform-validate, secrets-scan]
+    needs: [quality, integration, migrations, e2e, docker-build, terraform-validate, secrets-scan, llm-eval]
     runs-on: ubuntu-24.04-arm # native arm64 images for Graviton Fargate
     timeout-minutes: 60
     environment: production # manual approval + the only context the deploy IAM role trusts
