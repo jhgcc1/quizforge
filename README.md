@@ -30,6 +30,9 @@ Real model: `LLM_MODE=minimax MINIMAX_API_KEY=… docker compose --profile app u
 | `pnpm test:integration` | real Postgres: idempotency, concurrency, API, worker, sweeper, migrate entrypoint |
 | `pnpm test:e2e` | Playwright against the whole stack: login → generate → answer → **reload** → submit → score |
 | `pnpm --filter @quizforge/llm smoke <url>` | live run against MiniMax, traced in Langfuse |
+| `pnpm --filter @quizforge/evals eval` | **LLM regression suite** over a golden set (grounding, lint, LLM-judge, prompt-injection, language) with thresholds; also runs nightly in CI |
+| `scripts/audit-aws.sh` | read-only audit of the *deployed* infrastructure against the security claims below (39 checks) |
+| `scripts/smoke-api.mjs` | black-box API test usable against local containers and AWS |
 
 ## REST API
 
