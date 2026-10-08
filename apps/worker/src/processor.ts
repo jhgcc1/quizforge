@@ -5,6 +5,8 @@ import { claimQuiz, completeQuiz, failQuiz, saveJobBudget, upsertSource, type Db
 import {
   BudgetExceededError,
   NonRetryableError,
+  QualityGateError,
+  StructuredOutputError,
   SourceError,
   fetchMarkdown as defaultFetch,
   generateQuiz as defaultGenerate,
@@ -63,6 +65,7 @@ export async function processQuizJob(
   const { quiz, job } = claim;
   let budgetSnapshot: unknown = job.budgetState ?? undefined;
 
+  const threadId = `quiz-${quiz.id}-job-${job.id}`;
   try {
     const fetchSource = d.fetchMarkdown ?? defaultFetch;
     const src = await fetchSource(quiz.sourceUrl, { allowedHosts: d.allowedHosts });
@@ -82,7 +85,7 @@ export async function processQuizJob(
       ...(job.budgetState ? { budgetState: job.budgetState as never } : {}),
       judge: true,
       trace: { sessionId: quiz.id, userId: hashSub(quiz.ownerSub), ...(msg.requestId ? { requestId: msg.requestId } : {}) },
-      threadId: `quiz-${quiz.id}-job-${job.id}`,
+      threadId,
       ...(d.checkpointer ? { checkpointer: d.checkpointer } : {}),
     });
     budgetSnapshot = result.budget;
@@ -137,6 +140,11 @@ export async function processQuizJob(
     const message = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
     if (budgetSnapshot) await saveJobBudget(d.db, job.id, budgetSnapshot).catch(() => undefined);
     const permanent = isPermanent(err);
+    // A content failure (the model produced something unusable) is not an infrastructure hiccup: resuming from its
+    // checkpoint would just replay the same dead end. Drop the thread so the next delivery regenerates from scratch.
+    if (err instanceof QualityGateError || err instanceof StructuredOutputError) {
+      await d.checkpointer?.deleteThread(threadId).catch((e: unknown) => log.warn({ err: e }, "could not delete checkpoint thread"));
+    }
     const exhausted = receive.count >= receive.max;
     log.error({ err, permanent, exhausted }, "quiz generation failed");
     emit({ JobFailed: { value: 1, unit: "Count" }, JobPermanentFailure: { value: permanent ? 1 : 0, unit: "Count" } });

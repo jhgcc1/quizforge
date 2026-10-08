@@ -1,10 +1,10 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { MemorySaver } from "@langchain/langgraph";
 import { createDb, createQuizIdempotent, eq, getPublicQuestions, migrate, schema } from "@quizforge/db";
-import { JobBudget, SourceError, createFakeLlm, type LlmClient } from "@quizforge/llm";
+import { JobBudget, QualityGateError, SourceError, createFakeLlm, type LlmClient } from "@quizforge/llm";
 import { createLogger } from "./log.js";
 import { processQuizJob, type ProcessDeps } from "./processor.js";
 
@@ -47,6 +47,37 @@ const deps = (over: Partial<ProcessDeps> = {}): ProcessDeps => ({
 const newQuiz = async (over: Record<string, unknown> = {}) =>
   (await createQuizIdempotent(ctx.db, { ownerSub: "owner", sourceUrl: "https://github.com/o/r/blob/main/README.md", numQuestions: 6, strategy: "single-shot", critique: true, idempotencyKey: randomUUID(), requestHash: "h", ...over })).quiz;
 const status = async (id: string) => (await ctx.db.select().from(schema.quizzes).where(eq(schema.quizzes.id, id)))[0]!;
+
+describe("content failures vs infrastructure failures", () => {
+  it("a QualityGateError deletes the checkpoint thread (retry regenerates); a flaky fetch keeps it (retry resumes)", async () => {
+    const cp = new MemorySaver();
+    const spy = vi.spyOn(cp, "deleteThread");
+    const content = await newQuiz();
+    const gateFail = (async () => { throw new QualityGateError("only 3 grounded question(s)", [1]); }) as never;
+    const first = await processQuizJob(deps({ checkpointer: cp, generateQuiz: gateFail }), { v: 1, quizId: content.id }, { count: 1, max: 3 });
+    expect(first.kind).toBe("retry");
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy.mock.calls[0]![0]).toContain(content.id);
+
+    const infra = await newQuiz();
+    const flaky = (async () => { throw new SourceError("fetch failed: ECONNRESET", "fetch_failed"); }) as never;
+    await processQuizJob(deps({ checkpointer: cp, fetchMarkdown: flaky }), { v: 1, quizId: infra.id }, { count: 1, max: 3 });
+    expect(spy).toHaveBeenCalledTimes(1); // unchanged
+  });
+
+  it("the stored question count is the REAL one when questions were dropped", async () => {
+    const quiz = await newQuiz({ numQuestions: 6 });
+    const dropped = (async (p: Parameters<typeof import("@quizforge/llm").generateQuiz>[0]) => {
+      const { generateQuiz } = await import("@quizforge/llm");
+      const r = await generateQuiz({ ...p, input: { ...p.input, numQuestions: 6 } });
+      return { ...r, questions: r.questions.slice(0, 5) }; // as if one ungrounded question had been dropped
+    }) as never;
+    const out = await processQuizJob(deps({ generateQuiz: dropped }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
+    expect(out.kind).toBe("done");
+    expect((await status(quiz.id)).numQuestions).toBe(5);
+    expect(await getPublicQuestions(ctx.db, quiz.id)).toHaveLength(5);
+  });
+});
 
 describe("processQuizJob", () => {
   it("generates, persists questions/options/job/eval scores and emits metrics", async () => {

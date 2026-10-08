@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   GeneratedQuestionSchema,
   GeneratedQuizSchema,
+  MIN_QUESTIONS,
   checkGrounding,
   type GeneratedQuestion,
 } from "@quizforge/core";
@@ -223,10 +224,16 @@ export function buildQuizGraph(deps: QuizGraphDeps, checkpointer?: BaseCheckpoin
 
   const finalize = async (s: S): Promise<Partial<S>> => {
     const ungrounded = checkGrounding({ questions: s.questions }, s.input.sourceText).ungrounded;
-    if (ungrounded.length > 0) {
-      throw new QualityGateError(`questions ${ungrounded.join(", ")} are not grounded in the document after ${s.round} revision round(s)`, ungrounded);
+    if (ungrounded.length === 0) return { trail: [...s.trail, "finalize"] };
+
+    // Graceful degradation: a question whose quote cannot be found after the revision rounds is DROPPED (never shown)
+    // when enough grounded ones remain, so the user gets a slightly shorter quiz instead of an error.
+    const kept = s.questions.filter((_, i) => !ungrounded.includes(i + 1));
+    if (kept.length >= MIN_QUESTIONS) {
+      return { questions: kept, trail: [...s.trail, `finalize:dropped-${ungrounded.length}-ungrounded`] };
     }
-    return { trail: [...s.trail, "finalize"] };
+    const quotes = ungrounded.map((i) => `#${i} "${s.questions[i - 1]!.sourceQuote.slice(0, 80)}"`).join("; ");
+    throw new QualityGateError(`only ${kept.length} grounded question(s) after ${s.round} revision round(s); not found in the document: ${quotes}`, ungrounded);
   };
 
   const afterCheck = (s: S) => (s.input.critique && s.trail.every((t) => !t.startsWith("critique")) ? "critique" : decide(s));

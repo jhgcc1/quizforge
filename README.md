@@ -90,6 +90,7 @@ Idempotent, observable, and self-healing:
 | worker dies mid-job | visibility timeout → redelivery → resume; ≤3 attempts then DLQ + alarm |
 | API→SQS publish lost | sweeper (every 5 min) re-queues; stuck `generating` quizzes are marked failed |
 | bad deploy | ECS circuit breaker rolls back; migration runs first and is expand/contract |
+| the model cites text that is not in the document | revise ×2; if one question is still ungrounded it is **dropped** (quiz ships with 5+ questions); below 5 the job fails and the retry **regenerates from scratch** (a content failure never resumes a dead checkpoint) |
 
 Alarms (SNS e-mail): DLQ, oldest job age, 5xx, CPU, RDS, **quality < 0.6**, job failures, **daily LLM cost**; AWS Budget; CloudWatch dashboard `quizforge-prod`.
 

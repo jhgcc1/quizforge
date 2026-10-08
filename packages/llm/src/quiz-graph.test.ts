@@ -133,6 +133,32 @@ describe("section-map-reduce", () => {
   });
 });
 
+describe("graceful degradation of ungrounded questions", () => {
+  const six = [0, 1, 2, 3, 4, 5].map((i) => q(i));
+  const hallucinated = (i: number) => q(i, { sourceQuote: `a quote about topic ${i} that does not exist anywhere in the document` });
+
+  it("drops ONE persistently ungrounded question and still delivers a 5-question quiz", async () => {
+    const bad = [...six];
+    bad[2] = hallucinated(2);
+    const f = scripted({ "generate:single-shot": ok(...bad), revise: ok(hallucinated(2)) }); // the reviser cannot fix it either
+    const r = await runQuizGraph({ llm: f.llm, budget: new JobBudget() }, { sourceText: SHORT_DOC, numQuestions: 6, strategy: "single-shot" });
+    expect(r.questions).toHaveLength(5);
+    expect(r.questions.every((x) => !x.sourceQuote.includes("does not exist"))).toBe(true);
+    expect(r.trail.at(-1)).toBe("finalize:dropped-1-ungrounded");
+  });
+
+  it("still fails when dropping would leave fewer than 5, and the error shows the rejected quote", async () => {
+    const bad = [...six];
+    bad[0] = hallucinated(0);
+    bad[1] = hallucinated(1);
+    const f = scripted({ "generate:single-shot": ok(...bad), revise: ok(hallucinated(0), hallucinated(1)) });
+    const err = await runQuizGraph({ llm: f.llm, budget: new JobBudget() }, { sourceText: SHORT_DOC, numQuestions: 6, strategy: "single-shot" }).catch((e) => e);
+    expect(err).toBeInstanceOf(QualityGateError);
+    expect(err.ungrounded).toEqual([1, 3]); // positions after the easy->hard ordering
+    expect(err.message).toContain("does not exist anywhere"); // diagnosable from the logs
+  });
+});
+
 describe("budget", () => {
   it("aborts with BudgetExceededError instead of looping through revisions", async () => {
     const bad = [...five];
