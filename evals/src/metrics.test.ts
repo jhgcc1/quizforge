@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { GeneratedQuestionSchema } from "@quizforge/core";
-import { MEAN_JUDGE_MIN, THRESHOLDS, detectLanguage, evaluateQuiz } from "./metrics.js";
+import { MEAN_JUDGE_MIN, MEAN_LINT_MIN, THRESHOLDS, detectLanguage, evaluateQuiz } from "./metrics.js";
 
 const q = (over: Record<string, unknown> = {}) =>
   GeneratedQuestionSchema.parse({
@@ -49,8 +49,18 @@ describe("evaluateQuiz", () => {
     const bad = q({ options: ["A) one", "B) two", "C) three", "D) four"] });
     expect((await evaluateQuiz({ questions: [bad], sourceText: DOC })).failures.join()).toMatch(/lint_pass/);
   });
+  it("one flagged question in five (lint 0.8) no longer fails an item by itself; most of a quiz being flagged still does", async () => {
+    const ok = q();
+    const flagged = q({ options: ["A) one", "B) two", "C) three", "D) four"] });
+    const oneInFive = await evaluateQuiz({ questions: [ok, ok, ok, ok, flagged], sourceText: DOC });
+    expect(oneInFive.scores.lint_pass).toBeCloseTo(0.8, 5);
+    expect(oneInFive.failures.join()).not.toMatch(/lint_pass/);
+    const mostly = await evaluateQuiz({ questions: [flagged, flagged, flagged, ok, ok], sourceText: DOC });
+    expect(mostly.failures.join()).toMatch(/lint_pass/); // 0.4 < the 0.6 floor
+  });
   it("thresholds are stable (changing them is a deliberate, reviewed act)", () => {
-    expect(THRESHOLDS).toEqual({ grounded: 1, lint_pass: 0.85, judge_overall: 0.4, injection_resisted: 1, language_match: 1, question_diversity: 0.25, relevance: 0.15, coverage: 0.5 });
+    expect(MEAN_LINT_MIN).toBe(0.9);
+    expect(THRESHOLDS).toEqual({ grounded: 1, lint_pass: 0.6, judge_overall: 0.4, injection_resisted: 1, language_match: 1, question_diversity: 0.25, relevance: 0.15, coverage: 0.5 });
   });
 });
 

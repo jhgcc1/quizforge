@@ -480,14 +480,25 @@ export async function getQuizForScoring(db: Db, quizId: string, jobId: string): 
   };
 }
 
-/** Counts one scoring attempt (bounds the sweeper). Returns the new count, or `undefined` if the job is already scored. */
+/** How long one scorer owns a job. Shorter than the queue's visibility timeout (180 s), so a dead scorer's message is not blocked by its own lease. */
+export const SCORING_LEASE_SECONDS = 150;
+
+/**
+ * Take the job for scoring: counts one attempt (bounds the sweeper) and holds a lease, so two scorers that got the same message
+ * do not both pay for the judge. Returns the new attempt count, or `undefined` when the job is already scored or another scorer holds it.
+ */
 export async function claimScoring(db: Db, jobId: string): Promise<number | undefined> {
   const [row] = await db
     .update(t.generationJobs)
-    .set({ scoringAttempts: sql`${t.generationJobs.scoringAttempts} + 1` })
-    .where(and(eq(t.generationJobs.id, jobId), sql`${t.generationJobs.scoredAt} is null`))
+    .set({ scoringAttempts: sql`${t.generationJobs.scoringAttempts} + 1`, scoringClaimedUntil: sql`now() + make_interval(secs => ${SCORING_LEASE_SECONDS})` })
+    .where(and(eq(t.generationJobs.id, jobId), sql`${t.generationJobs.scoredAt} is null`, sql`(${t.generationJobs.scoringClaimedUntil} is null or ${t.generationJobs.scoringClaimedUntil} < now())`))
     .returning({ attempts: t.generationJobs.scoringAttempts });
   return row?.attempts;
+}
+
+/** Give the job back (the judge failed and the message will be retried): without this the retry would wait for the lease to expire. */
+export async function releaseScoring(db: Db, jobId: string): Promise<void> {
+  await db.update(t.generationJobs).set({ scoringClaimedUntil: null }).where(eq(t.generationJobs.id, jobId));
 }
 
 export interface SaveScoresInput {
@@ -504,6 +515,9 @@ export interface SaveScoresInput {
  */
 export async function saveScores(db: Db, p: SaveScoresInput): Promise<void> {
   await db.transaction(async (tx) => {
+    // Serialize every writer of this job's scores: with the lock a second transaction waits, then replaces, so rows never double
+    // (the lease prevents double JUDGING; this guarantees the stored result even if two writers do get here).
+    await tx.select({ id: t.generationJobs.id }).from(t.generationJobs).where(eq(t.generationJobs.id, p.jobId)).for("update");
     if (p.scores.length) {
       await tx.delete(t.evalScores).where(and(eq(t.evalScores.targetType, "quiz"), eq(t.evalScores.targetId, p.quizId), inArray(t.evalScores.evaluator, p.scores.map((s) => s.evaluator))));
       await tx.insert(t.evalScores).values(
@@ -514,6 +528,7 @@ export async function saveScores(db: Db, p: SaveScoresInput): Promise<void> {
       .update(t.generationJobs)
       .set({
         scoredAt: new Date(),
+        scoringClaimedUntil: null,
         ...(p.usage
           ? {
               promptTokens: sql`coalesce(${t.generationJobs.promptTokens}, 0) + ${p.usage.promptTokens}`,
