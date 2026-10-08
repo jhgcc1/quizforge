@@ -114,7 +114,17 @@ scripts/set-secrets.sh && scripts/create-user.sh you@example.com
 
 ## Cost (us-east-2, running 24/7) ≈ US$150/month
 
-Fargate ARM (5 small tasks) ~72 · ALB ~20 · NAT ~35 · RDS t4g.micro ~15 · CloudFront/WAF/logs/etc ~10. `terraform destroy` (or scaling services to 0) outside demo windows; LLM spend is cents per quiz.
+Fargate ARM (5 small tasks) ~72 · ALB ~20 · NAT ~35 · RDS t4g.micro ~15 · CloudFront/WAF/logs/etc ~10. LLM spend is cents per quiz.
+
+### Pausing and resuming (≈ US$1–2/day while paused)
+
+```bash
+AWS_PROFILE=… scripts/pause.sh       # web/api/worker → 0 tasks, RDS stopped, NAT gateway removed, sweeper off
+AWS_PROFILE=… scripts/resume.sh      # everything back (~10 min), then waits until the app answers
+AWS_PROFILE=… scripts/env-status.sh  # RUNNING or PAUSED, resource by resource
+```
+
+It is the Terraform variable `paused` (so the state stays truthful) plus the repository variable `PAUSED`, which makes the `deploy` job refuse to run and keeps PR plans consistent. Data and the deployed image version are preserved. Still billed while paused: ALB, WAF, RDS storage, KMS keys, secrets. AWS restarts a stopped RDS by itself after 7 days — run `pause.sh` again if you stay paused longer. For zero cost use `terraform destroy`.
 
 ## Known limits / next steps
 
