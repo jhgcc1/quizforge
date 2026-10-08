@@ -354,7 +354,7 @@ export async function completeQuiz(db: Db, p: CompleteQuizInput): Promise<void> 
     }
     await tx
       .update(t.quizzes)
-      .set({ status: "ready", sourceId: p.sourceId, strategyUsed: p.strategyUsed, language: p.language ?? null, error: null, updatedAt: new Date() })
+      .set({ status: "ready", numQuestions: p.questions.length, sourceId: p.sourceId, strategyUsed: p.strategyUsed, language: p.language ?? null, error: null, updatedAt: new Date() })
       .where(eq(t.quizzes.id, p.quizId));
     await tx
       .update(t.generationJobs)

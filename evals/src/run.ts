@@ -11,6 +11,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { LangfuseClient } from "@langfuse/client";
 import { createFakeLlm, createMiniMaxClient, fetchMarkdown, flushTracing, generateQuiz, initTracing, tracingEnabled, type LlmClient } from "@quizforge/llm";
+import { ensureModelPrices } from "./ensure-models.js";
 import { GOLDEN, type GoldenItem } from "./golden.js";
 import { MEAN_JUDGE_MIN, THRESHOLDS, evaluateQuiz, type QuizEval } from "./metrics.js";
 
@@ -76,6 +77,8 @@ async function runItem(item: GoldenItem): Promise<Outcome> {
 initTracing();
 if (tracingEnabled() && !offline && !only) {
   const lf = new LangfuseClient();
+  const priced = await ensureModelPrices(lf); // without a price Langfuse shows tokens but no cost
+  if (priced.length) console.log(`registered Langfuse prices for: ${priced.join(", ")}`);
 
   // 1. mirror the golden set into a Langfuse Dataset (items are upserted by id, so this is idempotent)
   await lf.api.datasets.create({ name: DATASET, description: "QuizForge golden set: documents the quiz generator must handle well", metadata: { thresholds: THRESHOLDS } });

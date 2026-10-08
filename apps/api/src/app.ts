@@ -29,6 +29,7 @@ import { SourceError, assertAllowedUrl, toRawUrl } from "@quizforge/llm/source";
 import type { TokenVerifier } from "./auth.js";
 import type { Config } from "./config.js";
 import { openApiDocument, swaggerHtml } from "./openapi.js";
+import { userFacingError } from "./user-errors.js";
 import type { QuizQueue } from "./queue.js";
 
 export interface AppDeps {
@@ -60,7 +61,7 @@ function summary(q: QuizRow) {
     strategyRequested: q.strategyRequested,
     strategyUsed: q.strategyUsed,
     critique: q.critique,
-    error: q.status === "failed" ? q.error : null,
+    error: q.status === "failed" ? userFacingError(q.error) : null, // raw detail stays in the database and logs
     createdAt: q.createdAt,
   };
 }
