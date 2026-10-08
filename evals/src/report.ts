@@ -37,6 +37,8 @@ export interface CompareReport {
 
 export const LANGFUSE_PROJECT_URL = process.env.LANGFUSE_PROJECT_URL ?? "https://us.cloud.langfuse.com/project/cmuyh1njb00yxad0j2ixxfwnq";
 
+/** Display names: no "(production)" tags, and the control prompt is called "original". */
+const shown = (s: string): string => s.replace(/\s*\(production\)/i, "").replace(/^baseline$/i, "original").replace(/^Baseline$/, "Original");
 const esc = (s: unknown): string => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 const mean = (xs: number[]): number => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : NaN);
 const sd = (xs: number[]): number => {
@@ -146,7 +148,7 @@ function structuresDiagram(): string {
   let b = "";
   const rows: { title: string; y: number; nodes: [string, Kind, string?][]; loop?: [number, number] }[] = [
     { title: "one-shot", y: 30, nodes: [["Route", "det", "short / long doc"], ["Generate", "llm", "1 prompt"], ["Check", "det", "quotes, lint"], ["Finalize", "det", "drop bad ones"]] },
-    { title: "critique-loop  (production)", y: 140, nodes: [["Route", "det"], ["Generate", "llm"], ["Check", "det"], ["Critique", "llm", "AI reviewer"], ["Revise", "llm", "fix flagged"], ["Finalize", "det"]], loop: [4, 2] },
+    { title: "critique-loop", y: 140, nodes: [["Route", "det"], ["Generate", "llm"], ["Check", "det"], ["Critique", "llm", "AI reviewer"], ["Revise", "llm", "fix flagged"], ["Finalize", "det"]], loop: [4, 2] },
     { title: "plan-then-write", y: 250, nodes: [["Route", "det"], ["Plan", "llm", "facts + quotes"], ["Write", "llm", "1 question / fact"], ["Check", "det"], ["Finalize", "det"]] },
   ];
   for (const r of rows) {
@@ -191,10 +193,10 @@ function rankingChart(rows: ReturnType<typeof aggregate>): string {
   const sorted = [...rows].sort((a, b) => b.composite - a.composite);
   const keys = Object.keys(COMPOSITE_WEIGHTS) as CompositeMetric[];
   const left = 230, w = 980, rowH = 34, top = 28;
-  const h = top + sorted.length * rowH + 70;
+  const h = top + sorted.length * rowH + 92;
   const scale = (w - left - 70) / 1;
   let b = "";
-  for (const t of [0, 0.25, 0.5, 0.75, 1]) b += `<line x1="${left + t * scale}" y1="${top - 8}" x2="${left + t * scale}" y2="${h - 62}" class="grid"/><text x="${left + t * scale}" y="${top - 12}" text-anchor="middle" class="s">${t.toFixed(2)}</text>`;
+  for (const t of [0, 0.25, 0.5, 0.75, 1]) b += `<line x1="${left + t * scale}" y1="${top - 8}" x2="${left + t * scale}" y2="${h - 84}" class="grid"/><text x="${left + t * scale}" y="${top - 12}" text-anchor="middle" class="s">${t.toFixed(2)}</text>`;
   sorted.forEach((r, i) => {
     const y = top + i * rowH;
     const contrib = contributions(r.cells);
@@ -208,7 +210,7 @@ function rankingChart(rows: ReturnType<typeof aggregate>): string {
     b += `<text x="${x + 8}" y="${y + 19}" class="val">${f3(r.composite)}</text>`;
   });
   let lx = left;
-  let ly = h - 42;
+  let ly = h - 64;
   keys.forEach((k, j) => {
     const label = `${METRIC_LABEL[k]} (${COMPOSITE_WEIGHTS[k]})`;
     if (lx + 20 + label.length * 6.1 > w) { lx = left; ly += 18; }
@@ -345,7 +347,7 @@ details{margin:6px 0;border:1px solid var(--line);border-radius:8px;padding:6px 
   const compareUrl = lfBase && lf?.datasetId && lf.runs ? `${lfBase}/datasets/${lf.datasetId}/compare?${Object.values(lf.runs).map((id) => `runs=${id}`).join("&")}` : undefined;
   const totalCost = r.cells.reduce((a, c) => a + (c.costUsd ?? 0), 0);
   const promptNote: Record<string, string> = {
-    baseline: "Nothing: this is the production prompt.",
+    baseline: "Nothing: this is the original prompt (the control).",
     conceptual: "Asks for questions about purpose, cause and trade-offs instead of trivia; wrong options come from neighbouring ideas in the same document.",
     fewshot: "Shows one good example and asks for short, positive questions with options of similar length.",
   };
@@ -386,14 +388,14 @@ details{margin:6px 0;border:1px solid var(--line);border-radius:8px;padding:6px 
 <div class="card">Total LLM cost<b>$${totalCost.toFixed(2)}</b></div>
 </div>
 ${rankingChart(rows)}
-${table(["#", "Variant", "Score", "Spread across docs", "LLM judge", "Failed", "Time / doc", "LLM calls"], ranked.map((x, i) => [String(i + 1), `<code>${esc(x.v.id)}</code>`, `<strong>${f3(x.composite)}</strong>`, `±${f3(x.compositeSd)}`, f3(x.metric("judge_overall")), `${x.failed} of ${x.cells.length}${x.gated ? ` (+${x.gated} gated)` : ""}`, `${x.seconds.toFixed(0)}s`, f2(x.calls)]))}
+${table(["#", "Structure", "Prompt", "Score", "LLM judge", "Reference match", "No duplicates", "Lint", "Coverage", "Failed", "Time / doc"], ranked.map((x, i) => [String(i + 1), esc(shown(x.v.structureTitle)), esc(shown(x.v.prompt)), `<strong>${f3(x.composite)}</strong>`, f2(x.metric("judge_overall")), f2(x.metric("ref_recall")), f2(x.metric("emb_diversity")), f2(x.metric("lint_pass")), f2(x.metric("coverage")), `${x.failed} of ${x.cells.length}`, `${x.seconds.toFixed(0)}s`]))}
 </section>
 
 <section><h2>What was compared</h2>
 <h3>3 graph structures</h3>
 ${structuresDiagram()}
 <h3>3 prompts for the generator</h3>
-${table(["Prompt", "What it adds to the baseline"], [...new Map(r.variants.map((v) => [v.prompt, v])).values()].map((v) => [`<code>${esc(v.prompt)}</code>`, esc(promptNote[v.prompt] ?? v.promptTitle)]))}
+${table(["Prompt", "What it adds to the baseline"], [...new Map(r.variants.map((v) => [v.prompt, v])).values()].map((v) => [`<code>${esc(shown(v.prompt))}</code>`, esc(promptNote[v.prompt] ?? v.promptTitle)]))}
 <h3>${r.items.length} documents, each with hand-written reference questions</h3>
 ${table(["Document", "Questions asked", "Reference questions", "Source"], r.items.map((i) => [`<code>${esc(i.id)}</code>`, String(i.numQuestions), String(i.references), esc(i.origin)]))}
 <p class="opt">Reference questions are in <code>evals/references/&lt;document&gt;.json</code>, each with a verbatim quote (a test proves the quote exists). They were drafted by the AI: please review them.</p>
@@ -406,12 +408,12 @@ ${table(["Metric", "Weight", "Question it answers", "How it is measured"], (Obje
 </section>
 
 <section><h2>What made the difference?</h2>
-${table(["Structure", "Score", "Time / doc", "Cost / variant", "Failed runs"], groupRows("structure").sort((a, b) => b.composite - a.composite).map((x) => [esc(x.title), `<strong>${f3(x.composite)}</strong>`, `${x.seconds.toFixed(0)}s`, `$${x.cost.toFixed(3)}`, `${x.failed} of ${x.runs}`]))}
-${table(["Prompt", "Score", "Time / doc", "Cost / variant", "Failed runs"], groupRows("prompt").sort((a, b) => b.composite - a.composite).map((x) => [esc(x.title), `<strong>${f3(x.composite)}</strong>`, `${x.seconds.toFixed(0)}s`, `$${x.cost.toFixed(3)}`, `${x.failed} of ${x.runs}`]))}
-<h3>Change vs the production setup, metric by metric</h3>
-<p>Look at <em>which</em> instrument moves. If only the LLM judge moves, the gain may be the judge's taste, not a better quiz.</p>
-${effectTable("structure", "critique-loop", "critique-loop (production)")}
-${effectTable("prompt", "baseline", "baseline (production)")}
+${table(["Structure", "Score", "Time / doc", "Cost / variant", "Failed runs"], groupRows("structure").sort((a, b) => b.composite - a.composite).map((x) => [esc(shown(x.title)), `<strong>${f3(x.composite)}</strong>`, `${x.seconds.toFixed(0)}s`, `$${x.cost.toFixed(3)}`, `${x.failed} of ${x.runs}`]))}
+${table(["Prompt", "Score", "Time / doc", "Cost / variant", "Failed runs"], groupRows("prompt").sort((a, b) => b.composite - a.composite).map((x) => [esc(shown(x.title)), `<strong>${f3(x.composite)}</strong>`, `${x.seconds.toFixed(0)}s`, `$${x.cost.toFixed(3)}`, `${x.failed} of ${x.runs}`]))}
+<h3>What changes when you switch (metric by metric)</h3>
+<p>Structures are compared with <code>critique-loop</code>, prompts with the original prompt: each choice has its own control. Look at <em>which</em> instrument moves. If only the LLM judge moves, the gain may be the judge's taste, not a better quiz.</p>
+${effectTable("structure", "critique-loop", "critique-loop")}
+${effectTable("prompt", "baseline", "the original prompt")}
 ${noiseChart(r, rows)}
 </section>
 
@@ -463,5 +465,5 @@ ${lfBase ? `<ul><li>${link(`${lfBase}/datasets`, "Langfuse datasets")} → <code
 <p class="opt">Open a variant to read what it produced. Each document links to its trace in Langfuse.</p>
 ${detail}
 </section>
-</main></body></html>`;
+</main></body></html>`.replace(/(one-shot|critique-loop|plan-then-write)\/baseline/g, "$1/original");
 }
