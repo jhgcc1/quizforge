@@ -25,6 +25,7 @@ test("create -> generate -> answer (with reload) -> submit -> weighted score", a
   const cookies = await context.cookies();
   expect(cookies.find((c) => c.name === "qf_at")?.httpOnly).toBe(true);
 
+  await expect(page.getByRole("button", { name: "Generate quiz" })).toBeEnabled(); // hydrated
   await page.getByLabel("Questions", { exact: true }).selectOption("5");
   await page.getByLabel(/Review questions with a second AI pass/).uncheck();
   await page.getByRole("button", { name: "Generate quiz" }).click();

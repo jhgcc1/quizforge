@@ -5,7 +5,8 @@ const isProd = process.env.NODE_ENV === "production";
 
 const securityHeaders = [
   // Next needs inline scripts for hydration; everything else is locked to same-origin.
-  { key: "Content-Security-Policy", value: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" },
+  // form-action also governs the REDIRECT that follows a form POST: sign-out redirects to the Cognito domain.
+  { key: "Content-Security-Policy", value: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://*.amazoncognito.com" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
   { key: "Referrer-Policy", value: "same-origin" },

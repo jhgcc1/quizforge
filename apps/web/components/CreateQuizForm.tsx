@@ -1,5 +1,5 @@
 "use client";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ApiError, api, newKey, type QuizSummary } from "@/lib/api";
 
@@ -18,6 +18,9 @@ export function CreateQuizForm() {
   const [strategy, setStrategy] = useState("auto");
   const [critique, setCritique] = useState(true);
   const [busy, setBusy] = useState(false);
+  // Until React has hydrated, edits to the form would be reset and a click would do a native submit.
+  const [ready, setReady] = useState(false);
+  useEffect(() => setReady(true), []);
   const [error, setError] = useState<string | null>(null);
   // One Idempotency-Key per user intent: it only changes when the request itself changes.
   const keyRef = useRef<{ fingerprint: string; key: string } | null>(null);
@@ -82,7 +85,7 @@ export function CreateQuizForm() {
         </label>
       </p>
       {error && <p className="alert error" role="alert">{error}</p>}
-      <button className="btn" type="submit" disabled={busy}>{busy ? <><span className="spinner" aria-hidden /> Creating…</> : "Generate quiz"}</button>
+      <button className="btn" type="submit" disabled={busy || !ready}>{busy ? <><span className="spinner" aria-hidden /> Creating…</> : "Generate quiz"}</button>
     </form>
   );
 }
