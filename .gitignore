@@ -33,3 +33,6 @@ backend.hcl
 !prod.auto.tfvars
 
 test-results-aws/
+
+# ad-hoc browser screenshots
+scratch-*.png
