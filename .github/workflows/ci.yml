@@ -16,6 +16,8 @@ permissions:
 
 env:
   NODE_VERSION: "22"
+  # terraform reads TF_VAR_*: the pipeline never "resumes" a paused environment by accident
+  TF_VAR_paused: ${{ vars.PAUSED || 'false' }}
 
 # `shell: bash` makes GitHub run `bash -eo pipefail`: a failure on the left of a pipe can never be masked
 defaults:
@@ -278,6 +280,12 @@ jobs:
     env:
       TAG: ${{ github.sha }}
     steps:
+      - name: Refuse to deploy while the environment is paused
+        run: |
+          if [ "${{ vars.PAUSED }}" = "true" ]; then
+            echo "::error::The environment is PAUSED (database stopped, no NAT, services at 0). Run scripts/resume.sh first, then re-run this workflow."
+            exit 1
+          fi
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
         with: { terraform_version: "1.x", terraform_wrapper: false }
