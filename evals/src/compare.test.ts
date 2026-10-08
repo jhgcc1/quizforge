@@ -112,42 +112,44 @@ describe("report", () => {
   const report: CompareReport = {
     generatedAt: "2026-10-08T12:00:00Z", offline: false, models: { generator: "g", judge: "j", embeddings: "e", judgeSamples: 3 }, weights: { ...COMPOSITE_WEIGHTS },
     items: ["a", "b", "c"].map((id) => ({ id, numQuestions: 5, references: 6, origin: "file" })),
-    variants: [["one-shot/baseline", "One-shot"], ["plan-then-write/baseline", "Plan then write"]].map(([id, t]) => ({ id: id!, structure: id!.split("/")[0]!, structureTitle: t!, graph: "route → x", prompt: "baseline", promptTitle: "Baseline", langfuseRun: null })),
-    langfuse: { dataset: "quizforge-golden", experiment: "x", project: null },
+    variants: [["one-shot/baseline", "One-shot"], ["plan-then-write/baseline", "Plan then write"]].map(([id, t]) => ({ id: id!, structure: id!.split("/")[0]!, structureTitle: t!, graph: "route → x", prompt: "baseline", promptTitle: "Baseline", langfuseRuns: [`${id}@t`] })),
+    langfuse: { dataset: "quizforge-golden", experiment: "x", datasetId: "ds1", runs: { "one-shot/baseline@t": "run1", "plan-then-write/baseline@t": "run2" } },
     cells: ["a", "b", "c"].flatMap((i, k) => [cell("one-shot/baseline", i, 0.6 + k * 0.01), cell("plan-then-write/baseline", i, 0.8 + k * 0.01)]),
   };
 
   it("ranks by composite, names the winner, links Langfuse and escapes model-written text", () => {
     const html = renderReport(report);
     expect(html.indexOf("plan-then-write/baseline")).toBeLessThan(html.indexOf("one-shot/baseline")); // winner first in the ranking
-    expect(html).toContain("Melhor média: <code>plan-then-write/baseline</code>");
+    expect(html).toContain("Best average: <code>plan-then-write/baseline</code>");
     expect(html).toContain("/datasets");
+    expect(html).toContain("/datasets/ds1/runs/run1"); // straight to the run, not just the dataset
+    expect(html).toContain("/datasets/ds1/compare?runs=run1&amp;runs=run2");
     expect(html).not.toContain("<b>is</b>");
     expect(html).toContain("&lt;b&gt;is&lt;/b&gt;");
     expect(html.startsWith("<!doctype html>")).toBe(true);
   });
 
   it("flags a lead that is within the noise as a tie and a clear lead as likely real", () => {
-    expect(renderReport(report)).toContain("provavelmente real");
+    expect(renderReport(report)).toContain("probably real");
     const noisy = { ...report, cells: report.cells.map((c, i) => ({ ...c, composite: c.variant.startsWith("plan") ? [0.9, 0.5, 0.7][i % 3]! : [0.5, 0.9, 0.7][i % 3]! })) };
-    expect(renderReport(noisy)).toContain("não se distingue do ruído");
+    expect(renderReport(noisy)).toContain("within the noise");
   });
 
   it("a failed cell counts as 0 and is shown as a failure", () => {
     const failed = { ...report, cells: report.cells.map((c, i) => (i === 0 ? { ...c, ok: false, composite: 0, error: "QualityGateError: x", questions: [] } : c)) };
     const row = aggregate(failed).find((r) => r.v.id === "one-shot/baseline")!;
     expect(row.failed).toBe(1);
-    expect(renderReport(failed)).toContain("falhou");
+    expect(renderReport(failed)).toContain("failed");
   });
 
   it("measures run-to-run noise from repetitions and refuses to call a lead within that noise real", () => {
     expect(repNoise(report)).toBeNaN(); // a single repetition cannot measure noise
     const twice: CompareReport = { ...report, cells: report.cells.flatMap((c) => [{ ...c, rep: 1 }, { ...c, rep: 2, composite: c.composite + (c.variant.startsWith("plan") ? 0.15 : -0.15) * (c.item === "b" ? -1 : 1) }]) };
     expect(repNoise(twice)).toBeGreaterThan(0.05);
-    expect(renderReport(twice)).toContain("ruído medido entre repetições");
+    expect(renderReport(twice)).toContain("Measured run-to-run noise");
     const quiet: CompareReport = { ...report, cells: report.cells.flatMap((c) => [{ ...c, rep: 1 }, { ...c, rep: 2, composite: c.composite + 0.001 }]) };
     expect(repNoise(quiet)).toBeLessThan(0.002);
-    expect(renderReport(quiet)).toContain("provavelmente real");
+    expect(renderReport(quiet)).toContain("probably real");
   });
 
   it("pearson handles perfect, inverse and degenerate input", () => {

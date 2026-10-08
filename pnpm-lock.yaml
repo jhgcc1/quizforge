@@ -84,6 +84,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@quizforge/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       jose:
         specifier: ^6.2.12
         version: 6.2.12
@@ -99,6 +102,9 @@ importers:
       server-only:
         specifier: ^0.0.1
         version: 0.0.1
+      zod:
+        specifier: ^3.24.0
+        version: 3.25.76
     devDependencies:
       '@types/node':
         specifier: ^26.6.4

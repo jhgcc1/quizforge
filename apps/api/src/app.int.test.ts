@@ -9,6 +9,12 @@ import { buildApp } from "./app.js";
 import { LOCAL_AUDIENCE, LOCAL_ISSUER, localVerifier, signLocalToken } from "./auth.js";
 import { loadConfig } from "./config.js";
 import { MemoryQuizQueue } from "./queue.js";
+import { openApiDocument } from "./openapi.js";
+import {
+  AttemptResultSchema, AttemptWithAnswersSchema, CatalogResponseSchema, CreateQuizBodySchema, ErrorBodySchema, QuizEnvelopeSchema, QuizListSchema,
+  QuizWithQuestionsSchema, SAMPLE_CATALOG, SaveAnswerResponseSchema, SubmitResponseSchema,
+} from "@quizforge/core";
+import type { ZodTypeAny } from "zod";
 
 const ADMIN_URL = process.env.TEST_ADMIN_DATABASE_URL ?? "postgres://quizforge:quizforge@localhost:5433/postgres";
 const dbName = `qf_api_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
@@ -50,6 +56,11 @@ const call = async (sub: string | null, method: string, url: string, body?: unkn
     ...(body !== undefined ? { payload: JSON.stringify(body) } : {}),
   });
   return { status: res.statusCode, body: res.body ? JSON.parse(res.body) : null, headers: res.headers };
+};
+/** Contract check: the body the API really sent must satisfy the schema that the BFF and the browser validate against. */
+const shape = <S extends ZodTypeAny>(schema: S, body: unknown): void => {
+  const r = schema.safeParse(body);
+  if (!r.success) throw new Error(`response does not match its contract: ${JSON.stringify(r.error.issues)} in ${JSON.stringify(body).slice(0, 300)}`);
 };
 const create = (sub: string, key: string, body: unknown = {}) => call(sub, "POST", "/v1/quizzes", body, { "idempotency-key": key });
 
@@ -169,6 +180,7 @@ describe("full quiz flow", () => {
     const sub = "u-flow";
     const created = await create(sub, randomUUID());
     const quizId = created.body.quiz.id as string;
+    shape(QuizEnvelopeSchema, created.body);
 
     // not ready yet: no questions, cannot start an attempt
     expect((await call(sub, "GET", `/v1/quizzes/${quizId}`)).body.questions).toEqual([]);
@@ -178,12 +190,15 @@ describe("full quiz flow", () => {
     const quiz = await call(sub, "GET", `/v1/quizzes/${quizId}`);
     expect(quiz.body.quiz.status).toBe("ready");
     expect(quiz.body.questions).toHaveLength(5);
+    shape(QuizWithQuestionsSchema, quiz.body);
+    shape(QuizListSchema, (await call(sub, "GET", "/v1/quizzes")).body);
     expect(JSON.stringify(quiz.body)).not.toMatch(/isCorrect|is_correct|explanation|sourceQuote/); // answer key never leaks
     const qs = quiz.body.questions as { id: string; options: { id: string }[] }[];
 
     const attemptKey = randomUUID();
     const att = await call(sub, "POST", `/v1/quizzes/${quizId}/attempts`, {}, { "idempotency-key": attemptKey });
     expect(att.status).toBe(201);
+    shape(AttemptWithAnswersSchema, att.body);
     const att2 = await call(sub, "POST", `/v1/quizzes/${quizId}/attempts`, {}, { "idempotency-key": attemptKey });
     expect([att2.status, att2.body.attempt.id]).toEqual([200, att.body.attempt.id]);
     const attemptId = att.body.attempt.id as string;
@@ -191,7 +206,7 @@ describe("full quiz flow", () => {
     const put = (qi: number, optionIdx: number, revision: number) =>
       call(sub, "PUT", `/v1/attempts/${attemptId}/answers/${qs[qi]!.id}`, { optionIds: [qs[qi]!.options[optionIdx]!.id], revision });
     // q1: wrong first, then fixed; the delayed first click arrives afterwards and must be ignored
-    expect((await put(0, 1, 1)).body.status).toBe("saved");
+    shape(SaveAnswerResponseSchema, (await put(0, 1, 1)).body);
     expect((await put(0, 0, 2)).body.status).toBe("saved");
     expect((await put(0, 1, 1)).body.status).toBe("ignored");
     await put(1, 0, 1); // right
@@ -201,10 +216,12 @@ describe("full quiz flow", () => {
 
     const progress = await call(sub, "GET", `/v1/attempts/${attemptId}`);
     expect(progress.body.answers).toHaveLength(4);
+    shape(AttemptWithAnswersSchema, progress.body);
     expect(JSON.stringify(progress.body)).not.toMatch(/isCorrect|explanation/);
 
     const submit = await call(sub, "POST", `/v1/attempts/${attemptId}/submit`);
     expect(submit.status).toBe(200);
+    shape(SubmitResponseSchema, submit.body);
     expect(submit.body.replayed).toBe(false);
     const r = submit.body.result;
     expect(r.questions.map((q: { score: number }) => q.score)).toEqual([4, 4, 0, 4, 0]);
@@ -217,7 +234,9 @@ describe("full quiz flow", () => {
     expect(again.body.replayed).toBe(true);
     expect(again.body.result.finalScore).toBe(r.finalScore);
     expect((await put(2, 0, 50)).status).toBe(409); // locked after submit
-    expect((await call(sub, "GET", `/v1/attempts/${attemptId}`)).body.result.finalScore).toBe(r.finalScore);
+    const final = await call(sub, "GET", `/v1/attempts/${attemptId}`);
+    shape(AttemptResultSchema, final.body.result);
+    expect(final.body.result.finalScore).toBe(r.finalScore);
   });
 
   it("users cannot see or touch each other's quizzes and attempts (404, not 403)", async () => {
@@ -249,5 +268,35 @@ describe("full quiz flow", () => {
     expect((await put({ optionIds: [q.options[0].id, q.options[1].id], revision: 1 })).status).toBe(422); // single-answer question
     expect((await put({ optionIds: [randomUUID()], revision: 1 })).status).toBe(422);
     expect((await put({ optionIds: [q.options[0].id], revision: 1, extra: true })).status).toBe(400);
+  });
+});
+
+describe("contracts", () => {
+  it("serves the sample catalog behind authentication, in the shared schema", async () => {
+    expect((await call(null, "GET", "/v1/catalog")).status).toBe(401);
+    const res = await call("u-catalog", "GET", "/v1/catalog");
+    expect(res.status).toBe(200);
+    shape(CatalogResponseSchema, res.body);
+    expect(res.body.items).toHaveLength(SAMPLE_CATALOG.length);
+  });
+
+  it("a catalog entry can be used as-is to create a quiz", async () => {
+    for (const e of SAMPLE_CATALOG.slice(0, 2)) {
+      const r = await create(`u-cat-${e.id}`, randomUUID(), { sourceUrl: e.url });
+      expect(r.status).toBe(202);
+    }
+  });
+
+  it("error responses all have the same shape", async () => {
+    shape(ErrorBodySchema, (await call(null, "GET", "/v1/quizzes")).body); // 401
+    shape(ErrorBodySchema, (await call("u-err", "GET", `/v1/quizzes/${randomUUID()}`)).body); // 404
+    shape(ErrorBodySchema, (await create("u-err", randomUUID(), { numQuestions: 99 })).body); // 400 validation
+    shape(ErrorBodySchema, (await create("u-err", "x")).body); // 400 missing key
+  });
+
+  it("the hand-written OpenAPI description lists exactly the fields the zod schemas accept (no drift)", () => {
+    const doc = openApiDocument.components.schemas;
+    expect(Object.keys(doc.CreateQuiz.properties).sort()).toEqual(Object.keys(CreateQuizBodySchema.shape).sort());
+    expect(Object.keys(doc.Catalog.properties.items.items.properties).sort()).toEqual(Object.keys(SAMPLE_CATALOG[0]!).sort());
   });
 });

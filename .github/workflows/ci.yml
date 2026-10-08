@@ -17,6 +17,7 @@ permissions:
 env:
   NODE_VERSION: "22"
   # terraform reads TF_VAR_*: the pipeline never "resumes" a paused environment by accident
+  TF_VAR_alarm_email: ${{ vars.ALARM_EMAIL }} # who receives the CloudWatch alarms (repository variable; empty = nobody is subscribed)
   TF_VAR_paused: ${{ vars.PAUSED || 'false' }}
 
 # `shell: bash` makes GitHub run `bash -eo pipefail`: a failure on the left of a pipe can never be masked

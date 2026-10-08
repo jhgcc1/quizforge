@@ -69,15 +69,14 @@ export async function judgeQuiz(p: {
   }));
   const user = `<document>\n${neutralize(p.context)}\n</document>\n\nQuiz to evaluate (JSON):\n${JSON.stringify(quiz, null, 1)}`;
   const n = Math.max(1, p.samples ?? 1);
-  const runs: JudgeScores[] = [];
-  const usage = { promptTokens: 0, completionTokens: 0, cachedTokens: 0 };
-  for (let i = 0; i < n; i++) {
-    const r = await generateStructured({ llm: p.llm, budget: p.budget, schema: JudgeSchema, system: JUDGE_SYSTEM, user, maxRepairs: 1, options: { name: n > 1 ? `judge:${i + 1}/${n}` : "judge", temperature: 0 } });
-    runs.push(r.value);
-    usage.promptTokens += r.usage.promptTokens;
-    usage.completionTokens += r.usage.completionTokens;
-    usage.cachedTokens += r.usage.cachedTokens;
-  }
+  // The samples are independent, so they run in parallel: 3 samples cost the latency of 1.
+  const results = await Promise.all(
+    Array.from({ length: n }, (_, i) =>
+      generateStructured({ llm: p.llm, budget: p.budget, schema: JudgeSchema, system: JUDGE_SYSTEM, user, maxRepairs: 1, options: { name: n > 1 ? `judge:${i + 1}/${n}` : "judge", temperature: 0 } }),
+    ),
+  );
+  const runs: JudgeScores[] = results.map((r) => r.value);
+  const usage = results.reduce((u, r) => ({ promptTokens: u.promptTokens + r.usage.promptTokens, completionTokens: u.completionTokens + r.usage.completionTokens, cachedTokens: u.cachedTokens + r.usage.cachedTokens }), { promptTokens: 0, completionTokens: 0, cachedTokens: 0 });
   const pick = (k: "faithfulness" | "clarity" | "distractors" | "coverage" | "difficulty_mix") => median(runs.map((r) => r[k]));
   const overalls = runs.map(overallFromJudge);
   const nearest = runs[overalls.indexOf(overalls.slice().sort((a, b) => Math.abs(a - median(overalls)) - Math.abs(b - median(overalls)))[0]!)]!;

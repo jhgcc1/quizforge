@@ -8,7 +8,7 @@
     "eval": "tsx --env-file=../.env src/run.ts",
     "eval:offline": "tsx src/run.ts --offline",
     "compare": "tsx --env-file=../.env src/compare.ts",
-    "report": "tsx src/render-report.ts",
+    "report": "tsx --env-file=../.env src/render-report.ts",
     "compare:offline": "tsx src/compare.ts --offline --out=evals/reports"
   },
   "dependencies": {

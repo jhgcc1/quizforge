@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { SAMPLE_CATALOG } from "@quizforge/core";
 
 const login = async (page: Page, user: string) => {
   await page.goto("/app");
@@ -75,8 +76,36 @@ test("create -> generate -> answer (with reload) -> submit -> weighted score", a
 
 test("a bad source host is rejected with a clear message", async ({ page }) => {
   await login(page, "carol");
-  await page.getByLabel("Document").selectOption({ label: "Custom URL…" });
+  await page.getByLabel("Document").selectOption({ label: "Other: paste a URL…" });
   await page.getByLabel("Markdown URL").fill("https://evil.example.com/readme.md");
   await page.getByRole("button", { name: "Generate quiz" }).click();
   await expect(page.locator("p.alert")).toContainText(/host not allowed/i);
+});
+
+test("the document dropdown lists the sample catalog and explains each choice", async ({ page }) => {
+  await login(page, "dave");
+  const select = page.getByLabel("Document");
+  await expect(select.locator("optgroup")).toHaveCount(2); // real READMEs, test documents
+  await expect(select.locator("option")).toHaveCount(SAMPLE_CATALOG.length + 1); // + "Other: paste a URL…"
+  for (const e of SAMPLE_CATALOG) await expect(select.locator("option", { hasText: e.title }).first()).toBeAttached();
+
+  await select.selectOption({ label: "Biblioteca Aurora" });
+  await expect(page.locator("#doc-info")).toContainText("Portuguese");
+  await expect(page.locator("#doc-info")).toContainText("Tests:");
+  await expect(page.getByLabel("Markdown URL")).toHaveCount(0); // no URL to copy and paste
+
+  await select.selectOption({ label: "Other: paste a URL…" });
+  await expect(page.getByLabel("Markdown URL")).toBeVisible();
+});
+
+test("the browser refuses a malformed request before it reaches the network", async ({ page }) => {
+  await login(page, "erin");
+  let created = 0;
+  await page.route("**/bff/v1/quizzes", (route) => (route.request().method() === "POST" ? (created++, route.abort()) : route.continue()));
+  await page.getByLabel("Document").selectOption({ label: "Other: paste a URL…" });
+  await page.getByLabel("Markdown URL").fill("https://github.com/owner/repo/blob/main/README.md");
+  await page.getByLabel("Topic (optional)").fill("x"); // the shared schema requires at least 2 characters
+  await page.getByRole("button", { name: "Generate quiz" }).click();
+  await expect(page.locator("p.alert")).toBeVisible();
+  expect(created).toBe(0);
 });

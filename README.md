@@ -44,6 +44,7 @@ curl -X POST $URL/v1/quizzes -H "Authorization: Bearer $TOKEN" -H "Idempotency-K
      -H 'content-type: application/json' \
      -d '{"sourceUrl":"https://github.com/pipecat-ai/pipecat/blob/main/README.md","numQuestions":6}'
 #   → 202 {quiz:{id,status:"queued"}}   (repeat with the same key → 200, same quiz)
+GET  /v1/catalog                              # the sample documents shown in the UI dropdown
 GET  /v1/quizzes/{id}                         # poll until status = ready
 POST /v1/quizzes/{id}/attempts                # start (or resume) an attempt
 PUT  /v1/attempts/{id}/answers/{questionId}   # saved immediately; {optionIds, revision}
@@ -52,12 +53,17 @@ POST /v1/attempts/{id}/submit                 # scores from what is stored; safe
 
 ## Data flow
 
+0. **Choose** — the web form shows a **dropdown** of ready-made documents (6 real READMEs + 7 test documents that each check one behaviour: multi-answer facts, code blocks, Portuguese, Spanish, prompt injection, a tiny document…) from `GET /v1/catalog`; "Other" still accepts any allowed URL. The list lives in one file, `packages/core/src/catalog.ts`.
 1. **Create** — `POST /v1/quizzes` validates the body and the URL (https, host allow-list, no private IPs), inserts a `queued` row (unique `(owner, Idempotency-Key)`), publishes `{quizId}` to SQS, returns 202.
 2. **Generate** — a worker claims the quiz (`UPDATE … WHERE status` is the idempotency guard), fetches the Markdown, and runs the graph. State is checkpointed in Postgres after every node, so a crash resumes instead of repeating paid LLM calls. Questions/options are written in one transaction.
 3. **Answer** — each choice is `PUT` and stored at once (`UNIQUE (attempt, question)`, monotonic `revision` so a delayed retry cannot overwrite a newer click).
 4. **Submit** — one transaction, `SELECT … FOR UPDATE`, scores computed **from the database**, attempt locked; the answer key is never sent before this point.
 
 Tables: `sources` → `quizzes` → `questions` → `options`; `quizzes` → `generation_jobs` (tokens, cost, trace id, resumable budget); `quizzes` → `attempts` → `answers` → `answer_selections` (real FK to the chosen option); `eval_scores` (quality metrics per quiz). Ownership is the Cognito `sub`.
+
+## Validation of the JSON
+
+The request/response schemas are one file (`packages/core/src/schemas.ts`) imported by the browser, the BFF, the API and the tests: the **browser form** validates before sending and parses **every response**; the **BFF** validates `POST /quizzes` and `PUT answers` before forwarding; the **API** validates body, params and headers (the trusted layer); **Postgres** enforces CHECK/UNIQUE/FK. Contract tests assert every API response of the full quiz flow against the same schemas, and that the hand-written OpenAPI file lists the same fields.
 
 ## Generation quality
 
@@ -67,7 +73,8 @@ Tables: `sources` → `quizzes` → `questions` → `options`; `quizzes` → `ge
 * **LLM-as-judge** rubric (faithfulness counts double), run by a **different model** than the generator (`MINIMAX_JUDGE_MODEL`, default M3) to avoid self-preference bias → scores on the Langfuse trace + `eval_scores` + CloudWatch metric `QuizQuality` (alarm below 0.6).
 * **Similarity metrics** (TF-IDF cosine, deterministic and free; the MiniMax Token Plan key has no usable embeddings, and the `Embedder` interface accepts real ones later): *question diversity* (catches near-duplicate questions), *relevance* (each question vs. the document) and *section coverage*. Honest limit: lexical similarity catches near-verbatim duplicates, not paraphrases.
 * **Regression suite** (`evals/`): a golden set (two real READMEs, a short doc, a Portuguese doc, a **prompt-injection** document) mirrored to the Langfuse Dataset `quizforge-golden`; every run is a Langfuse Experiment on it. The production agent is the system under test. Gated per item: grounded = 1, injection resisted = 1, language match = 1, lint ≥ 0.85, diversity ≥ 0.25, relevance ≥ 0.15, coverage ≥ 0.5, judge ≥ 0.40 (a floor for catastrophic quality only). Gated on the dataset: **mean judge ≥ 0.70**.
-  *Why the judge is aggregated*: LLM judges are noisy. Measured on one fixed quiz, MiniMax-M3 scored 0.86, 0.86, 0.93, 0.86 and then 0.45; the generator's own model was stable (0.84–0.89) but is biased towards its own style. The CI judge is therefore a different model, run 3× with the median taken, and judged on the dataset mean. A first version of this gate failed a perfectly good quiz on exactly that outlier. Production keeps the cheaper, stable same-model judge, since its score only feeds an hourly alarm. Real runs: all pass, mean judge 0.76–0.80, ~US$0.05.
+  *Why the judge is aggregated*: LLM judges are noisy. Measured on one fixed quiz, MiniMax-M3 scored 0.86, 0.86, 0.93, 0.86 and then 0.45; the generator's own model was stable (0.84–0.89) but is biased towards its own style. The CI judge is therefore a different model, run 3× with the median taken, and judged on the dataset mean. A first version of this gate failed a perfectly good quiz on exactly that outlier. Production now uses the **same judge as CI** (M3, median of 3 parallel runs), so the two are comparable. Real runs: all pass, mean judge 0.76–0.80, ~US$0.05.
+* **One quality method** (`packages/llm/src/quality.ts`, versioned): every quiz generated in production and every quiz in the evals/experiments is scored by the same `scoreQuiz()`, with the same Langfuse score names (`grounded`, `lint_pass`, `question_diversity`, `relevance`, `coverage`, `language_match`, `judge_*`, `quality_overall`). `quality_overall` is a weighted average (judge 0.45, lint 0.15, on-topic 0.15, no near-duplicates 0.15, coverage 0.10) that is 0 when grounding or language fails, and is **left out** (never a different formula) if the judge fails twice. The scores go to Langfuse, to `eval_scores` in Postgres and to CloudWatch.
 * **Comparing structures and prompts** (`pnpm --filter @quizforge/evals compare`, or the manual workflow *Compare generation structures*): 3 LangGraph topologies (`one-shot`, `critique-loop` = production, `plan-then-write`) × 3 generator prompts (`baseline`, `conceptual`, `fewshot`) over the golden set, one Langfuse Experiment per variant. Each quiz gets a **weighted average** of three kinds of instrument — LLM judge (0.35), deterministic checks (lint, coverage: 0.20) and **embedding cosine similarity** (0.45: against hand-written reference questions in `evals/references/`, against the document, and between the questions themselves) — with grounding / injection / language as hard gates. Embeddings are free and local (`paraphrase-multilingual-MiniLM-L12-v2` through transformers.js; the MiniMax key has no embeddings endpoint). The HTML report of the reference run (2 repetitions, 90 generations, ~US$0.83) is [`docs/eval/structure-comparison.html`](docs/eval/structure-comparison.html): it measured the run-to-run noise (±0.03) and concludes that, on this set, the structures are a technical tie, that the `conceptual` prompt only moves the LLM judge (not the embedding metrics), and that `fewshot` + critique has a real failure mode (the model copies raw markdown into its quotes).
 * **Budget per job** (16 LLM calls / 120k tokens / 5 min) so layered retries (HTTP × repair × critique × SQS redelivery) cannot multiply; the allowance survives redelivery.
 * Scoring itself is deterministic code — no LLM involved.
@@ -93,7 +100,7 @@ Idempotent, observable, and self-healing:
 | bad deploy | ECS circuit breaker rolls back; migration runs first and is expand/contract |
 | the model cites text that is not in the document | revise ×2; if one question is still ungrounded it is **dropped** (quiz ships with 5+ questions); below 5 the job fails and the retry **regenerates from scratch** (a content failure never resumes a dead checkpoint) |
 
-Alarms (SNS e-mail): DLQ, oldest job age, 5xx, CPU, RDS, **quality < 0.6**, job failures, **daily LLM cost**; AWS Budget; CloudWatch dashboard `quizforge-prod`.
+Alarms (CloudWatch → SNS): DLQ, oldest job age, 5xx, CPU, RDS, **hourly average quality < 0.6**, **any single quiz < 0.4**, **judge failing** (quality not being measured), job failures, **daily LLM cost**; AWS Budget; CloudWatch dashboard `quizforge-prod`. Langfuse Hobby has no alerting, so alarms live in CloudWatch. **E-mail needs a subscriber:** set the repository variable once (`gh variable set ALARM_EMAIL --body you@example.com`), deploy, and confirm the AWS subscription e-mail; the address is deliberately not committed.
 
 ## CI/CD
 

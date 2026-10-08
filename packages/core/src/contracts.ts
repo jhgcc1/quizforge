@@ -1,32 +1,9 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 
-/** Shared request/queue contracts: the API, worker and web UI import these, so they cannot drift. */
+/** Queue contract and request fingerprint (server only). The request/response schemas live in schemas.ts, which the browser can import too. */
 
-export const STRATEGIES = ["auto", "single-shot", "section-map-reduce"] as const;
-
-export const CreateQuizBodySchema = z
-  .object({
-    /** Markdown document to quiz on. Falls back to the server default when omitted. */
-    sourceUrl: z.string().trim().url().max(2000).optional(),
-    topic: z.string().trim().min(2).max(200).optional(),
-    numQuestions: z.number().int().min(5).max(8).default(6),
-    strategy: z.enum(STRATEGIES).default("auto"),
-    critique: z.boolean().default(true),
-  })
-  .strict();
-export type CreateQuizBody = z.output<typeof CreateQuizBodySchema>;
-
-export const SaveAnswerBodySchema = z
-  .object({
-    optionIds: z.array(z.string().uuid()).min(1).max(4),
-    /** Monotonic per question, chosen by the client: a delayed retry with an older value is ignored. */
-    revision: z.number().int().min(0).max(1_000_000),
-  })
-  .strict();
-export type SaveAnswerBody = z.output<typeof SaveAnswerBodySchema>;
-
-export const IdempotencyKeySchema = z.string().regex(/^[A-Za-z0-9_\-:.]{8,128}$/, "Idempotency-Key must be 8-128 chars of [A-Za-z0-9_-:.]");
+export * from "./schemas.js";
 
 /** SQS message: only an id. The row in Postgres is the source of truth, so redelivery is harmless. */
 export const QuizJobMessageSchema = z.object({

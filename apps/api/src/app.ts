@@ -6,6 +6,7 @@ import { z } from "zod";
 import {
   CreateQuizBodySchema,
   IdempotencyKeySchema,
+  SAMPLE_CATALOG,
   SaveAnswerBodySchema,
   requestFingerprint,
 } from "@quizforge/core";
@@ -215,6 +216,8 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       req.log.info({ quizId: quiz.id }, "quiz queued");
       return reply.status(202).header("location", `/v1/quizzes/${quiz.id}`).send({ quiz: summary(quiz) });
     });
+
+    v1.get("/catalog", async () => ({ items: SAMPLE_CATALOG }));
 
     v1.get("/quizzes", async (req) => ({ quizzes: (await listQuizzes(db, req.user!.sub)).map(summary) }));
 

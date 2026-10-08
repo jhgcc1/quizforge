@@ -23,6 +23,8 @@ const Schema = z
     MINIMAX_MODEL: z.string().default("MiniMax-M2.7"),
     /** Judge model. Set it to a different model than MINIMAX_MODEL to avoid self-preference bias (empty = same model). */
     MINIMAX_JUDGE_MODEL: z.string().optional(),
+    /** Judge runs per quiz, median taken. Keep equal to the CI evaluation (3) so production and CI scores mean the same. */
+    JUDGE_SAMPLES: z.coerce.number().int().min(1).max(5).default(3),
     /** USD per 1M tokens, for the cost metric. */
     LLM_PRICE_IN_PER_M: z.coerce.number().min(0).default(0.3),
     LLM_PRICE_OUT_PER_M: z.coerce.number().min(0).default(1.2),

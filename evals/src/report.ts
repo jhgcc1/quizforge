@@ -30,8 +30,8 @@ export interface CompareReport {
   models: { generator: string; judge: string; embeddings: string; judgeSamples: number };
   weights: Record<string, number>;
   items: { id: string; numQuestions: number; references: number; origin: string }[];
-  variants: { id: string; structure: string; structureTitle: string; graph: string; prompt: string; promptTitle: string; langfuseRun: string | null }[];
-  langfuse: { dataset: string; experiment: string; project: string | null } | null;
+  variants: { id: string; structure: string; structureTitle: string; graph: string; prompt: string; promptTitle: string; langfuseRuns?: string[]; /** older files */ langfuseRun?: string | null }[];
+  langfuse: { dataset: string; experiment: string; datasetId?: string | null; runs?: Record<string, string>; project?: string | null } | null;
   cells: CellResult[];
 }
 
@@ -46,6 +46,7 @@ const sd = (xs: number[]): number => {
 };
 const f2 = (x: number | undefined): string => (x === undefined || !Number.isFinite(x) ? "–" : x.toFixed(2));
 const f3 = (x: number): string => (Number.isFinite(x) ? x.toFixed(3) : "–");
+const signed = (x: number): string => (Number.isFinite(x) ? `${x >= 0 ? "+" : ""}${x.toFixed(3)}` : "–");
 
 export function pearson(a: number[], b: number[]): number {
   const n = Math.min(a.length, b.length);
@@ -68,7 +69,21 @@ const ranks = (xs: number[]): number[] => {
   return r;
 };
 
-/** Run-to-run noise (`okOnly`: leave out pairs where one repetition failed outright): standard deviation of the composite across repetitions of the same variant+document (pooled). NaN with a single repetition. */
+const COLORS = ["#2f5bea", "#e0902a", "#14a37f", "#c64fa0", "#7a5af5", "#d9534f", "#5b6b8c"];
+const METRIC_LABEL: Record<CompositeMetric, string> = {
+  judge_overall: "LLM judge",
+  ref_recall: "Matches reference questions (recall)",
+  ref_precision: "Matches reference questions (precision)",
+  emb_relevance: "Stays on the document (embeddings)",
+  emb_diversity: "No near-duplicate questions (embeddings)",
+  lint_pass: "Lint checks",
+  coverage: "Covers different sections",
+};
+
+/** The runs of a variant, whether the file is old (one string) or new (a list). */
+const runsOf = (v: CompareReport["variants"][number]): string[] => v.langfuseRuns ?? (v.langfuseRun ? v.langfuseRun.split(", ") : []);
+
+/** Run-to-run noise (`okOnly`: leave out pairs where one repetition failed outright): standard deviation of the composite across repetitions of the same variant + document (pooled). NaN with a single repetition. */
 export function repNoise(r: CompareReport, okOnly = false): number {
   const vars: number[] = [];
   for (const v of r.variants) {
@@ -81,8 +96,6 @@ export function repNoise(r: CompareReport, okOnly = false): number {
   }
   return vars.length ? Math.sqrt(mean(vars)) : NaN;
 }
-
-const COLORS = ["#2f5bea", "#e0902a", "#14a37f", "#c64fa0", "#7a5af5", "#d9534f", "#5b6b8c"];
 
 /** Per-variant aggregates over the golden documents. */
 export function aggregate(r: CompareReport) {
@@ -118,6 +131,62 @@ function contributions(cs: CellResult[]): Record<CompositeMetric, number> {
   return out;
 }
 
+/* ------------------------------------------------------------------ SVG diagrams */
+
+const svgWrap = (w: number, h: number, body: string, title: string): string =>
+  `<figure class="chart"><svg viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(title)}"><defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrowhead"/></marker></defs>${body}</svg><figcaption>${esc(title)}</figcaption></figure>`;
+
+type Kind = "det" | "llm" | "io";
+const node = (x: number, y: number, w: number, label: string, kind: Kind, sub = ""): string =>
+  `<rect x="${x}" y="${y}" width="${w}" height="46" rx="9" class="n ${kind}"/><text x="${x + w / 2}" y="${y + (sub ? 20 : 28)}" text-anchor="middle" class="t">${esc(label)}</text>${sub ? `<text x="${x + w / 2}" y="${y + 36}" text-anchor="middle" class="s">${esc(sub)}</text>` : ""}`;
+const arrow = (x1: number, y1: number, x2: number, y2: number, dash = false): string => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" class="a${dash ? " dash" : ""}" marker-end="url(#ah)"/>`;
+
+/** The three graphs, drawn from the same definition as the code (variants.ts). */
+function structuresDiagram(): string {
+  let b = "";
+  const rows: { title: string; y: number; nodes: [string, Kind, string?][]; loop?: [number, number] }[] = [
+    { title: "one-shot", y: 30, nodes: [["Route", "det", "short / long doc"], ["Generate", "llm", "1 prompt"], ["Check", "det", "quotes, lint"], ["Finalize", "det", "drop bad ones"]] },
+    { title: "critique-loop  (production)", y: 140, nodes: [["Route", "det"], ["Generate", "llm"], ["Check", "det"], ["Critique", "llm", "AI reviewer"], ["Revise", "llm", "fix flagged"], ["Finalize", "det"]], loop: [4, 2] },
+    { title: "plan-then-write", y: 250, nodes: [["Route", "det"], ["Plan", "llm", "facts + quotes"], ["Write", "llm", "1 question / fact"], ["Check", "det"], ["Finalize", "det"]] },
+  ];
+  for (const r of rows) {
+    b += `<text x="10" y="${r.y - 8}" class="h">${esc(r.title)}</text>`;
+    const w = 150, gap = 40;
+    r.nodes.forEach(([label, kind, sub], i) => {
+      const x = 10 + i * (w + gap);
+      b += node(x, r.y, w, label, kind, sub ?? "");
+      if (i > 0) b += arrow(x - gap, r.y + 23, x, r.y + 23);
+    });
+    if (r.loop) {
+      const [from, to] = r.loop;
+      const x1 = 10 + from * (w + gap) + w / 2, x2 = 10 + to * (w + gap) + w / 2;
+      b += `<path d="M${x1} ${r.y + 46} C ${x1} ${r.y + 84}, ${x2} ${r.y + 84}, ${x2} ${r.y + 46}" class="a dash" fill="none" marker-end="url(#ah)"/><text x="${(x1 + x2) / 2}" y="${r.y + 82}" text-anchor="middle" class="s">repeat up to 2 times</text>`;
+    }
+  }
+  b += `<rect x="960" y="258" width="14" height="14" rx="3" class="n det"/><text x="980" y="270" class="s">fixed code (no AI)</text><rect x="960" y="280" width="14" height="14" rx="3" class="n llm"/><text x="980" y="292" class="s">AI call</text>`;
+  return svgWrap(1180, 330, b, "The three generation structures (LangGraph graphs)");
+}
+
+/** How one quiz becomes one number. */
+function scoringDiagram(r: CompareReport): string {
+  const w = r.weights;
+  const sum = (ks: string[]) => ks.reduce((a, k) => a + (w[k] ?? 0), 0);
+  let b = "";
+  const groups = [
+    { y: 10, title: "LLM judge", sub: `${r.models.judge}, median of ${r.models.judgeSamples || "N"} runs`, weight: sum(["judge_overall"]), kind: "llm" as Kind },
+    { y: 90, title: "Fixed checks", sub: "lint + section coverage", weight: sum(["lint_pass", "coverage"]), kind: "det" as Kind },
+    { y: 170, title: "Embedding similarity", sub: "reference match, on-topic, no duplicates", weight: sum(["ref_recall", "ref_precision", "emb_relevance", "emb_diversity"]), kind: "io" as Kind },
+  ];
+  for (const g of groups) {
+    b += `<rect x="10" y="${g.y}" width="330" height="62" rx="10" class="n ${g.kind}"/><text x="26" y="${g.y + 26}" class="t">${esc(g.title)}</text><text x="26" y="${g.y + 46}" class="s">${esc(g.sub)}</text><text x="324" y="${g.y + 36}" text-anchor="end" class="t">${(g.weight * 100).toFixed(0)}%</text>`;
+    b += arrow(342, g.y + 31, 420, 111);
+  }
+  b += `<rect x="424" y="80" width="230" height="62" rx="10" class="n sum"/><text x="539" y="108" text-anchor="middle" class="t">Weighted average</text><text x="539" y="128" text-anchor="middle" class="s">one number, 0 to 1</text>`;
+  b += arrow(656, 111, 730, 111);
+  b += `<rect x="734" y="60" width="300" height="102" rx="10" class="n gate"/><text x="750" y="86" class="t">Hard gates → score 0</text><text x="750" y="108" class="s">${esc(COMPOSITE_GATES.map((g) => g.replace(/_/g, " ")).join(" · "))}</text><text x="750" y="128" class="s">(a quiz with an invented quote, a followed</text><text x="750" y="146" class="s">injection or the wrong language is unusable)</text>`;
+  return svgWrap(1060, 250, b, "How one generated quiz becomes one score");
+}
+
 function rankingChart(rows: ReturnType<typeof aggregate>): string {
   const sorted = [...rows].sort((a, b) => b.composite - a.composite);
   const keys = Object.keys(COMPOSITE_WEIGHTS) as CompositeMetric[];
@@ -125,7 +194,7 @@ function rankingChart(rows: ReturnType<typeof aggregate>): string {
   const h = top + sorted.length * rowH + 70;
   const scale = (w - left - 70) / 1;
   let b = "";
-  for (const t of [0, 0.25, 0.5, 0.75, 1]) b += `<line x1="${left + t * scale}" y1="${top - 8}" x2="${left + t * scale}" y2="${h - 44}" class="grid"/><text x="${left + t * scale}" y="${top - 12}" text-anchor="middle" class="note">${t.toFixed(2)}</text>`;
+  for (const t of [0, 0.25, 0.5, 0.75, 1]) b += `<line x1="${left + t * scale}" y1="${top - 8}" x2="${left + t * scale}" y2="${h - 62}" class="grid"/><text x="${left + t * scale}" y="${top - 12}" text-anchor="middle" class="s">${t.toFixed(2)}</text>`;
   sorted.forEach((r, i) => {
     const y = top + i * rowH;
     const contrib = contributions(r.cells);
@@ -133,20 +202,45 @@ function rankingChart(rows: ReturnType<typeof aggregate>): string {
     let x = left;
     keys.forEach((k, j) => {
       const wdt = contrib[k] * scale;
-      b += `<rect x="${x}" y="${y + 3}" width="${Math.max(0, wdt)}" height="22" fill="${COLORS[j % COLORS.length]}"><title>${k}: ${contrib[k].toFixed(3)}</title></rect>`;
+      b += `<rect x="${x}" y="${y + 3}" width="${Math.max(0, wdt)}" height="22" fill="${COLORS[j % COLORS.length]}"><title>${esc(METRIC_LABEL[k])}: ${contrib[k].toFixed(3)}</title></rect>`;
       x += wdt;
     });
     b += `<text x="${x + 8}" y="${y + 19}" class="val">${f3(r.composite)}</text>`;
   });
   let lx = left;
-  let ly = h - 30;
+  let ly = h - 42;
   keys.forEach((k, j) => {
-    if (lx > w - 190) { lx = left; ly += 18; }
-    b += `<rect x="${lx}" y="${ly}" width="11" height="11" rx="2" fill="${COLORS[j % COLORS.length]}"/><text x="${lx + 16}" y="${ly + 10}" class="note">${k} (${COMPOSITE_WEIGHTS[k]})</text>`;
-    lx += 34 + (k.length + String(COMPOSITE_WEIGHTS[k]).length + 3) * 6.2;
+    const label = `${METRIC_LABEL[k]} (${COMPOSITE_WEIGHTS[k]})`;
+    if (lx + 20 + label.length * 6.1 > w) { lx = left; ly += 18; }
+    b += `<rect x="${lx}" y="${ly}" width="11" height="11" rx="2" fill="${COLORS[j % COLORS.length]}"/><text x="${lx + 16}" y="${ly + 10}" class="s">${esc(label)}</text>`;
+    lx += 34 + label.length * 6.1;
   });
-  return `<figure class="chart"><svg viewBox="0 0 ${w} ${h}" role="img" aria-label="Composite score per variant, stacked by metric contribution">${b}</svg><figcaption>Nota composta por variante (média dos documentos). Cada cor é a contribuição ponderada de uma métrica; barras mais compridas = melhor.</figcaption></figure>`;
+  return svgWrap(w, h, b, "Score per variant (average over documents). Each colour is one metric's weighted share; a longer bar is better.");
 }
+
+/** Two dots per variant (one per repetition): the distance between them is the run-to-run noise. */
+function noiseChart(r: CompareReport, rows: ReturnType<typeof aggregate>): string {
+  const reps = [...new Set(r.cells.map((c) => c.rep ?? 1))].sort();
+  if (reps.length < 2) return "";
+  const sorted = [...rows].sort((a, b) => b.composite - a.composite);
+  const left = 230, w = 980, rowH = 28, top = 34;
+  const h = top + sorted.length * rowH + 30;
+  const lo = 0.5, hi = 0.9;
+  const x = (v: number) => left + ((Math.min(hi, Math.max(lo, v)) - lo) / (hi - lo)) * (w - left - 30);
+  let b = "";
+  for (let t = lo; t <= hi + 1e-9; t += 0.1) b += `<line x1="${x(t)}" y1="${top - 10}" x2="${x(t)}" y2="${h - 24}" class="grid"/><text x="${x(t)}" y="${top - 14}" text-anchor="middle" class="s">${t.toFixed(1)}</text>`;
+  sorted.forEach((row, i) => {
+    const y = top + i * rowH + 10;
+    b += `<text x="${left - 10}" y="${y + 4}" text-anchor="end" class="lbl">${esc(row.v.id)}</text>`;
+    const perRep = reps.map((rep) => mean([...new Set(row.cells.filter((c) => (c.rep ?? 1) === rep).map((c) => c.item))].map((id) => mean(row.cells.filter((c) => (c.rep ?? 1) === rep && c.item === id).map((c) => c.composite)))));
+    b += `<line x1="${x(Math.min(...perRep))}" y1="${y}" x2="${x(Math.max(...perRep))}" y2="${y}" class="a"/>`;
+    perRep.forEach((v, k) => (b += `<circle cx="${x(v)}" cy="${y}" r="6" fill="${COLORS[k % COLORS.length]}"><title>repetition ${reps[k]}: ${v.toFixed(3)}</title></circle>`));
+  });
+  reps.forEach((rep, k) => (b += `<circle cx="${left + k * 150}" cy="${h - 8}" r="6" fill="${COLORS[k % COLORS.length]}"/><text x="${left + k * 150 + 12}" y="${h - 4}" class="s">repetition ${rep}</text>`));
+  return svgWrap(w, h, b, "The same variant, generated twice: the distance between the two dots is run-to-run noise.");
+}
+
+/* ------------------------------------------------------------------ tables */
 
 const heat = (x: number): string => `background:hsl(${Math.round(Math.min(1, Math.max(0, x)) * 120)} 55% var(--heatL))`;
 
@@ -154,170 +248,220 @@ function table(headers: string[], rows: string[][], cls = ""): string {
   return `<div class="tablewrap"><table class="${cls}"><thead><tr>${headers.map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => (c.startsWith("<td") ? c : `<td>${c}</td>`)).join("")}</tr>`).join("")}</tbody></table></div>`;
 }
 
+const link = (url: string, label: string): string => `<a href="${esc(url)}" target="_blank" rel="noopener">${label}</a>`;
+
 export function renderReport(r: CompareReport): string {
   const rows = aggregate(r);
   const ranked = [...rows].sort((a, b) => b.composite - a.composite);
   const best = ranked[0]!;
   const second = ranked[1];
   const itemIds = r.items.map((i) => i.id);
+  const reps = Math.max(...r.cells.map((c) => c.rep ?? 1));
+  const lf = r.langfuse;
+  const lfBase = lf ? LANGFUSE_PROJECT_URL : null;
+  const runUrl = (name: string): string | undefined => (lfBase && lf?.datasetId && lf.runs?.[name] ? `${lfBase}/datasets/${lf.datasetId}/runs/${lf.runs[name]}` : undefined);
+  const traceUrl = (id?: string | null): string | undefined => (lfBase && id ? `${lfBase}/traces/${id}` : undefined);
 
-  // paired difference best vs second across documents: is the lead distinguishable from noise?
+  // is the lead of the best variant distinguishable from noise?
   let verdict = "";
+  let verdictKind: "ok" | "warn" = "warn";
   if (second) {
     const itemMean = (x: typeof best, id: string) => mean(x.cells.filter((c) => c.item === id).map((c) => c.composite));
     const diffs = itemIds.map((id) => itemMean(best, id) - itemMean(second, id));
     const margin = mean(diffs);
     const se = sd(diffs) / Math.sqrt(diffs.length || 1);
     const noise = repNoise(r, true);
-    const reps = Math.max(...r.cells.map((c) => c.rep ?? 1));
-    const noiseTxt = Number.isFinite(noise) ? ` O ruído medido entre repetições de gerações bem-sucedidas (mesma variante, mesmo documento) é de ±${f3(noise)}.` : " Só há 1 repetição, então o ruído de execução não foi medido.";
+    const noiseTxt = Number.isFinite(noise) ? ` Measured run-to-run noise (same variant, same document, successful runs): ±${f3(noise)}.` : " Only one repetition: run-to-run noise was not measured.";
     const real = margin > 2 * se && diffs.length >= 3 && (!Number.isFinite(noise) || margin > noise);
+    verdictKind = real ? "ok" : "warn";
     verdict = real
-      ? `A vantagem sobre <strong>${esc(second.v.id)}</strong> (${f3(margin)}) é maior que 2× o erro-padrão entre documentos (${f3(se)}) e maior que o ruído entre repetições: provavelmente real.${noiseTxt} Com ${diffs.length} documentos e ${reps} repetição(ões), é uma indicação forte, não uma prova.`
-      : `A vantagem sobre <strong>${esc(second.v.id)}</strong> (${f3(margin)}) <strong>não se distingue do ruído</strong> (erro-padrão entre documentos ${f3(se)}).${noiseTxt} Trate os dois como empate técnico.`;
+      ? `Its lead over <strong>${esc(second.v.id)}</strong> (${f3(margin)}) is bigger than twice the error across documents (${f3(se)}) and bigger than the noise: <strong>probably real</strong>.${noiseTxt}`
+      : `Its lead over <strong>${esc(second.v.id)}</strong> (${f3(margin)}) is <strong>within the noise</strong> (error across documents ${f3(se)}). Treat the top two as a tie.${noiseTxt}`;
   }
 
-  const byGroup = (key: "structure" | "prompt") => {
+  const groupRows = (key: "structure" | "prompt") => {
     const groups = [...new Set(r.variants.map((v) => v[key]))];
     return groups.map((g) => {
       const rs = rows.filter((x) => x.v[key] === g);
-      return { g, title: key === "structure" ? rs[0]!.v.structureTitle : rs[0]!.v.promptTitle, composite: mean(rs.map((x) => x.composite)), judge: mean(rs.map((x) => x.metric("judge_overall"))), cost: mean(rs.map((x) => x.cost)), seconds: mean(rs.map((x) => x.seconds)), failed: rs.reduce((a, x) => a + x.failed, 0) };
+      return { g, title: key === "structure" ? rs[0]!.v.structureTitle : rs[0]!.v.promptTitle, composite: mean(rs.map((x) => x.composite)), cost: mean(rs.map((x) => x.cost)), seconds: mean(rs.map((x) => x.seconds)), failed: rs.reduce((a, x) => a + x.failed, 0), runs: rs.reduce((a, x) => a + x.cells.length, 0) };
     });
   };
-  const effectRows = (key: "structure" | "prompt") =>
-    byGroup(key).sort((a, b) => b.composite - a.composite).map((x) => [esc(x.title), `<strong>${f3(x.composite)}</strong>`, f3(x.judge), `$${x.cost.toFixed(4)}`, `${x.seconds.toFixed(0)}s`, String(x.failed)]);
-
   const metricMean = (cs: CellResult[], k: string) => mean(cs.filter((c) => c.ok).map((c) => c.scores[k]).filter((x): x is number => x !== undefined));
-  const effectTable = (key: "structure" | "prompt", baseId: string) => {
-    const groups = [...new Set(r.variants.map((v) => v[key]))];
+  const effectTable = (key: "structure" | "prompt", baseId: string, baseTitle: string) => {
     const cellsOf = (g: string) => r.cells.filter((c) => c[key] === g);
     const base = cellsOf(baseId);
-    const d = (g: string, k: string) => { const x = metricMean(cellsOf(g), k) - metricMean(base, k); return Number.isFinite(x) ? `${x >= 0 ? "+" : ""}${x.toFixed(3)}` : "–"; };
+    const delta = (g: string, k: string) => signed(metricMean(cellsOf(g), k) - metricMean(base, k));
     const comp = (cs: CellResult[]) => mean(cs.map((c) => c.composite));
-    return table(["vs. " + esc(baseId) + " (produção)", "Δ composta", "Δ juiz", "Δ ref_recall", "Δ diversidade (emb.)", "Δ relevância (emb.)", "Δ cobertura", "falhas"], groups.filter((g) => g !== baseId).map((g) => [`<code>${esc(g)}</code>`, `${comp(cellsOf(g)) - comp(base) >= 0 ? "+" : ""}${(comp(cellsOf(g)) - comp(base)).toFixed(3)}`, d(g, "judge_overall"), d(g, "ref_recall"), d(g, "emb_diversity"), d(g, "emb_relevance"), d(g, "coverage"), `${cellsOf(g).filter((c) => !c.ok).length}/${cellsOf(g).length}`]));
+    const groups = [...new Set(r.variants.map((v) => v[key]))].filter((g) => g !== baseId);
+    return table([`Change vs ${esc(baseTitle)}`, "Score", "LLM judge", "Reference match", "No duplicates", "Failed runs"], groups.map((g) => [`<code>${esc(g)}</code>`, signed(comp(cellsOf(g)) - comp(base)), delta(g, "judge_overall"), delta(g, "ref_recall"), delta(g, "emb_diversity"), `${cellsOf(g).filter((c) => !c.ok).length} of ${cellsOf(g).length}`]));
   };
 
   const ok = r.cells.filter((c) => c.ok);
   const pairs = ok.filter((c) => c.scores.judge_overall !== undefined && c.scores.ref_recall !== undefined);
   const corr = pearson(pairs.map((c) => c.scores.judge_overall!), pairs.map((c) => c.scores.ref_recall!));
+  const spearman = (a: number[], b: number[]) => 1 - (6 * a.reduce((s, v, i) => s + (v - b[i]!) ** 2, 0)) / (a.length * (a.length ** 2 - 1));
   const compRank = ranks(rows.map((x) => x.composite));
   const judgeRank = ranks(rows.map((x) => x.metric("judge_overall")));
-  const refRank = ranks(rows.map((x) => x.metric("ref_recall")));
-  const spearman = (a: number[], b: number[]) => 1 - (6 * a.reduce((s, v, i) => s + (v - b[i]!) ** 2, 0)) / (a.length * (a.length ** 2 - 1));
   const ctrl = mean(ok.map((c) => c.scores.ref_control).filter((x): x is number => x !== undefined));
   const prec = mean(ok.map((c) => c.scores.ref_precision).filter((x): x is number => x !== undefined));
+  const prod = mean(ok.map((c) => c.scores.quality_overall).filter((x): x is number => x !== undefined));
 
-  const lfBase = r.langfuse ? LANGFUSE_PROJECT_URL : null;
-  const metricCols: [string, string][] = [["judge_overall", "juiz LLM"], ["ref_recall", "ref. recall"], ["ref_precision", "ref. precision"], ["emb_relevance", "relevância (emb.)"], ["emb_diversity", "diversidade (emb.)"], ["lint_pass", "lint"], ["coverage", "cobertura"], ["question_diversity", "diversidade (TF-IDF)"], ["relevance", "relevância (TF-IDF)"]];
+  const metricCols: [string, string][] = [["quality_overall", "Production score"], ["judge_overall", "LLM judge"], ["ref_recall", "Reference recall"], ["ref_precision", "Reference precision"], ["emb_relevance", "On-topic"], ["emb_diversity", "No duplicates"], ["lint_pass", "Lint"], ["coverage", "Coverage"]];
 
   const css = `
-:root{--bg:#f6f7f9;--panel:#fff;--ink:#1c2230;--mute:#5d6678;--line:#dde1ea;--acc:#2f5bea;--ok:#177a4a;--warn:#a15c00;--heatL:78%}
-@media (prefers-color-scheme:dark){:root{--bg:#10141c;--panel:#171c27;--ink:#e6e9f0;--mute:#9aa4b8;--line:#2a3243;--acc:#7da2ff;--ok:#56d49a;--warn:#f0b35a;--heatL:30%}}
+:root{--bg:#f6f7f9;--panel:#fff;--ink:#1c2230;--mute:#5d6678;--line:#dde1ea;--acc:#2f5bea;--ok:#177a4a;--warn:#a15c00;--heatL:78%;--det:#dbe8ff;--llm:#efe0ff;--io:#d9f2e3;--sum:#fff0cc;--gate:#ffe2e0;--stroke:#6b7690}
+@media (prefers-color-scheme:dark){:root{--bg:#10141c;--panel:#171c27;--ink:#e6e9f0;--mute:#9aa4b8;--line:#2a3243;--acc:#7da2ff;--ok:#56d49a;--warn:#f0b35a;--heatL:30%;--det:#1f3358;--llm:#3a2a58;--io:#1c4030;--sum:#53441a;--gate:#58292a;--stroke:#8892a8}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 header,main{max-width:1240px;margin:0 auto;padding:0 24px}header{padding-top:28px}h1{margin:0 0 4px;font-size:27px}header p{margin:0;color:var(--mute)}
 section{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px 26px;margin:22px 0}h2{margin:0 0 8px;font-size:21px}h3{margin:22px 0 8px;font-size:16px}
 a{color:var(--acc)}code{background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:1px 5px;font-size:12.5px}
 .tablewrap{overflow-x:auto;margin:8px 0}table{border-collapse:collapse;width:100%;font-size:13.5px}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}th{background:var(--bg)}
-td.n{text-align:right;font-variant-numeric:tabular-nums}.callout{border-left:4px solid var(--acc);background:var(--bg);border-radius:8px;padding:10px 14px;margin:14px 0}.callout.warn{border-color:var(--warn)}.callout.ok{border-color:var(--ok)}
-figure{margin:14px 0}.chart svg{width:100%;height:auto;min-width:760px}.chart{overflow-x:auto}figcaption{color:var(--mute);font-size:12.5px;text-align:center}
-svg text{fill:var(--ink);font:12px system-ui,sans-serif}svg .note{fill:var(--mute);font-size:11px}svg .lbl{font-size:12.5px}svg .val{font-weight:600}svg .grid{stroke:var(--line)}
+.callout{border-left:4px solid var(--acc);background:var(--bg);border-radius:8px;padding:10px 14px;margin:14px 0}.callout.warn{border-color:var(--warn)}.callout.ok{border-color:var(--ok)}
+figure{margin:14px 0}.chart{overflow-x:auto}.chart svg{width:100%;height:auto;min-width:760px}figcaption{color:var(--mute);font-size:12.5px;text-align:center}
+svg text{fill:var(--ink);font:12px system-ui,sans-serif}svg .s{fill:var(--mute);font-size:11px}svg .t{font-weight:600;font-size:13px}svg .h{font-weight:700;font-size:14px}svg .lbl{font-size:12.5px}svg .val{font-weight:600}svg .grid{stroke:var(--line)}
+svg .n{stroke:var(--stroke);stroke-width:1}svg .det{fill:var(--det)}svg .llm{fill:var(--llm)}svg .io{fill:var(--io)}svg .sum{fill:var(--sum)}svg .gate{fill:var(--gate)}svg .a{stroke:var(--stroke);stroke-width:1.5;fill:none}svg .a.dash{stroke-dasharray:5 4}svg .arrowhead{fill:var(--stroke)}
 details{margin:6px 0;border:1px solid var(--line);border-radius:8px;padding:6px 12px}summary{cursor:pointer;font-weight:600}ol{margin:6px 0 6px 18px;padding:0}li{margin:4px 0}.opt{color:var(--mute);font-size:12.5px}.right{color:var(--ok);font-weight:600}
-.pill{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:0 8px;font-size:12px;color:var(--mute)}`;
+.pill{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:0 8px;font-size:12px;color:var(--mute)}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:12px 0}.card{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--bg)}.card b{display:block;font-size:22px;color:var(--acc)}`;
 
   const heatTable = table(
-    ["variante", ...itemIds.map(esc), "média"],
+    ["Variant", ...itemIds.map(esc), "Average"],
     rows.map((x) => [
       `<code>${esc(x.v.id)}</code>`,
       ...itemIds.map((id) => {
-        const c = x.cells.find((y) => y.item === id);
-        return `<td style="${heat(c?.composite ?? 0)}" class="n">${c ? (c.ok ? f2(c.composite) : "falhou") : "–"}</td>`;
+        const c = x.cells.filter((y) => y.item === id);
+        const v = mean(c.map((y) => y.composite));
+        return `<td style="${heat(v)}">${c.length ? (c.every((y) => !y.ok) ? "failed" : f2(v)) : "–"}</td>`;
       }),
       `<strong>${f3(x.composite)}</strong>`,
     ]),
   );
 
-  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>QuizForge Structure Comparison</title><style>${css}</style></head><body>
-<header><h1>Comparação de estruturas e prompts do gerador de quiz</h1>
-<p>${rows.length} variantes (${new Set(r.variants.map((v) => v.structure)).size} estruturas LangGraph × ${new Set(r.variants.map((v) => v.prompt)).size} prompts) · ${r.items.length} documentos · gerado em ${esc(r.generatedAt.slice(0, 16).replace("T", " "))} UTC${r.offline ? " · <strong>OFFLINE (LLM falso, só valida o harness)</strong>" : ""}</p></header>
+  const linksTable = lf
+    ? table(
+        ["Variant", ...Array.from({ length: reps }, (_, i) => `Run ${i + 1} in Langfuse`)],
+        r.variants.map((v) => [`<code>${esc(v.id)}</code>`, ...Array.from({ length: reps }, (_, i) => { const name = runsOf(v)[i]; const u = name ? runUrl(name) : undefined; return u ? link(u, "open run") : name ? `<span class="opt">${esc(name)}</span>` : "–"; })]),
+      )
+    : "";
+  const compareUrl = lfBase && lf?.datasetId && lf.runs ? `${lfBase}/datasets/${lf.datasetId}/compare?${Object.values(lf.runs).map((id) => `runs=${id}`).join("&")}` : undefined;
+  const totalCost = r.cells.reduce((a, c) => a + (c.costUsd ?? 0), 0);
+  const promptNote: Record<string, string> = {
+    baseline: "Nothing: this is the production prompt.",
+    conceptual: "Asks for questions about purpose, cause and trade-offs instead of trivia; wrong options come from neighbouring ideas in the same document.",
+    fewshot: "Shows one good example and asks for short, positive questions with options of similar length.",
+  };
+  const weightNote: Record<CompositeMetric, [string, string]> = {
+    judge_overall: ["Is the quiz faithful, clear and well built?", `${r.models.judge}, median of ${r.models.judgeSamples || "N"} runs (a different model than the generator, ${r.models.generator})`],
+    ref_recall: ["Does it ask about what the reference questions ask about?", "Cosine similarity of embeddings"],
+    ref_precision: ["Is each question close to some reference question?", "Cosine similarity of embeddings (low weight: a valid question can be outside a short reference set)"],
+    emb_relevance: ["Does each question stay on the document?", "Cosine similarity of embeddings"],
+    emb_diversity: ["Are any two questions the same question in different words?", "1 minus the highest cosine between two questions"],
+    lint_pass: ["Any 'all of the above', give-away option lengths, duplicates?", "Fixed code"],
+    coverage: ["Do the questions come from different sections?", "Fixed code (only for documents with 3+ sections; otherwise the weight is shared)"],
+  };
+
+  const detail = r.variants
+    .map((v) => {
+      const body = r.cells
+        .filter((c) => c.variant === v.id)
+        .map((c) => {
+          const t = traceUrl(c.traceId);
+          return `<h3>${esc(c.item)}${reps > 1 ? ` #${c.rep ?? 1}` : ""} <span class="pill">score ${f2(c.composite)}</span> <span class="pill">${esc((c.trail ?? []).join(" → "))}</span>${t ? ` ${link(t, "trace in Langfuse")}` : ""}</h3>${c.ok ? `<ol>${c.questions.map((q) => `<li>${esc(q.prompt)} <span class="pill">${esc(q.difficulty)}</span><div class="opt">${q.options.map((o, i) => (q.correct.includes(i) ? `<span class="right">✔ ${esc(o)}</span>` : esc(o))).join(" · ")}</div></li>`).join("")}</ol>` : `<p class="callout warn">Failed: ${esc(c.error ?? "")}</p>`}`;
+        })
+        .join("");
+      return `<details><summary>${esc(v.id)} <span class="pill">${f3(aggregate({ ...r, variants: [v] })[0]!.composite)}</span></summary>${body}</details>`;
+    })
+    .join("");
+
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>QuizForge Structure Comparison</title><style>${css}</style></head><body>
+<header><h1>Which quiz generator works best?</h1>
+<p>${rows.length} variants (${new Set(r.variants.map((v) => v.structure)).size} graph structures × ${new Set(r.variants.map((v) => v.prompt)).size} prompts) · ${r.items.length} documents · ${reps} repetition${reps > 1 ? "s" : ""} · ${r.cells.length} generations · ${esc(r.generatedAt.slice(0, 16).replace("T", " "))} UTC${r.offline ? " · <strong>OFFLINE: fake model, only checks the tooling</strong>" : ""}</p></header>
 <main>
-<section><h2>Resultado</h2>
-<div class="callout ${r.offline ? "warn" : "ok"}"><strong>Melhor média: <code>${esc(best.v.id)}</code> com nota composta ${f3(best.composite)}</strong> (${esc(best.v.structureTitle)} + prompt “${esc(best.v.promptTitle)}”).<br>${verdict}</div>
+
+<section><h2>Answer</h2>
+<div class="callout ${r.offline ? "warn" : verdictKind}"><strong>Best average: <code>${esc(best.v.id)}</code>, score ${f3(best.composite)}.</strong><br>${verdict}</div>
+<div class="cards">
+<div class="card">Generations<b>${r.cells.length}</b></div>
+<div class="card">Failed runs<b>${r.cells.filter((c) => !c.ok).length}</b></div>
+<div class="card">Run-to-run noise<b>${Number.isFinite(repNoise(r, true)) ? `±${f3(repNoise(r, true))}` : "n/a"}</b></div>
+<div class="card">Total LLM cost<b>$${totalCost.toFixed(2)}</b></div>
+</div>
 ${rankingChart(rows)}
-${table(["#", "variante", "estrutura (grafo)", "prompt", "composta", "± entre docs", "juiz", "falhas", "custo", "tempo/doc", "chamadas LLM"],
-    ranked.map((x, i) => [String(i + 1), `<code>${esc(x.v.id)}</code>`, `${esc(x.v.structureTitle)}<br><span class="opt">${esc(x.v.graph)}</span>`, esc(x.v.promptTitle), `<strong>${f3(x.composite)}</strong>`, f3(x.compositeSd), f3(x.metric("judge_overall")), `${x.failed}/${x.cells.length}${x.gated ? ` (+${x.gated} reprovado em portão)` : ""}`, `$${x.cost.toFixed(4)}`, `${x.seconds.toFixed(0)}s`, f2(x.calls)]))}
+${table(["#", "Variant", "Score", "Spread across docs", "LLM judge", "Failed", "Time / doc", "LLM calls"], ranked.map((x, i) => [String(i + 1), `<code>${esc(x.v.id)}</code>`, `<strong>${f3(x.composite)}</strong>`, `±${f3(x.compositeSd)}`, f3(x.metric("judge_overall")), `${x.failed} of ${x.cells.length}${x.gated ? ` (+${x.gated} gated)` : ""}`, `${x.seconds.toFixed(0)}s`, f2(x.calls)]))}
 </section>
 
-<section><h2>Como a nota é calculada</h2>
-<p>Cada quiz gerado recebe uma <strong>média ponderada</strong> de sinais de três tipos diferentes, para que nenhum instrumento ruidoso decida sozinho. Os <strong>portões</strong> (${COMPOSITE_GATES.map((g) => `<code>${g}</code>`).join(", ")}) zeram a nota: um quiz com citação inventada, que obedeceu à injeção de prompt ou no idioma errado é inutilizável, não “meio bom”.</p>
-${table(["métrica", "peso", "tipo", "o que mede"], [
-    ["<code>judge_overall</code>", String(COMPOSITE_WEIGHTS.judge_overall), "LLM-as-judge", `${esc(r.models.judge)}, mediana de ${r.models.judgeSamples || "n"} julgamentos, modelo diferente do gerador (${esc(r.models.generator)}): fidelidade, clareza, distratores, cobertura, dificuldade`],
-    ["<code>ref_recall</code>", String(COMPOSITE_WEIGHTS.ref_recall), "embeddings (cosseno)", "para cada pergunta de referência (escrita à mão), a pergunta gerada mais parecida: o quiz pergunta sobre o que se espera?"],
-    ["<code>ref_precision</code>", String(COMPOSITE_WEIGHTS.ref_precision), "embeddings (cosseno)", "para cada pergunta gerada, a referência mais parecida (peso baixo: uma pergunta válida pode estar fora de um conjunto de referência curto)"],
-    ["<code>emb_relevance</code>", String(COMPOSITE_WEIGHTS.emb_relevance), "embeddings (cosseno)", "cada pergunta vs. o trecho mais parecido do documento: o quiz fica no assunto?"],
-    ["<code>emb_diversity</code>", String(COMPOSITE_WEIGHTS.emb_diversity), "embeddings (cosseno)", "1 − maior cosseno entre duas perguntas: pega duplicatas parafraseadas que o TF-IDF não vê"],
-    ["<code>lint_pass</code>", String(COMPOSITE_WEIGHTS.lint_pass), "determinística", "sem “todas as anteriores”, sem opção que se entrega pelo tamanho, sem duplicatas"],
-    ["<code>coverage</code>", String(COMPOSITE_WEIGHTS.coverage), "determinística", "as perguntas vêm de seções diferentes (só em documentos com ≥3 seções; senão o peso é redistribuído)"],
-  ])}
-<p>Embeddings: <code>${esc(r.models.embeddings)}</code> — modelo local, multilíngue, gratuito (sem API). A chave do MiniMax não tem endpoint de embeddings. Limite do modelo: lê só os primeiros 128 tokens de cada texto.</p>
+<section><h2>What was compared</h2>
+<h3>3 graph structures</h3>
+${structuresDiagram()}
+<h3>3 prompts for the generator</h3>
+${table(["Prompt", "What it adds to the baseline"], [...new Map(r.variants.map((v) => [v.prompt, v])).values()].map((v) => [`<code>${esc(v.prompt)}</code>`, esc(promptNote[v.prompt] ?? v.promptTitle)]))}
+<h3>${r.items.length} documents, each with hand-written reference questions</h3>
+${table(["Document", "Questions asked", "Reference questions", "Source"], r.items.map((i) => [`<code>${esc(i.id)}</code>`, String(i.numQuestions), String(i.references), esc(i.origin)]))}
+<p class="opt">Reference questions are in <code>evals/references/&lt;document&gt;.json</code>, each with a verbatim quote (a test proves the quote exists). They were drafted by the AI: please review them.</p>
 </section>
 
-<section><h2>O que foi comparado</h2>
-<h3>Estruturas (topologias do LangGraph)</h3>
-${table(["id", "nome", "grafo"], [...new Map(r.variants.map((v) => [v.structure, v])).values()].map((v) => [`<code>${esc(v.structure)}</code>`, esc(v.structureTitle), `<code>${esc(v.graph)}</code>`]))}
-<h3>Prompts do gerador</h3>
-${table(["id", "descrição"], [...new Map(r.variants.map((v) => [v.prompt, v])).values()].map((v) => [`<code>${esc(v.prompt)}</code>`, esc(v.promptTitle)]))}
-<h3>Documentos (contexto) e perguntas de referência</h3>
-${table(["documento", "perguntas gerar", "perguntas de referência", "origem"], r.items.map((i) => [`<code>${esc(i.id)}</code>`, String(i.numQuestions), String(i.references), esc(i.origin)]))}
-<p>As perguntas de referência estão em <code>evals/references/&lt;documento&gt;.json</code>, cada uma com a citação literal do documento (um teste prova que a citação existe). <strong>Foram escritas pela IA como rascunho</strong>; vale uma revisão humana.</p>
+<section><h2>How the score works</h2>
+${scoringDiagram(r)}
+${table(["Metric", "Weight", "Question it answers", "How it is measured"], (Object.keys(COMPOSITE_WEIGHTS) as CompositeMetric[]).map((k) => [esc(METRIC_LABEL[k]), String(COMPOSITE_WEIGHTS[k]), esc(weightNote[k][0]), esc(weightNote[k][1])]))}
+<p>Embeddings are <code>${esc(r.models.embeddings)}</code>: free, local, multilingual, no API key (the MiniMax key has no embeddings endpoint). The model reads only the first 128 tokens of each text.</p>
 </section>
 
-<section><h2>Média por estrutura e por prompt</h2>
-<h3>Por estrutura (média dos 3 prompts)</h3>
-${table(["estrutura", "composta", "juiz", "custo", "tempo/doc", "falhas"], effectRows("structure"))}
-<h3>Por prompt (média das 3 estruturas)</h3>
-${table(["prompt", "composta", "juiz", "custo", "tempo/doc", "falhas"], effectRows("prompt"))}
-<h3>Onde está a diferença? (efeito de cada escolha, métrica a métrica)</h3>
-<p>Diferenças em relação à configuração de produção, separando o que o <strong>juiz LLM</strong> vê do que os <strong>embeddings</strong> veem. Quando só o juiz se mexe, o ganho pode ser a preferência do próprio juiz e não um quiz melhor.</p>
-${effectTable("structure", "critique-loop")}
-${effectTable("prompt", "baseline")}
+<section><h2>What made the difference?</h2>
+${table(["Structure", "Score", "Time / doc", "Cost / variant", "Failed runs"], groupRows("structure").sort((a, b) => b.composite - a.composite).map((x) => [esc(x.title), `<strong>${f3(x.composite)}</strong>`, `${x.seconds.toFixed(0)}s`, `$${x.cost.toFixed(3)}`, `${x.failed} of ${x.runs}`]))}
+${table(["Prompt", "Score", "Time / doc", "Cost / variant", "Failed runs"], groupRows("prompt").sort((a, b) => b.composite - a.composite).map((x) => [esc(x.title), `<strong>${f3(x.composite)}</strong>`, `${x.seconds.toFixed(0)}s`, `$${x.cost.toFixed(3)}`, `${x.failed} of ${x.runs}`]))}
+<h3>Change vs the production setup, metric by metric</h3>
+<p>Look at <em>which</em> instrument moves. If only the LLM judge moves, the gain may be the judge's taste, not a better quiz.</p>
+${effectTable("structure", "critique-loop", "critique-loop (production)")}
+${effectTable("prompt", "baseline", "baseline (production)")}
+${noiseChart(r, rows)}
 </section>
 
-<section><h2>Nota composta por documento</h2>${heatTable}</section>
-
-<section><h2>Métricas por variante</h2>
-${table(["variante", ...metricCols.map(([, l]) => l)], rows.map((x) => [`<code>${esc(x.v.id)}</code>`, ...metricCols.map(([k]) => f2(x.metric(k)))]))}
+<section><h2>Score per document</h2>${heatTable}
+<h3>All metrics per variant</h3>
+${table(["Variant", ...metricCols.map(([, l]) => l)], rows.map((x) => [`<code>${esc(x.v.id)}</code>`, ...metricCols.map(([k]) => f2(x.metric(k)))]))}
 </section>
 
-<section><h2>Os instrumentos concordam? (checagens de sanidade)</h2>
-${table(["checagem", "resultado", "como ler"], [
-    ["controle negativo: <code>ref_control</code> vs <code>ref_precision</code>", `${f2(ctrl)} vs ${f2(prec)}`, "ref_control = similaridade com as referências de OUTROS documentos. Precisa ser bem menor que ref_precision; senão a métrica não discrimina."],
-    ["ruído entre repetições, gerações bem-sucedidas (desvio da composta, mesma variante e documento)", f3(repNoise(r, true)), "mede quanto a nota oscila só por gerar e julgar de novo. Diferenças entre variantes menores que isso não significam nada."],
-    ["ruído entre repetições, incluindo falhas", f3(repNoise(r)), "maior que o anterior quando uma geração falha numa repetição e passa na outra: é um problema de confiabilidade, não de pontuação."],
-    ["correlação juiz LLM × ref_recall (por quiz)", f2(corr), "positiva = juiz e embeddings concordam sobre o que é um bom quiz; perto de 0 = medem coisas diferentes (por isso a média ponderada, não um só)."],
-    ["ranking por variante: composta × juiz (Spearman)", f2(spearman(compRank, judgeRank)), "1 = mesma ordem."],
-    ["ranking por variante: composta × ref_recall (Spearman)", f2(spearman(compRank, refRank)), "1 = mesma ordem."],
+<section><h2>Do the instruments agree?</h2>
+${table(["Check", "Result", "What it means"], [
+    ["Negative control: similarity to references of OTHER documents vs the own document", `${f2(ctrl)} vs ${f2(prec)}`, "The first number must be much lower. If not, the metric cannot tell a right quiz from a wrong one."],
+    ["Run-to-run noise (successful runs)", f3(repNoise(r, true)), "How much the score moves just by generating and judging again. Differences smaller than this mean nothing."],
+    ["Run-to-run noise (including failed runs)", f3(repNoise(r)), "Larger when one repetition fails and the other passes: that is a reliability problem, not scoring noise."],
+    ["LLM judge vs reference match (per quiz)", `r = ${f2(corr)}`, "Positive: both agree on what a good quiz is. Near 0: they measure different things, which is why we average them."],
+    ["Variant ranking: score vs judge only (Spearman)", f2(spearman(compRank, judgeRank)), "1 means the same order."],
+    ["Production score (quality_overall) on these runs", f2(prod), "The number the production worker logs for every real quiz, computed here by the same code. See below."],
   ])}
 </section>
 
-<section><h2>Onde encontrar</h2>
+<section><h2>Production and evals use the same method</h2>
+<p>Every quiz generated in production is scored by the same function (<code>packages/llm/src/quality.ts</code>) that scores the quizzes in these experiments. Same code, same metric names, same weights.</p>
+${table(["Metric (Langfuse score name)", "Every production quiz", "These experiments", "Notes"], [
+    ["grounded, lint_pass, difficulty_spread", "yes", "yes", "Fixed code"],
+    ["question_diversity, relevance, coverage", "yes", "yes", "Free TF-IDF similarity"],
+    ["language_match", "yes", "yes", "Quiz language vs document language"],
+    ["judge_overall, judge_faithfulness, judge_clarity, judge_distractors, judge_coverage, judge_difficulty_mix", "yes", "yes", "Same rubric, same model, median of 3 runs"],
+    ["quality_overall", "yes", "yes", "Weighted average; 0 if a gate fails; absent if the judge failed (never a different formula)"],
+    ["ref_recall, ref_precision, emb_relevance, emb_diversity, composite", "no", "yes", "Need reference questions or a local embedding model: evaluation only"],
+  ])}
+<p>Alerts (CloudWatch → e-mail): hourly average of <code>quality_overall</code> below 0.6, <strong>any single quiz below 0.4</strong>, the judge failing repeatedly, plus queue, error, cost and database alarms. Langfuse Hobby has no alerting of its own.</p>
+</section>
+
+<section><h2>Where to find it</h2>
+${lfBase ? `<ul><li>${link(`${lfBase}/datasets`, "Langfuse datasets")} → <code>${esc(lf!.dataset)}</code> → <em>Runs</em>. Tick several runs and press <em>Compare</em>.</li>${compareUrl ? `<li>${link(compareUrl, "Compare all runs of this report")}</li>` : ""}<li>${link(`${lfBase}/traces`, "Traces")}: filter by tag <code>compare</code>. Every generated quiz below links to its own trace.</li></ul>${linksTable}` : "<p>This execution did not log experiments to Langfuse.</p>"}
+<ul><li>This report: <code>docs/eval/structure-comparison.html</code> (raw numbers: <code>structure-comparison.json</code>).</li>
+<li>Run it again: <code>pnpm --filter @quizforge/evals compare</code>, or the manual GitHub workflow <em>Compare generation structures</em> (the report is an artifact of the run). Add <code>--merge=docs/eval/structure-comparison.json</code> to add one more repetition.</li></ul>
+</section>
+
+<section><h2>Limits</h2>
 <ul>
-<li><strong>Este relatório:</strong> <code>docs/eval/structure-comparison.html</code> (números brutos em <code>structure-comparison.json</code>) no repositório.</li>
-${lfBase ? `<li><strong>Langfuse — dataset:</strong> <a href="${lfBase}/datasets" target="_blank" rel="noopener">${esc(r.langfuse!.dataset)}</a> → aba <em>Runs</em>: selecione várias runs e use <em>Compare</em>. Cada variante é uma run chamada <code>&lt;estrutura&gt;/&lt;prompt&gt;@&lt;data&gt;</code>; cada item tem o trace completo, os scores de cada métrica e <code>composite</code>.</li><li><strong>Langfuse — traces:</strong> <a href="${lfBase}/traces" target="_blank" rel="noopener">traces</a>, filtre pela tag <code>compare</code>.</li>` : "<li>Esta execução não registrou experimentos no Langfuse.</li>"}
-<li><strong>Reexecutar:</strong> <code>pnpm --filter @quizforge/evals compare</code> (opções: <code>--variants=plan-then-write</code>, <code>--only=short-doc</code>, <code>--samples=3</code>, <code>--no-langfuse</code>, <code>--offline</code>).</li>
+<li>${reps} repetition${reps > 1 ? "s" : ""} per cell and ${r.items.length} documents: small differences are noise (see the answer at the top).</li>
+<li>The weights are an engineering choice. The chart shows each metric's share, so you can see what drives a rank.</li>
+<li>Reference questions were drafted by the AI, and a small embedding model gives only a rough sense of "same topic".</li>
+<li>The judge is another MiniMax model: it can share blind spots with the generator.</li>
+<li>Costs are estimated from token counts, not from the bill.</li>
 </ul></section>
 
-<section><h2>Limitações (leia antes de decidir)</h2>
-<ul>
-<li><strong>${Math.max(...r.cells.map((c) => c.rep ?? 1))} execução(ões) por célula</strong> (${r.cells.length} gerações no total). Geração e juiz de LLM variam entre execuções; a nota por documento oscila. Para decidir de verdade, repita e compare médias.</li>
-<li><strong>${r.items.length} documentos</strong> é pouco: diferenças pequenas entre variantes são ruído (veja a conclusão acima).</li>
-<li>Os <strong>pesos</strong> são uma decisão de engenharia, não uma verdade: ranking pode mudar com outros pesos. Por isso a decomposição por métrica está no gráfico e na tabela.</li>
-<li>Referências escritas pela IA e embedding pequeno (128 tokens): cosseno entre perguntas é um sinal grosseiro de “pergunta sobre o mesmo assunto”, não de qualidade.</li>
-<li>O juiz é outro modelo da MiniMax, ainda do mesmo fornecedor: pode compartilhar vieses com o gerador.</li>
-<li>Custos são estimados por tokens (preço cadastrado no Langfuse), não pela fatura.</li>
-</ul></section>
-
-<section><h2>Perguntas geradas (para revisar a olho)</h2>
-${r.variants.map((v) => `<details><summary>${esc(v.id)} <span class="pill">${f3(aggregate({ ...r, variants: [v] })[0]!.composite)}</span></summary>${r.cells.filter((c) => c.variant === v.id).map((c) => `<h3>${esc(c.item)}${(c.rep ?? 1) > 1 || r.cells.some((x) => (x.rep ?? 1) > 1) ? ` #${c.rep ?? 1}` : ""} <span class="pill">composta ${f2(c.composite)}</span> <span class="pill">${esc((c.trail ?? []).join(" → "))}</span></h3>${c.ok ? `<ol>${c.questions.map((q) => `<li>${esc(q.prompt)} <span class="pill">${esc(q.difficulty)}</span><div class="opt">${q.options.map((o, i) => (q.correct.includes(i) ? `<span class="right">✔ ${esc(o)}</span>` : esc(o))).join(" · ")}</div></li>`).join("")}</ol>` : `<p class="callout warn">Falhou: ${esc(c.error ?? "")}</p>`}`).join("")}</details>`).join("")}
+<section><h2>Generated questions</h2>
+<p class="opt">Open a variant to read what it produced. Each document links to its trace in Langfuse.</p>
+${detail}
 </section>
 </main></body></html>`;
 }
