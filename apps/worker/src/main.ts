@@ -21,6 +21,11 @@ const llm =
     ? createFakeLlm()
     : createMiniMaxClient({ apiKey: config.MINIMAX_API_KEY!, baseUrl: config.MINIMAX_BASE_URL, model: config.MINIMAX_MODEL });
 
+const judgeLlm =
+  config.LLM_MODE === "minimax" && config.MINIMAX_JUDGE_MODEL && config.MINIMAX_JUDGE_MODEL !== config.MINIMAX_MODEL
+    ? createMiniMaxClient({ apiKey: config.MINIMAX_API_KEY!, baseUrl: config.MINIMAX_BASE_URL, model: config.MINIMAX_JUDGE_MODEL })
+    : undefined;
+
 const consumer = new Consumer({
   transport: new SqsTransport(new SQSClient({}), config.SQS_QUEUE_URL),
   concurrency: config.WORKER_CONCURRENCY,
@@ -28,7 +33,7 @@ const consumer = new Consumer({
   log,
   handler: (msg, receive) =>
     processQuizJob(
-      { db, llm, checkpointer, log, allowedHosts: config.allowedHosts, pricing: { inPerM: config.LLM_PRICE_IN_PER_M, outPerM: config.LLM_PRICE_OUT_PER_M } },
+      { db, llm, ...(judgeLlm ? { judgeLlm } : {}), checkpointer, log, allowedHosts: config.allowedHosts, pricing: { inPerM: config.LLM_PRICE_IN_PER_M, outPerM: config.LLM_PRICE_OUT_PER_M } },
       { v: 1, ...msg },
       { count: receive.count, max: config.SQS_MAX_RECEIVE },
     ),

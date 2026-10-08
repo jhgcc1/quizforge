@@ -21,6 +21,8 @@ const Schema = z
     MINIMAX_API_KEY: z.string().optional(),
     MINIMAX_BASE_URL: z.string().url().default("https://api.minimax.io/v1"),
     MINIMAX_MODEL: z.string().default("MiniMax-M2.7"),
+    /** Judge model. Set it to a different model than MINIMAX_MODEL to avoid self-preference bias (empty = same model). */
+    MINIMAX_JUDGE_MODEL: z.string().optional(),
     /** USD per 1M tokens, for the cost metric. */
     LLM_PRICE_IN_PER_M: z.coerce.number().min(0).default(0.3),
     LLM_PRICE_OUT_PER_M: z.coerce.number().min(0).default(1.2),

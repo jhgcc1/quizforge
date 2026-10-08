@@ -25,6 +25,7 @@ export type Outcome =
 export interface ProcessDeps {
   db: Db;
   llm: LlmClient;
+  judgeLlm?: LlmClient | undefined;
   allowedHosts: string[];
   pricing: { inPerM: number; outPerM: number };
   log: Logger;
@@ -70,6 +71,7 @@ export async function processQuizJob(
     const gen = d.generateQuiz ?? defaultGenerate;
     const result = await gen({
       llm: d.llm,
+      ...(d.judgeLlm ? { judgeLlm: d.judgeLlm } : {}),
       input: {
         sourceText: src.text,
         numQuestions: quiz.numQuestions,

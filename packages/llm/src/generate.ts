@@ -12,6 +12,11 @@ import type { BaseCheckpointSaver } from "@langchain/langgraph";
 export interface GenerateQuizParams {
   llm: LlmClient;
   input: QuizGraphInput;
+  /**
+   * Model used as the LLM judge. Using a DIFFERENT model from the generator avoids self-preference bias (a model
+   * tends to rate its own style highly). Defaults to `llm` when not given.
+   */
+  judgeLlm?: LlmClient;
   /** Resume a previous allowance after an SQS redelivery. */
   budgetState?: BudgetState;
   judge?: boolean;
@@ -37,6 +42,7 @@ export interface GeneratedQuizResult {
   promptVersion: string;
   traceId?: string;
   model: string;
+  judgeModel: string;
 }
 
 /** Overall quality in 0..1. Grounding is a hard gate in the graph, so it is not part of this blend. */
@@ -65,7 +71,7 @@ export async function generateQuiz(p: GenerateQuizParams): Promise<GeneratedQuiz
       let judge: JudgeResult | undefined;
       if (p.judge !== false) {
         try {
-          judge = await judgeQuiz({ llm: p.llm, budget, context: p.input.sourceText.slice(0, 60_000), questions: run.questions });
+          judge = await judgeQuiz({ llm: p.judgeLlm ?? p.llm, budget, context: p.input.sourceText.slice(0, 60_000), questions: run.questions });
         } catch (err) {
           // The judge is advisory: a failure must not fail the quiz, but it is visible in traces/logs.
           console.warn(JSON.stringify({ level: "warn", msg: "judge failed", error: (err as Error).message }));
@@ -101,6 +107,7 @@ export async function generateQuiz(p: GenerateQuizParams): Promise<GeneratedQuiz
         promptVersion: PROMPT_VERSION,
         ...(ctx.traceId ? { traceId: ctx.traceId } : {}),
         model: p.llm.model,
+        judgeModel: (p.judgeLlm ?? p.llm).model,
       };
     },
   );
