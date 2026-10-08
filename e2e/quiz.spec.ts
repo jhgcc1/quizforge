@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import pg from "pg";
 import { SAMPLE_CATALOG } from "@quizforge/core";
 
 const login = async (page: Page, user: string) => {
@@ -108,4 +109,27 @@ test("the browser refuses a malformed request before it reaches the network", as
   await page.getByRole("button", { name: "Generate quiz" }).click();
   await expect(page.locator("p.alert")).toBeVisible();
   expect(created).toBe(0);
+});
+
+test("the quiz is ready first, and the scorer service judges it afterwards (own queue, own service)", async ({ page }) => {
+  await login(page, "frank");
+  await expect(page.getByRole("button", { name: "Generate quiz" })).toBeEnabled();
+  await page.getByRole("button", { name: "Generate quiz" }).click();
+  await expect(page).toHaveURL(/\/app\/quiz\/[0-9a-f-]{36}/);
+  const quizId = page.url().split("/").pop()!;
+  await expect(page.getByRole("heading", { name: /Ready: \d questions/ })).toBeVisible({ timeout: 60_000 });
+
+  // The user already has the quiz. The judge scores arrive on their own, written by a different process.
+  const db = new pg.Client({ connectionString: "postgres://quizforge:quizforge@localhost:5433/quizforge_e2e" });
+  await db.connect();
+  try {
+    await expect
+      .poll(async () => (await db.query("select evaluator from eval_scores where target_id = $1", [quizId])).rows.map((r) => r.evaluator as string), { timeout: 40_000, intervals: [500, 1000] })
+      .toEqual(expect.arrayContaining(["quality_overall", "judge_overall", "grounded", "lint_pass"])); // fast scores from the worker + judge scores from the scorer
+    const job = (await db.query("select scored_at, scoring_attempts from generation_jobs where quiz_id = $1", [quizId])).rows[0];
+    expect(job.scored_at).not.toBeNull();
+    expect(job.scoring_attempts).toBe(1);
+  } finally {
+    await db.end();
+  }
 });

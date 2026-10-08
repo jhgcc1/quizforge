@@ -90,6 +90,10 @@ export const generationJobs = pgTable("generation_jobs", {
   error: text("error"),
   startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
   finishedAt: timestamp("finished_at", { withTimezone: true }),
+  /** Set by the scorer service when the quiz has its final scores. Null = not scored yet (the sweeper re-queues it). */
+  scoredAt: timestamp("scored_at", { withTimezone: true }),
+  /** Times the scorer picked this job up: bounds the sweeper so a quiz that cannot be judged is not re-queued forever. */
+  scoringAttempts: integer("scoring_attempts").notNull().default(0),
 });
 
 export const questions = pgTable(

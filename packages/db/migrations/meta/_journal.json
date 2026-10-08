@@ -15,6 +15,13 @@
       "when": 1791401696209,
       "tag": "0001_smiling_trauma",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791502551371,
+      "tag": "0002_scoring_state",
+      "breakpoints": true
     }
   ]
 }

@@ -13,6 +13,18 @@ export const QuizJobMessageSchema = z.object({
 });
 export type QuizJobMessage = z.output<typeof QuizJobMessageSchema>;
 
+/**
+ * Scoring job: the quiz is already saved as `ready`; a separate scorer service judges it. Only ids travel: the questions,
+ * the source document and the Langfuse trace id are read from Postgres, so a redelivered or duplicated message is harmless.
+ */
+export const ScoreJobMessageSchema = z.object({
+  v: z.literal(1),
+  quizId: z.string().uuid(),
+  jobId: z.string().uuid(),
+  requestId: z.string().max(200).optional(),
+});
+export type ScoreJobMessage = z.output<typeof ScoreJobMessageSchema>;
+
 /** Stable fingerprint of a request body, so the same Idempotency-Key with a different body is detectable. */
 export function requestFingerprint(value: unknown): string {
   const canon = (v: unknown): unknown =>

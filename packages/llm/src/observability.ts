@@ -2,6 +2,7 @@ import { LangfuseClient } from "@langfuse/client";
 import { CallbackHandler } from "@langfuse/langchain";
 import { LangfuseSpanProcessor } from "@langfuse/otel";
 import { propagateAttributes, startActiveObservation } from "@langfuse/tracing";
+import type { LlmClient } from "./llm.js";
 import { NodeSDK } from "@opentelemetry/sdk-node";
 
 /**
@@ -89,4 +90,40 @@ export async function flushTracing(): Promise<void> {
   } catch (err) {
     console.warn("langfuse flush failed", (err as Error).message);
   }
+}
+
+
+const clip = (text: string, max = 2000): string => (text.length > max ? `${text.slice(0, max)}…[${text.length - max} more characters]` : text);
+
+/**
+ * Wraps an LLM client so that every call is a "generation" in Langfuse (model, tokens, cost, time). The judge runs
+ * outside the LangChain graph, so without this its calls were missing from every trace. Prompts are clipped: the
+ * judge reads a whole document and three samples would otherwise send hundreds of kilobytes per quiz.
+ * A no-op when tracing is off; tracing failures never break the call.
+ */
+export function withGenerationTracing(llm: LlmClient): LlmClient {
+  if (!tracingEnabled()) return llm;
+  initTracing();
+  return {
+    model: llm.model,
+    complete: (messages, opts) =>
+      startActiveObservation(
+        opts?.name ?? "llm-call",
+        async (gen) => {
+          try {
+            gen.update({ model: llm.model, input: messages.map((m) => ({ role: m.role, content: clip(m.content) })), ...(opts?.temperature !== undefined ? { modelParameters: { temperature: opts.temperature } } : {}) });
+          } catch {
+            /* tracing must not break the call */
+          }
+          const res = await llm.complete(messages, opts);
+          try {
+            gen.update({ output: clip(res.text), usageDetails: { input: res.usage.promptTokens, output: res.usage.completionTokens } });
+          } catch {
+            /* ignore */
+          }
+          return res;
+        },
+        { asType: "generation" },
+      ),
+  };
 }
