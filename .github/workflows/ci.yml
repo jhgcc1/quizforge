@@ -38,7 +38,7 @@ jobs:
         run: pnpm typecheck
       - name: Unit tests (scoring, schemas, SSRF guard, JSON extraction, graph, migration policy ...)
         run: pnpm test
-      - name: LLM-evaluation harness, offline (fake model, free): proves the golden-set runner itself still works
+      - name: "LLM-evaluation harness, offline (fake model, free; proves the golden-set runner itself still works)"
         run: pnpm --filter @quizforge/evals eval:offline
 
   # ---------------------------------------------------------------- integration (real Postgres)
