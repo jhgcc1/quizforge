@@ -466,7 +466,7 @@ ${table(["Metric (Langfuse score name)", "Every production quiz", "These experim
     ["quality_overall", "yes", "yes", "Weighted average; 0 if a gate fails; absent if the judge failed (never a different formula)"],
     ["ref_recall, ref_precision, emb_relevance, emb_diversity, composite", "no", "yes", "Need reference questions or a local embedding model: evaluation only"],
   ])}
-<p>Alerts (CloudWatch → e-mail): hourly average of <code>quality_overall</code> below 0.6, <strong>any single quiz below 0.4</strong>, the judge failing repeatedly, plus queue, error, cost and database alarms. Langfuse Hobby has no alerting of its own.</p>
+<p>Alerts (CloudWatch → e-mail): hourly average of <code>quality_overall</code> below 0.6, <strong>any single quiz below 0.4</strong>, the judge failing repeatedly, plus queue, error, cost and database alarms. Langfuse Hobby allows only 2 score alerts (Slack, webhook or GitHub Actions, no e-mail), so the main alarms live in CloudWatch, which sends e-mail.</p>
 </section>
 
 <section><h2>Where to find it</h2>
