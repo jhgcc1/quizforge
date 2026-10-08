@@ -100,7 +100,7 @@ Idempotent, observable, and self-healing:
 | bad deploy | ECS circuit breaker rolls back; migration runs first and is expand/contract |
 | the model cites text that is not in the document | revise ×2; if one question is still ungrounded it is **dropped** (quiz ships with 5+ questions); below 5 the job fails and the retry **regenerates from scratch** (a content failure never resumes a dead checkpoint) |
 
-Alarms (CloudWatch → SNS): DLQ, oldest job age, 5xx, CPU, RDS, **hourly average quality < 0.6**, **any single quiz < 0.4**, **judge failing** (quality not being measured), job failures, **daily LLM cost**; AWS Budget; CloudWatch dashboard `quizforge-prod`. Langfuse Hobby has no alerting, so alarms live in CloudWatch. **E-mail needs a subscriber:** set the repository variable once (`gh variable set ALARM_EMAIL --body you@example.com`), deploy, and confirm the AWS subscription e-mail; the address is deliberately not committed.
+Alarms (CloudWatch → SNS): DLQ, oldest job age, 5xx, CPU, RDS, **hourly average quality < 0.6**, **any single quiz < 0.4**, **judge failing** (quality not being measured), job failures, **daily LLM cost**; AWS Budget; CloudWatch dashboard `quizforge-prod`. Langfuse Hobby allows only 2 score alerts (Slack, webhook or GitHub Actions; no e-mail), so the main alarms live in CloudWatch. **E-mail needs a subscriber:** set the repository variable once (`gh variable set ALARM_EMAIL --body you@example.com`), deploy, and confirm the AWS subscription e-mail; the address is deliberately not committed.
 
 ## CI/CD
 
@@ -139,5 +139,5 @@ It is the Terraform variable `paused` (so the state stays truthful) plus the rep
 * No custom domain → CloudFront→ALB hop is HTTP inside AWS (ALB locked to CloudFront). A domain + ACM certificate removes it.
 * One NAT gateway and single-AZ RDS (toggle `db_multi_az`); documented trade-offs for cost.
 * `tsx` runs the TypeScript at runtime in the API/worker images; a compiled build would start faster.
-* Langfuse Cloud Hobby has no native alerting, so quality/cost alarms are emitted as CloudWatch metrics by the worker.
+* Langfuse Cloud Hobby allows only 2 score alerts and none by e-mail, so quality/cost alarms are emitted as CloudWatch metrics by the worker. (A Langfuse alert on `quality_overall` to Slack would be a cheap extra.)
 * TypeSafe AI "Jev" was evaluated and left out: it classifies/scores with calibrated probabilities but does not generate text, and has no free tier — a candidate cheap *judge* later.

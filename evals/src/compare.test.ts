@@ -119,8 +119,8 @@ describe("report", () => {
 
   it("ranks by composite, names the winner, links Langfuse and escapes model-written text", () => {
     const html = renderReport(report);
-    expect(html.indexOf("plan-then-write/baseline")).toBeLessThan(html.indexOf("one-shot/baseline")); // winner first in the ranking
-    expect(html).toContain("Best average: <code>plan-then-write/baseline</code>");
+    expect(html.indexOf("Plan then write")).toBeLessThan(html.indexOf("One-shot")); // winner first in the ranking // winner first in the ranking
+    expect(html).toContain("Best average: <code>plan-then-write/original</code>"); // the control prompt is shown as "original"
     expect(html).toContain("/datasets");
     expect(html).toContain("/datasets/ds1/runs/run1"); // straight to the run, not just the dataset
     expect(html).toContain("/datasets/ds1/compare?runs=run1&amp;runs=run2");
