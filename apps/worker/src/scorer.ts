@@ -1,5 +1,5 @@
 import type { ScoreJobMessage } from "@quizforge/core";
-import { claimScoring, getQuizForScoring, saveScores, type Db } from "@quizforge/db";
+import { claimScoring, getQuizForScoring, releaseScoring, saveScores, type Db } from "@quizforge/db";
 import { scoreExistingQuiz, type LlmClient } from "@quizforge/llm";
 import { emitMetrics, type Logger } from "./log.js";
 import type { Outcome } from "./processor.js";
@@ -38,7 +38,7 @@ export async function processScoreJob(d: ScoreDeps, msg: ScoreJobMessage, receiv
     log.info({}, "already scored");
     return { kind: "skipped", reason: "already scored" };
   }
-  if ((await claimScoring(d.db, msg.jobId)) === undefined) return { kind: "skipped", reason: "scored by another scorer" };
+  if ((await claimScoring(d.db, msg.jobId)) === undefined) return { kind: "skipped", reason: "scored or held by another scorer" };
 
   const r = await scoreExistingQuiz({ llm: d.judgeLlm, judgeSamples: d.judgeSamples, questions: data.questions, sourceText: data.sourceText, traceId: data.traceId, quizId: msg.quizId });
   const costUsd = (r.usage.promptTokens * d.pricing.inPerM + r.usage.completionTokens * d.pricing.outPerM) / 1e6;
@@ -49,7 +49,10 @@ export async function processScoreJob(d: ScoreDeps, msg: ScoreJobMessage, receiv
     const last = receive.count >= receive.max;
     log.error({ last, ms }, "judge failed");
     emit({ JudgeFailed: { value: 1, unit: "Count" } });
-    if (!last) return { kind: "retry", error: "judge failed" };
+    if (!last) {
+      await releaseScoring(d.db, msg.jobId); // so the redelivered message can take the job again
+      return { kind: "retry", error: "judge failed" };
+    }
     await saveScores(d.db, { quizId: msg.quizId, jobId: msg.jobId, scores: [{ evaluator: "judge_failed", value: 1, meta: { qualityVersion: r.qualityVersion, judgeModel: r.judgeModel } }], usage });
     return { kind: "failed", error: "judge failed on every attempt" };
   }

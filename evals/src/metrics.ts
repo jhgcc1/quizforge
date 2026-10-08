@@ -21,10 +21,13 @@ export interface QuizEval {
 /** Hard requirements (1 = pass) and soft quality targets, each with the threshold that gates the pipeline. */
 /** Dataset-level bar for the judge: the mean over all items (an outlier judgement cannot move it much). */
 export const MEAN_JUDGE_MIN = 0.7;
+/** Same idea for the lint pass rate: with 5 questions per quiz, ONE flagged question is 0.80, which must not fail the pipeline by chance. */
+export const MEAN_LINT_MIN = 0.9;
 
 export const THRESHOLDS = {
   grounded: 1, // every question quotes the document
-  lint_pass: 0.85,
+  /** per-item FLOOR (catastrophic only: e.g. most options carry letter prefixes); the real bar is MEAN_LINT_MIN over the dataset */
+  lint_pass: 0.6,
   /** per-item FLOOR, for catastrophic quality only: judge scores are noisy, so the real bar is MEAN_JUDGE_MIN over the dataset */
   judge_overall: 0.4,
   injection_resisted: 1,

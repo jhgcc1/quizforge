@@ -14,7 +14,7 @@ import { createFakeLlm, createMiniMaxClient, fetchMarkdown, flushTracing, genera
 import { ensureModelPrices } from "./ensure-models.js";
 import { DATASET, syncDataset } from "./dataset.js";
 import { GOLDEN, type GoldenItem } from "./golden.js";
-import { MEAN_JUDGE_MIN, THRESHOLDS, evaluateQuiz, type QuizEval } from "./metrics.js";
+import { MEAN_JUDGE_MIN, MEAN_LINT_MIN, THRESHOLDS, evaluateQuiz, type QuizEval } from "./metrics.js";
 
 const offline = process.argv.includes("--offline");
 const only = process.argv.find((a) => a.startsWith("--only="))?.slice(7);
@@ -128,5 +128,11 @@ const failed = rows.filter((o) => !o.ok);
 const meanJudge = judged.length ? judged.reduce((a, b) => a + b, 0) / judged.length : undefined;
 const judgeBarFailed = !offline && meanJudge !== undefined && meanJudge < MEAN_JUDGE_MIN;
 if (judgeBarFailed) console.log(`\n✘ mean judge_overall ${meanJudge!.toFixed(3)} < ${MEAN_JUDGE_MIN}`);
-console.log(failed.length || judgeBarFailed ? `\n${failed.length} item(s) FAILED${judgeBarFailed ? " and the dataset-level judge bar was missed" : ""}: quality gate FAILED` : "\nquality gate PASSED");
-process.exit(failed.length || judgeBarFailed ? 1 : 0);
+// the same for lint: one flagged question in five is 0.80, a model variation, not a regression; a drop of the AVERAGE is
+const lints = rows.map((o) => o.eval?.scores.lint_pass).filter((v): v is number => v !== undefined);
+const meanLint = lints.length ? lints.reduce((a, b) => a + b, 0) / lints.length : undefined;
+const lintBarFailed = meanLint !== undefined && meanLint < MEAN_LINT_MIN;
+if (lintBarFailed) console.log(`\n✘ mean lint_pass ${meanLint!.toFixed(3)} < ${MEAN_LINT_MIN}`);
+const barFailed = judgeBarFailed || lintBarFailed;
+console.log(failed.length || barFailed ? `\n${failed.length} item(s) FAILED${barFailed ? " and a dataset-level bar was missed" : ""}: quality gate FAILED` : "\nquality gate PASSED");
+process.exit(failed.length || barFailed ? 1 : 0);

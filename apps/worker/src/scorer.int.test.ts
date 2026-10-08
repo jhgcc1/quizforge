@@ -106,12 +106,40 @@ describe("processScoreJob (the scorer service)", () => {
     expect(rows.filter((r) => r.evaluator === "quality_overall")).toHaveLength(1);
   });
 
-  it("two scorers racing on the same message: only one scores", async () => {
+  it("two scorers racing on the same message: ONE judges (the lease), the other skips; the judge is paid for once and there is one score", async () => {
+    for (let round = 0; round < 5; round++) {
+      const q = await readyQuiz();
+      let judgeCalls = 0;
+      const base = createFakeLlm();
+      const counting: LlmClient = { model: "j", complete: async (m, o) => (judgeCalls++, new Promise((r) => setTimeout(r, 30)).then(() => base.complete(m, o))) };
+      const [a, b] = await Promise.all([processScoreJob(deps({ judgeLlm: counting }), { v: 1, ...q }, { count: 1, max: 3 }), processScoreJob(deps({ judgeLlm: counting }), { v: 1, ...q }, { count: 1, max: 3 })]);
+      expect([a.kind, b.kind].sort()).toEqual(["done", "skipped"]);
+      expect(judgeCalls).toBe(3); // 3 samples of ONE scorer, not 6
+      const rows = await ctx.db.select().from(schema.evalScores).where(eq(schema.evalScores.targetId, q.quizId));
+      expect(rows.filter((r) => r.evaluator === "quality_overall")).toHaveLength(1);
+      expect(rows.filter((r) => r.evaluator === "judge_overall")).toHaveLength(1);
+    }
+  });
+
+  it("even if two writers do reach the database (lease expired, a re-score), the stored scores never double", async () => {
+    const { saveScores } = await import("@quizforge/db");
     const q = await readyQuiz();
-    const [a, b] = await Promise.all([processScoreJob(deps(), { v: 1, ...q }, { count: 1, max: 3 }), processScoreJob(deps(), { v: 1, ...q }, { count: 1, max: 3 })]);
-    expect([a.kind, b.kind].sort()).toEqual(expect.arrayContaining(["done"]));
+    const write = (v: number) => saveScores(ctx.db, { quizId: q.quizId, jobId: q.jobId, scores: [{ evaluator: "quality_overall", value: v }, { evaluator: "judge_overall", value: v }] });
+    await Promise.all(Array.from({ length: 6 }, (_, i) => write(0.5 + i / 20)));
     const rows = await ctx.db.select().from(schema.evalScores).where(eq(schema.evalScores.targetId, q.quizId));
     expect(rows.filter((r) => r.evaluator === "quality_overall")).toHaveLength(1);
+    expect(rows.filter((r) => r.evaluator === "judge_overall")).toHaveLength(1);
+  });
+
+  it("a retry after a judge failure can take the job again (the lease is released); a crashed scorer's lease only blocks until it expires", async () => {
+    const { claimScoring, releaseScoring } = await import("@quizforge/db");
+    const q = await readyQuiz();
+    expect(await claimScoring(ctx.db, q.jobId)).toBe(1);
+    expect(await claimScoring(ctx.db, q.jobId)).toBeUndefined(); // held
+    await releaseScoring(ctx.db, q.jobId);
+    expect(await claimScoring(ctx.db, q.jobId)).toBe(2); // free again, attempts counted
+    await ctx.db.update(schema.generationJobs).set({ scoringClaimedUntil: new Date(Date.now() - 1000) }).where(eq(schema.generationJobs.id, q.jobId)); // the scorer died: its lease ran out
+    expect(await claimScoring(ctx.db, q.jobId)).toBe(3);
   });
 
   it("skips what cannot be scored: unknown quiz, or a job that is not a finished one", async () => {
@@ -126,6 +154,7 @@ describe("processScoreJob (the scorer service)", () => {
     const first = await processScoreJob(deps({ judgeLlm: broken }), { v: 1, ...q }, { count: 1, max: 3 });
     expect(first.kind).toBe("retry");
     expect((await job(q.jobId)).scoredAt).toBeNull();
+    expect((await job(q.jobId)).scoringClaimedUntil).toBeNull(); // released, so the redelivery can take it
     expect(await evals(q.quizId)).not.toHaveProperty("quality_overall"); // never a different formula
 
     const last = await processScoreJob(deps({ judgeLlm: broken }), { v: 1, ...q }, { count: 3, max: 3 });

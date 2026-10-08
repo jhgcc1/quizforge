@@ -94,6 +94,8 @@ export const generationJobs = pgTable("generation_jobs", {
   scoredAt: timestamp("scored_at", { withTimezone: true }),
   /** Times the scorer picked this job up: bounds the sweeper so a quiz that cannot be judged is not re-queued forever. */
   scoringAttempts: integer("scoring_attempts").notNull().default(0),
+  /** A scorer holds the job until this time. A second scorer (a duplicate message) cannot start while it is in the future. */
+  scoringClaimedUntil: timestamp("scoring_claimed_until", { withTimezone: true }),
 });
 
 export const questions = pgTable(

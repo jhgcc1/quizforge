@@ -1,0 +1,1 @@
+ALTER TABLE "generation_jobs" ADD COLUMN "scoring_claimed_until" timestamp with time zone;
