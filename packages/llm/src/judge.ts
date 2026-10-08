@@ -18,6 +18,9 @@ export type JudgeScores = z.output<typeof JudgeSchema>;
 
 export interface JudgeResult {
   scores: JudgeScores;
+  /** Highest minus lowest `overall` among the samples: a direct measure of how noisy this judgement was. */
+  spread: number;
+  samples: number;
   /** Weighted mean normalized to 0..1 (faithfulness counts double: a wrong quiz is the worst failure). */
   overall: number;
   usage: Usage;
@@ -39,11 +42,22 @@ export function overallFromJudge(s: JudgeScores): number {
  * LLM-as-judge for generation quality. It uses a different system prompt and temperature 0 from the
  * generator to limit self-preference bias; correctness of SCORING never goes through an LLM.
  */
+const median = (xs: number[]) => {
+  const s = [...xs].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m]! : (s[m - 1]! + s[m]!) / 2;
+};
+
+/**
+ * LLM judges are noisy: the same quiz was scored 0.86, 0.86, 0.93, 0.86 and 0.45 by one model in five calls.
+ * With `samples > 1` the judge runs several times and every criterion takes the MEDIAN, which a single outlier cannot move.
+ */
 export async function judgeQuiz(p: {
   llm: LlmClient;
   budget: JobBudget;
   context: string;
   questions: GeneratedQuestion[];
+  samples?: number;
 }): Promise<JudgeResult> {
   const quiz = p.questions.map((q, i) => ({
     n: i + 1,
@@ -53,14 +67,20 @@ export async function judgeQuiz(p: {
     explanation: q.explanation,
     difficulty: q.difficulty,
   }));
-  const r = await generateStructured({
-    llm: p.llm,
-    budget: p.budget,
-    schema: JudgeSchema,
-    system: JUDGE_SYSTEM,
-    user: `<document>\n${neutralize(p.context)}\n</document>\n\nQuiz to evaluate (JSON):\n${JSON.stringify(quiz, null, 1)}`,
-    maxRepairs: 1,
-    options: { name: "judge", temperature: 0 },
-  });
-  return { scores: r.value, overall: overallFromJudge(r.value), usage: r.usage };
+  const user = `<document>\n${neutralize(p.context)}\n</document>\n\nQuiz to evaluate (JSON):\n${JSON.stringify(quiz, null, 1)}`;
+  const n = Math.max(1, p.samples ?? 1);
+  const runs: JudgeScores[] = [];
+  const usage = { promptTokens: 0, completionTokens: 0, cachedTokens: 0 };
+  for (let i = 0; i < n; i++) {
+    const r = await generateStructured({ llm: p.llm, budget: p.budget, schema: JudgeSchema, system: JUDGE_SYSTEM, user, maxRepairs: 1, options: { name: n > 1 ? `judge:${i + 1}/${n}` : "judge", temperature: 0 } });
+    runs.push(r.value);
+    usage.promptTokens += r.usage.promptTokens;
+    usage.completionTokens += r.usage.completionTokens;
+    usage.cachedTokens += r.usage.cachedTokens;
+  }
+  const pick = (k: "faithfulness" | "clarity" | "distractors" | "coverage" | "difficulty_mix") => median(runs.map((r) => r[k]));
+  const overalls = runs.map(overallFromJudge);
+  const nearest = runs[overalls.indexOf(overalls.slice().sort((a, b) => Math.abs(a - median(overalls)) - Math.abs(b - median(overalls)))[0]!)]!;
+  const scores: JudgeScores = { faithfulness: pick("faithfulness"), clarity: pick("clarity"), distractors: pick("distractors"), coverage: pick("coverage"), difficulty_mix: pick("difficulty_mix"), reasoning: nearest.reasoning };
+  return { scores, overall: overallFromJudge(scores), spread: Math.max(...overalls) - Math.min(...overalls), samples: n, usage };
 }

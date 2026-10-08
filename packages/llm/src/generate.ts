@@ -17,6 +17,8 @@ export interface GenerateQuizParams {
    * tends to rate its own style highly). Defaults to `llm` when not given.
    */
   judgeLlm?: LlmClient;
+  /** Judge runs per quiz (median). 1 in production, 3 in the CI evaluation where stability matters more than cost. */
+  judgeSamples?: number;
   /** Resume a previous allowance after an SQS redelivery. */
   budgetState?: BudgetState;
   judge?: boolean;
@@ -71,7 +73,7 @@ export async function generateQuiz(p: GenerateQuizParams): Promise<GeneratedQuiz
       let judge: JudgeResult | undefined;
       if (p.judge !== false) {
         try {
-          judge = await judgeQuiz({ llm: p.judgeLlm ?? p.llm, budget, context: p.input.sourceText.slice(0, 60_000), questions: run.questions });
+          judge = await judgeQuiz({ llm: p.judgeLlm ?? p.llm, ...(p.judgeSamples ? { samples: p.judgeSamples } : {}), budget, context: p.input.sourceText.slice(0, 60_000), questions: run.questions });
         } catch (err) {
           // The judge is advisory: a failure must not fail the quiz, but it is visible in traces/logs.
           console.warn(JSON.stringify({ level: "warn", msg: "judge failed", error: (err as Error).message }));
