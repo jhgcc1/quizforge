@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 import { LangfuseClient } from "@langfuse/client";
 import { createFakeLlm, createMiniMaxClient, flushTracing, generateQuiz, initTracing, tracingEnabled, type LlmClient } from "@quizforge/llm";
 import { composite, COMPOSITE_WEIGHTS } from "./composite.js";
+import { fetchLangfuseRuns } from "./langfuse-links.js";
 import { DATASET, syncDataset } from "./dataset.js";
 import { cachedEmbedder, EMBEDDING_MODEL, localEmbedder } from "./embeddings.js";
 import { ensureModelPrices } from "./ensure-models.js";
@@ -77,7 +78,8 @@ async function runCell(v: Variant, g: GoldenItem): Promise<CellResult> {
     });
     const ev = await evaluateQuiz({ questions: r.questions, sourceText, judgeOverall: r.judge?.overall, expect: g.expect });
     const sem = await semanticScores({ questions: r.questions, references: refs.get(g.id)!, sourceText, embedder, otherReferences: othersOf(g.id) });
-    const scores = { ...ev.scores, ...sem };
+    // `quality_overall` is the production formula (quality.ts): the same number the worker logs for every real quiz
+    const scores = { ...ev.scores, ...sem, ...(r.quality !== undefined ? { quality_overall: r.quality } : {}) };
     const c = composite(scores);
     const cost = (r.usage.promptTokens * 0.3 + r.usage.completionTokens * 1.2) / 1e6;
     return {
@@ -149,14 +151,17 @@ for (const v of variants) {
 }
 await flushTracing();
 
+const runNameList = [...new Set([...(previous?.variants.flatMap((v) => v.langfuseRuns ?? []) ?? []), ...[...runNames.values()].flatMap((x) => x.split(", "))])];
+const links = lf ? await fetchLangfuseRuns(runNameList, { since: new Date(Date.now() - 6 * 3600_000).toISOString() }) : undefined;
+
 const report: CompareReport = {
   generatedAt: new Date().toISOString(),
   offline,
   models: { generator: llm.model, judge: judgeLlm?.model ?? "(same, offline)", embeddings: offline ? "TF-IDF (offline)" : EMBEDDING_MODEL, judgeSamples: offline ? 0 : samples },
   weights: { ...COMPOSITE_WEIGHTS },
   items: items.map((g) => ({ id: g.id, numQuestions: g.numQuestions, references: refs.get(g.id)!.length, origin: g.origin ?? ("file" in g.source ? g.source.file : g.source.url) })),
-  variants: variants.map((v) => ({ id: v.id, structure: v.structure.id, structureTitle: v.structure.title, graph: v.structure.graph, prompt: v.prompt.id, promptTitle: v.prompt.title, langfuseRun: [previous?.variants.find((p) => p.id === v.id)?.langfuseRun, runNames.get(v.id)].filter(Boolean).join(", ") || null })),
-  langfuse: lf ? { dataset: DATASET, experiment: experimentName, project: null } : null,
+  variants: variants.map((v) => ({ id: v.id, structure: v.structure.id, structureTitle: v.structure.title, graph: v.structure.graph, prompt: v.prompt.id, promptTitle: v.prompt.title, langfuseRuns: [...(previous?.variants.find((p) => p.id === v.id)?.langfuseRuns ?? []), ...(runNames.get(v.id)?.split(", ") ?? [])] })),
+  langfuse: lf ? { dataset: DATASET, experiment: experimentName, datasetId: links?.datasetId ?? previous?.langfuse?.datasetId ?? null, runs: { ...(previous?.langfuse?.runs ?? {}), ...(links?.runs ?? {}) } } : (previous?.langfuse ?? null),
   cells: [...(previous?.cells.map((x) => ({ ...x, rep: x.rep ?? 1 })) ?? []), ...cells],
 };
 mkdirSync(outDir, { recursive: true });

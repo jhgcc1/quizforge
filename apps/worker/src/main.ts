@@ -33,7 +33,7 @@ const consumer = new Consumer({
   log,
   handler: (msg, receive) =>
     processQuizJob(
-      { db, llm, ...(judgeLlm ? { judgeLlm } : {}), checkpointer, log, allowedHosts: config.allowedHosts, pricing: { inPerM: config.LLM_PRICE_IN_PER_M, outPerM: config.LLM_PRICE_OUT_PER_M } },
+      { db, llm, ...(judgeLlm ? { judgeLlm } : {}), judgeSamples: config.JUDGE_SAMPLES, checkpointer, log, allowedHosts: config.allowedHosts, pricing: { inPerM: config.LLM_PRICE_IN_PER_M, outPerM: config.LLM_PRICE_OUT_PER_M } },
       { v: 1, ...msg },
       { count: receive.count, max: config.SQS_MAX_RECEIVE },
     ),

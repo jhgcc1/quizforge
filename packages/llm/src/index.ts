@@ -14,3 +14,5 @@ export * from "./judge.js";
 export * from "./observability.js";
 export * from "./generate.js";
 export * from "./fake.js";
+export * from "./similarity.js";
+export * from "./quality.js";

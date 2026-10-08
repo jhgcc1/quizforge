@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { GeneratedQuestionSchema } from "@quizforge/core";
 import { lintQuestion, quizMetrics } from "./lint.js";
-import { blendQuality } from "./generate.js";
 import { JudgeSchema, overallFromJudge } from "./judge.js";
 
 const mk = (over: Record<string, unknown> = {}) =>
@@ -46,11 +45,6 @@ describe("quality scoring", () => {
     const unfaithful = { ...best, faithfulness: 1 };
     const unclear = { ...best, clarity: 1 };
     expect(overallFromJudge(unfaithful)).toBeLessThan(overallFromJudge(unclear));
-  });
-  it("blend stays within [0,1]", () => {
-    const m = { lintPass: 1, difficultySpread: 1, positionSpread: 1, singleShare: 1 };
-    expect(blendQuality(m)).toBeCloseTo(1);
-    expect(blendQuality({ ...m, lintPass: 0, difficultySpread: 0, positionSpread: 0 })).toBe(0);
   });
 });
 

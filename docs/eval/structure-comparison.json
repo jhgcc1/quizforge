@@ -56,7 +56,11 @@
    "graph": "route → generate → check → finalize",
    "prompt": "baseline",
    "promptTitle": "Baseline (production)",
-   "langfuseRun": "one-shot/baseline@2026-10-08T11:17, one-shot/baseline@2026-10-08T11:36#r2"
+   "langfuseRun": "one-shot/baseline@2026-10-08T11:17, one-shot/baseline@2026-10-08T11:36#r2",
+   "langfuseRuns": [
+    "one-shot/baseline@2026-10-08T11:17",
+    "one-shot/baseline@2026-10-08T11:36#r2"
+   ]
   },
   {
    "id": "one-shot/conceptual",
@@ -65,7 +69,11 @@
    "graph": "route → generate → check → finalize",
    "prompt": "conceptual",
    "promptTitle": "Conceptual: understanding over trivia",
-   "langfuseRun": "one-shot/conceptual@2026-10-08T11:17, one-shot/conceptual@2026-10-08T11:36#r2"
+   "langfuseRun": "one-shot/conceptual@2026-10-08T11:17, one-shot/conceptual@2026-10-08T11:36#r2",
+   "langfuseRuns": [
+    "one-shot/conceptual@2026-10-08T11:17",
+    "one-shot/conceptual@2026-10-08T11:36#r2"
+   ]
   },
   {
    "id": "one-shot/fewshot",
@@ -74,7 +82,11 @@
    "graph": "route → generate → check → finalize",
    "prompt": "fewshot",
    "promptTitle": "Few-shot: short, clean questions",
-   "langfuseRun": "one-shot/fewshot@2026-10-08T11:17, one-shot/fewshot@2026-10-08T11:36#r2"
+   "langfuseRun": "one-shot/fewshot@2026-10-08T11:17, one-shot/fewshot@2026-10-08T11:36#r2",
+   "langfuseRuns": [
+    "one-shot/fewshot@2026-10-08T11:17",
+    "one-shot/fewshot@2026-10-08T11:36#r2"
+   ]
   },
   {
    "id": "critique-loop/baseline",
@@ -83,7 +95,11 @@
    "graph": "route → generate → check → critique → revise ⟲ check → finalize",
    "prompt": "baseline",
    "promptTitle": "Baseline (production)",
-   "langfuseRun": "critique-loop/baseline@2026-10-08T11:17, critique-loop/baseline@2026-10-08T11:36#r2"
+   "langfuseRun": "critique-loop/baseline@2026-10-08T11:17, critique-loop/baseline@2026-10-08T11:36#r2",
+   "langfuseRuns": [
+    "critique-loop/baseline@2026-10-08T11:17",
+    "critique-loop/baseline@2026-10-08T11:36#r2"
+   ]
   },
   {
    "id": "critique-loop/conceptual",
@@ -92,7 +108,11 @@
    "graph": "route → generate → check → critique → revise ⟲ check → finalize",
    "prompt": "conceptual",
    "promptTitle": "Conceptual: understanding over trivia",
-   "langfuseRun": "critique-loop/conceptual@2026-10-08T11:17, critique-loop/conceptual@2026-10-08T11:36#r2"
+   "langfuseRun": "critique-loop/conceptual@2026-10-08T11:17, critique-loop/conceptual@2026-10-08T11:36#r2",
+   "langfuseRuns": [
+    "critique-loop/conceptual@2026-10-08T11:17",
+    "critique-loop/conceptual@2026-10-08T11:36#r2"
+   ]
   },
   {
    "id": "critique-loop/fewshot",
@@ -101,7 +121,11 @@
    "graph": "route → generate → check → critique → revise ⟲ check → finalize",
    "prompt": "fewshot",
    "promptTitle": "Few-shot: short, clean questions",
-   "langfuseRun": "critique-loop/fewshot@2026-10-08T11:17, critique-loop/fewshot@2026-10-08T11:36#r2"
+   "langfuseRun": "critique-loop/fewshot@2026-10-08T11:17, critique-loop/fewshot@2026-10-08T11:36#r2",
+   "langfuseRuns": [
+    "critique-loop/fewshot@2026-10-08T11:17",
+    "critique-loop/fewshot@2026-10-08T11:36#r2"
+   ]
   },
   {
    "id": "plan-then-write/baseline",
@@ -110,7 +134,11 @@
    "graph": "route → plan(facts + quotes) → write(1 question/fact) → check → finalize",
    "prompt": "baseline",
    "promptTitle": "Baseline (production)",
-   "langfuseRun": "plan-then-write/baseline@2026-10-08T11:17, plan-then-write/baseline@2026-10-08T11:36#r2"
+   "langfuseRun": "plan-then-write/baseline@2026-10-08T11:17, plan-then-write/baseline@2026-10-08T11:36#r2",
+   "langfuseRuns": [
+    "plan-then-write/baseline@2026-10-08T11:17",
+    "plan-then-write/baseline@2026-10-08T11:36#r2"
+   ]
   },
   {
    "id": "plan-then-write/conceptual",
@@ -119,7 +147,11 @@
    "graph": "route → plan(facts + quotes) → write(1 question/fact) → check → finalize",
    "prompt": "conceptual",
    "promptTitle": "Conceptual: understanding over trivia",
-   "langfuseRun": "plan-then-write/conceptual@2026-10-08T11:17, plan-then-write/conceptual@2026-10-08T11:36#r2"
+   "langfuseRun": "plan-then-write/conceptual@2026-10-08T11:17, plan-then-write/conceptual@2026-10-08T11:36#r2",
+   "langfuseRuns": [
+    "plan-then-write/conceptual@2026-10-08T11:17",
+    "plan-then-write/conceptual@2026-10-08T11:36#r2"
+   ]
   },
   {
    "id": "plan-then-write/fewshot",
@@ -128,13 +160,38 @@
    "graph": "route → plan(facts + quotes) → write(1 question/fact) → check → finalize",
    "prompt": "fewshot",
    "promptTitle": "Few-shot: short, clean questions",
-   "langfuseRun": "plan-then-write/fewshot@2026-10-08T11:17, plan-then-write/fewshot@2026-10-08T11:36#r2"
+   "langfuseRun": "plan-then-write/fewshot@2026-10-08T11:17, plan-then-write/fewshot@2026-10-08T11:36#r2",
+   "langfuseRuns": [
+    "plan-then-write/fewshot@2026-10-08T11:17",
+    "plan-then-write/fewshot@2026-10-08T11:36#r2"
+   ]
   }
  ],
  "langfuse": {
   "dataset": "quizforge-golden",
   "experiment": "quizforge-structure-comparison",
-  "project": null
+  "project": null,
+  "datasetId": "cmuyvqxnp03a7ad0ekv91qouv",
+  "runs": {
+   "plan-then-write/fewshot@2026-10-08T11:36#r2": "af19420f-0524-4213-baa5-a7d9eada43f8",
+   "plan-then-write/conceptual@2026-10-08T11:36#r2": "64fa6a0e-e3ed-4c5e-922c-d366ff55c352",
+   "plan-then-write/baseline@2026-10-08T11:36#r2": "7403dabf-690e-4ad0-add2-078f1495f2fd",
+   "critique-loop/fewshot@2026-10-08T11:36#r2": "902c53d6-7ba9-469d-8681-2f2cedbf736f",
+   "critique-loop/conceptual@2026-10-08T11:36#r2": "a519839e-c78d-451c-91b5-3ffae5d27bfe",
+   "critique-loop/baseline@2026-10-08T11:36#r2": "e1aa4d7b-57b9-4544-99e2-2a8c7e79a36e",
+   "one-shot/fewshot@2026-10-08T11:36#r2": "6a930c89-d284-45c7-8fbf-6eab1f8af258",
+   "one-shot/conceptual@2026-10-08T11:36#r2": "53179a14-c6f9-4514-a462-b5c185f8967b",
+   "one-shot/baseline@2026-10-08T11:36#r2": "242fa890-cdd8-4f89-9e58-f466c16e356f",
+   "plan-then-write/fewshot@2026-10-08T11:17": "e8cd9396-fbf8-4988-a8c9-1523c01502ea",
+   "plan-then-write/conceptual@2026-10-08T11:17": "01ce46c6-aa00-409a-8301-c011409f77bd",
+   "plan-then-write/baseline@2026-10-08T11:17": "9e7358fc-6983-4dbb-85f8-449431299309",
+   "critique-loop/fewshot@2026-10-08T11:17": "24a34d4c-ae2d-4502-a5ca-02655d76cb67",
+   "critique-loop/conceptual@2026-10-08T11:17": "d13786bb-8c80-43d1-b290-c1643400888a",
+   "critique-loop/baseline@2026-10-08T11:17": "46313c08-11e8-4ef4-b1c8-3f5c6625820b",
+   "one-shot/fewshot@2026-10-08T11:17": "fa14211d-7bdb-4f59-9c26-e6e90193d9bd",
+   "one-shot/conceptual@2026-10-08T11:17": "24a07261-25c0-4e9f-8ce8-965d2d154881",
+   "one-shot/baseline@2026-10-08T11:17": "2490677c-6c01-4903-b8d5-eb3e3e9f6bb5"
+  }
  },
  "cells": [
   {

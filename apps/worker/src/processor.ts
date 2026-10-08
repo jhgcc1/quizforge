@@ -28,6 +28,8 @@ export interface ProcessDeps {
   db: Db;
   llm: LlmClient;
   judgeLlm?: LlmClient | undefined;
+  /** Judge samples per quiz (median). Same value as the CI evaluation, so production and CI scores are comparable. */
+  judgeSamples?: number | undefined;
   allowedHosts: string[];
   pricing: { inPerM: number; outPerM: number };
   log: Logger;
@@ -75,6 +77,7 @@ export async function processQuizJob(
     const result = await gen({
       llm: d.llm,
       ...(d.judgeLlm ? { judgeLlm: d.judgeLlm } : {}),
+      ...(d.judgeSamples ? { judgeSamples: d.judgeSamples } : {}),
       input: {
         sourceText: src.text,
         numQuestions: quiz.numQuestions,
@@ -91,19 +94,10 @@ export async function processQuizJob(
     budgetSnapshot = result.budget;
 
     const costUsd = (result.usage.promptTokens * d.pricing.inPerM + result.usage.completionTokens * d.pricing.outPerM) / 1e6;
+    // Every metric of the shared quality method is stored under the same name it has in Langfuse.
     const evals = [
-      { evaluator: "quality_overall", value: result.quality },
-      { evaluator: "lint_pass", value: result.metrics.lintPass },
-      { evaluator: "difficulty_spread", value: result.metrics.difficultySpread },
-      ...(result.judge
-        ? [
-            { evaluator: "judge_overall", value: result.judge.overall, reasoning: result.judge.scores.reasoning },
-            ...(["faithfulness", "clarity", "distractors", "coverage", "difficulty_mix"] as const).map((k) => ({
-              evaluator: `judge_${k}`,
-              value: (result.judge!.scores[k] - 1) / 4,
-            })),
-          ]
-        : []),
+      ...Object.entries(result.scores).map(([evaluator, value]) => ({ evaluator, value, ...(evaluator === "judge_overall" && result.judge ? { reasoning: result.judge.scores.reasoning } : {}) })),
+      ...(result.quality !== undefined ? [{ evaluator: "quality_overall", value: result.quality }] : []),
     ];
     await completeQuiz(d.db, {
       quizId: quiz.id,
@@ -124,11 +118,14 @@ export async function processQuizJob(
     await saveJobBudget(d.db, job.id, result.budget);
 
     const ms = Date.now() - started;
-    log.info({ strategy: result.strategy, rounds: result.rounds, repairs: result.repairs, resumed: result.resumed, quality: result.quality, costUsd, ms, traceId: result.traceId }, "quiz generated");
+    log.info({ strategy: result.strategy, rounds: result.rounds, repairs: result.repairs, resumed: result.resumed, quality: result.quality, judgeFailed: result.judgeFailed, qualityVersion: result.qualityVersion, costUsd, ms, traceId: result.traceId }, "quiz generated");
+    if (result.judgeFailed) log.warn({ traceId: result.traceId }, "judge failed twice: quiz delivered without a quality score");
     emit({
       JobSucceeded: { value: 1, unit: "Count" },
       GenerationLatencyMs: { value: ms, unit: "Milliseconds" },
-      QuizQuality: { value: result.quality },
+      // only when the judge ran: a quiz without a judge score must not drag the average with a different formula
+      ...(result.quality !== undefined ? { QuizQuality: { value: result.quality } } : {}),
+      JudgeFailed: { value: result.judgeFailed ? 1 : 0, unit: "Count" },
       QuizCostUsd: { value: costUsd },
       PromptTokens: { value: result.usage.promptTokens, unit: "Count" },
       CompletionTokens: { value: result.usage.completionTokens, unit: "Count" },

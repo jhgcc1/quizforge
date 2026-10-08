@@ -29,7 +29,7 @@ const secs = ((Date.now() - t0) / 1000).toFixed(1);
 console.log(`\nmodel=${r.model} strategy=${r.strategy} (${r.routeReason}) rounds=${r.rounds} repairs=${r.repairs} time=${secs}s`);
 console.log(`calls=${r.budget.calls} tokens: prompt=${r.usage.promptTokens} completion=${r.usage.completionTokens}`);
 console.log(`trail: ${r.trail.join(" -> ")}`);
-console.log(`grounded=${checkGrounding({ questions: r.questions }, src.text).ok} quality=${r.quality.toFixed(2)} lint=${r.metrics.lintPass.toFixed(2)} diffSpread=${r.metrics.difficultySpread.toFixed(2)}`);
+console.log(`grounded=${checkGrounding({ questions: r.questions }, src.text).ok} quality=${r.quality?.toFixed(2) ?? "n/a"} lint=${r.metrics.lintPass.toFixed(2)} diffSpread=${r.metrics.difficultySpread.toFixed(2)}`);
 if (r.judge) console.log(`judge: ${JSON.stringify(r.judge.scores)}`);
 console.log(`langfuse trace: ${r.traceId ?? "(tracing off)"}\n`);
 r.questions.forEach((q, i) => {

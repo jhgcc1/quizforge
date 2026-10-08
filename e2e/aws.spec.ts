@@ -26,7 +26,7 @@ test("deployed stack: Cognito sign-in -> AI generates -> answer -> score", async
 
   // 3. real generation with the real model (wait for hydration: the button is disabled until the page is interactive)
   await expect(page.getByRole("button", { name: "Generate quiz" })).toBeEnabled();
-  await page.getByLabel("Document").selectOption({ label: "Mastra README" });
+  await page.getByLabel("Document").selectOption({ label: "Mastra" });
   await page.getByLabel("Questions", { exact: true }).selectOption("5");
   await page.getByRole("button", { name: "Generate quiz" }).click();
   await expect(page).toHaveURL(/\/app\/quiz\/[0-9a-f-]{36}/);

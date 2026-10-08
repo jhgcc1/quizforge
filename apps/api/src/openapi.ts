@@ -28,6 +28,9 @@ export const openApiDocument = {
       },
       get: { summary: "List my quizzes", responses: { "200": { description: "OK" }, "401": err("Unauthenticated") } },
     },
+    "/v1/catalog": {
+      get: { summary: "Sample documents offered in the UI dropdown (real READMEs and test documents)", responses: { "200": json("Catalog"), "401": err("Unauthenticated") } },
+    },
     "/v1/quizzes/{id}": {
       get: { summary: "Get a quiz (questions appear when ready; the answer key never does)", parameters: [uuidParam("id")], responses: { "200": json("QuizWithQuestions"), "404": err("Not found") } },
     },
@@ -64,6 +67,19 @@ export const openApiDocument = {
         },
       },
       SaveAnswer: { type: "object", required: ["optionIds", "revision"], properties: { optionIds: { type: "array", items: { type: "string", format: "uuid" }, minItems: 1, maxItems: 4 }, revision: { type: "integer", minimum: 0 } } },
+      Catalog: {
+        type: "object",
+        properties: {
+          items: {
+            type: "array",
+            items: {
+              type: "object",
+              required: ["id", "title", "description", "url", "kind", "language", "size", "tests"],
+              properties: { id: { type: "string" }, title: { type: "string" }, description: { type: "string" }, url: { type: "string", format: "uri" }, kind: { type: "string", enum: ["readme", "test"] }, language: { type: "string", enum: ["en", "pt", "es"] }, size: { type: "string", enum: ["short", "medium", "long"] }, tests: { type: "string" } },
+            },
+          },
+        },
+      },
       QuizEnvelope: { type: "object", properties: { quiz: { type: "object" } } },
       QuizWithQuestions: { type: "object", properties: { quiz: { type: "object" }, questions: { type: "array", items: { type: "object" } } } },
     },
