@@ -19,8 +19,7 @@ const call = async (method, path, body, headers = {}) => {
   return { status: res.status, headers: res.headers, body: text ? JSON.parse(text) : null };
 };
 
-const health = await fetch(base + "/readyz");
-check(health.status === 200, "GET /readyz");
+if (process.env.READYZ !== "skip") check((await fetch(base + "/readyz")).status === 200, "GET /readyz"); // not exposed through CloudFront on purpose
 check((await fetch(base + "/v1/quizzes")).status === 401, "no token -> 401");
 
 const key = randomUUID();

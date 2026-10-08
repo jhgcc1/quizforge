@@ -86,6 +86,30 @@ describe("Consumer", () => {
   });
 });
 
+describe("Consumer shutdown", () => {
+  it("a long poll that returns AFTER stop() is released back to the queue, never processed (rolling deploys)", async () => {
+    let release!: (m: QueueMessage[]) => void;
+    const inFlightPoll = new Promise<QueueMessage[]>((r) => (release = r));
+    const calls = { deleted: [] as string[], visibility: [] as [string, number][] };
+    let polls = 0;
+    const t: QueueTransport = {
+      receive: async () => (polls++ === 0 ? inFlightPoll : []),
+      delete: async (h) => void calls.deleted.push(h),
+      setVisibility: async (h, s) => void calls.visibility.push([h, s]),
+    };
+    let handled = 0;
+    const c = new Consumer({ transport: t, concurrency: 1, visibilityTimeout: 360, waitSeconds: 0, log: createLogger("error"), handler: async () => (handled++, { kind: "done" as const }) });
+    c.start();
+    await new Promise((r) => setTimeout(r, 10));
+    const stopping = c.stop(1000); // SIGTERM arrives while the poll is still waiting
+    release([msg()]); // ...and the poll then returns a message
+    await stopping;
+    expect(handled).toBe(0);
+    expect(calls.deleted).toEqual([]);
+    expect(calls.visibility).toEqual([["rh1", 0]]); // visible again immediately for another worker
+  });
+});
+
 describe("logging", () => {
   it("redacts secrets and emits valid CloudWatch EMF", () => {
     const lines: string[] = [];

@@ -97,6 +97,13 @@ export class Consumer {
         await new Promise((r) => setTimeout(r, 2000));
         continue;
       }
+      if (this.stopping) {
+        // A long poll that was already in flight when shutdown began can still return messages. Starting them
+        // now would get them killed mid-job when the process exits (and lost for the whole visibility timeout),
+        // so hand them straight back to the queue for another worker.
+        await Promise.allSettled(messages.map((m) => this.o.transport.setVisibility(m.receiptHandle, 0)));
+        break;
+      }
       for (const m of messages) {
         const p: Promise<void> = this.handle(m).finally(() => this.inFlight.delete(p));
         this.inFlight.add(p);

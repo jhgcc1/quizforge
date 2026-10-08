@@ -37,7 +37,6 @@ resource "aws_service_discovery_service" "api" {
       type = "A"
     }
   }
-  health_check_custom_config {}
 }
 
 ############################ Logs ############################
@@ -151,6 +150,9 @@ resource "aws_ecs_task_definition" "web" {
     environment = [
       { name = "NODE_ENV", value = "production" },
       { name = "PORT", value = "3000" },
+      # ECS overwrites HOSTNAME with the container hostname, which would make Next bind to that one interface and
+      # fail its own 127.0.0.1 health check. Bind explicitly to all interfaces.
+      { name = "HOSTNAME", value = "0.0.0.0" },
       { name = "AUTH_MODE", value = "cognito" },
       { name = "COGNITO_DOMAIN", value = local.cognito_domain_url },
       { name = "COGNITO_CLIENT_ID", value = aws_cognito_user_pool_client.web.id },
