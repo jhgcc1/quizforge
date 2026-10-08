@@ -1,0 +1,41 @@
+{
+ "id": "short-doc",
+ "authoredBy": "Claude (draft written from the pinned document; a human review is recommended)",
+ "questions": [
+  {
+   "prompt": "At what fill level does Zephyr Cache start evicting entries?",
+   "answer": "When the arena is ninety percent full, least recently used first.",
+   "sourceQuote": "When the arena is ninety percent full"
+  },
+  {
+   "prompt": "What happens to pinned entries?",
+   "answer": "They are never evicted, even when the arena is full.",
+   "sourceQuote": "Entries marked pinned are never evicted"
+  },
+  {
+   "prompt": "How often does Zephyr Cache write a snapshot by default?",
+   "answer": "Every five minutes.",
+   "sourceQuote": "writes a snapshot to disk every five minutes by default"
+  },
+  {
+   "prompt": "How does the server recover after a crash?",
+   "answer": "It loads the newest complete snapshot and ignores partially written files.",
+   "sourceQuote": "loads the newest complete snapshot"
+  },
+  {
+   "prompt": "How many replicas can a primary node stream writes to?",
+   "answer": "Up to three replicas.",
+   "sourceQuote": "up to three replicas"
+  },
+  {
+   "prompt": "Which replica promotes itself when the primary stops responding?",
+   "answer": "The replica with the highest sequence number.",
+   "sourceQuote": "the replica with the highest sequence number promotes itself"
+  },
+  {
+   "prompt": "What is the maximum key length?",
+   "answer": "250 bytes.",
+   "sourceQuote": "Keys may be at most 250 bytes long"
+  }
+ ]
+}

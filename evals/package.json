@@ -6,9 +6,13 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "eval": "tsx --env-file=../.env src/run.ts",
-    "eval:offline": "tsx src/run.ts --offline"
+    "eval:offline": "tsx src/run.ts --offline",
+    "compare": "tsx --env-file=../.env src/compare.ts",
+    "report": "tsx src/render-report.ts",
+    "compare:offline": "tsx src/compare.ts --offline --out=evals/reports"
   },
   "dependencies": {
+    "@huggingface/transformers": "^4.3.1",
     "@langfuse/client": "^5.13.1",
     "@quizforge/core": "workspace:*",
     "@quizforge/llm": "workspace:*"

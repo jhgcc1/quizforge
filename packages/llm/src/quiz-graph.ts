@@ -12,12 +12,16 @@ import { NonRetryableError, StructuredOutputError } from "./errors.js";
 import type { LlmClient } from "./llm.js";
 import {
   CRITIQUE_SYSTEM,
-  GENERATION_SYSTEM,
+  PLAN_SYSTEM,
   REVISE_SYSTEM,
   critiqueUser,
+  generationSystem,
+  planUser,
   reviseUser,
   sectionUser,
   singleShotUser,
+  writeUser,
+  type PromptVariant,
 } from "./prompts.js";
 import { chooseStrategy, type Strategy } from "./router.js";
 import { lintQuestion } from "./lint.js";
@@ -34,6 +38,16 @@ export interface QuizGraphInput {
   strategy?: StrategyRequest;
   /** Run the critique -> revise stage. */
   critique?: boolean;
+  /** Generator prompt (default `baseline` = production). */
+  promptVariant?: PromptVariant;
+  /** "plan-then-write": plan the facts to test first, then write one question per fact (instead of generating directly). */
+  planFirst?: boolean;
+}
+
+export interface PlannedFact {
+  topic: string;
+  quote: string;
+  angle: string;
 }
 
 export interface QuizGraphDeps {
@@ -59,6 +73,7 @@ export class QualityGateError extends Error {
 }
 
 const MAX_SINGLE_SHOT_CHARS = 60_000;
+const PLAN_EXTRA_FACTS = 2; // ask for a few more than needed: facts whose quote is not in the document are dropped
 
 const State = Annotation.Root({
   input: Annotation<QuizGraphInput>(),
@@ -66,6 +81,7 @@ const State = Annotation.Root({
   routeReason: Annotation<string>(),
   context: Annotation<string>(),
   questions: Annotation<GeneratedQuestion[]>(),
+  facts: Annotation<PlannedFact[]>(),
   /** 1-based question index -> open issues. */
   issues: Annotation<Record<number, string[]>>(),
   round: Annotation<number>(),
@@ -133,7 +149,7 @@ export function buildQuizGraph(deps: QuizGraphDeps, checkpointer?: BaseCheckpoin
           llm: deps.llm,
           budget: deps.budget,
           schema: Candidates,
-          system: GENERATION_SYSTEM,
+          system: generationSystem(s.input.promptVariant),
           user: sectionUser({ heading: sec.heading, text: sec.text, n: 2, topic }),
           options: { name: `generate:section:${sec.heading.slice(0, 40)}`, temperature: 0.4 },
         });
@@ -157,7 +173,7 @@ export function buildQuizGraph(deps: QuizGraphDeps, checkpointer?: BaseCheckpoin
       llm: deps.llm,
       budget: deps.budget,
       schema: Quiz,
-      system: GENERATION_SYSTEM,
+      system: generationSystem(s.input.promptVariant),
       user: singleShotUser({ doc, n, topic }),
       options: { name: "generate:single-shot", temperature: 0.4 },
     });
@@ -168,6 +184,40 @@ export function buildQuizGraph(deps: QuizGraphDeps, checkpointer?: BaseCheckpoin
       ...track(r.usage, s),
       trail: [...s.trail, "generate:single-shot"],
     };
+  };
+
+  /** plan-then-write, step 1: choose the facts to test; facts whose quote is not in the document are dropped here. */
+  const plan = async (s: S): Promise<Partial<S>> => {
+    const { sourceText, numQuestions: n, topic } = s.input;
+    const doc = sourceText.length > MAX_SINGLE_SHOT_CHARS ? sourceText.slice(0, MAX_SINGLE_SHOT_CHARS) : sourceText;
+    const Plan = z.object({ facts: z.array(z.object({ topic: z.string().min(1), quote: z.string().min(1), angle: z.string().min(1) })).min(n) });
+    const r = await generateStructured({
+      llm: deps.llm,
+      budget: deps.budget,
+      schema: Plan,
+      system: PLAN_SYSTEM,
+      user: planUser({ doc, n: n + PLAN_EXTRA_FACTS, topic }),
+      options: { name: "plan", temperature: 0.3 },
+    });
+    const probe = r.value.facts.map((f) => ({ sourceQuote: f.quote }));
+    const grounded = checkGrounding({ questions: probe }, sourceText);
+    const facts = r.value.facts.filter((_, i) => !grounded.ungrounded.includes(i + 1)).slice(0, n);
+    if (facts.length < MIN_QUESTIONS) throw new QualityGateError(`plan produced only ${facts.length} fact(s) quoted from the document`, grounded.ungrounded);
+    return { facts, context: doc, repairs: s.repairs + r.repairs, ...track(r.usage, s), trail: [...s.trail, `plan:${facts.length} facts`] };
+  };
+
+  /** plan-then-write, step 2: one question per planned fact. */
+  const write = async (s: S): Promise<Partial<S>> => {
+    const Quiz = z.object({ questions: z.array(GeneratedQuestionSchema).length(s.facts.length) });
+    const r = await generateStructured({
+      llm: deps.llm,
+      budget: deps.budget,
+      schema: Quiz,
+      system: generationSystem(s.input.promptVariant),
+      user: writeUser({ doc: s.context, facts: s.facts }),
+      options: { name: "generate:write", temperature: 0.4 },
+    });
+    return { questions: sortByDifficulty(r.value.questions), repairs: s.repairs + r.repairs, ...track(r.usage, s), trail: [...s.trail, "generate:plan-write"] };
   };
 
   /** Deterministic gate: duplicates and verbatim grounding. Resets deterministic issues each pass. */
@@ -242,12 +292,16 @@ export function buildQuizGraph(deps: QuizGraphDeps, checkpointer?: BaseCheckpoin
   return new StateGraph(State)
     .addNode("route", route)
     .addNode("generate", generate)
+    .addNode("plan", plan)
+    .addNode("write", write)
     .addNode("check", check)
     .addNode("critique", critique)
     .addNode("revise", revise)
     .addNode("finalize", finalize)
     .addEdge(START, "route")
-    .addEdge("route", "generate")
+    .addConditionalEdges("route", (s: S) => (s.input.planFirst ? "plan" : "generate"), ["plan", "generate"])
+    .addEdge("plan", "write")
+    .addEdge("write", "check")
     .addEdge("generate", "check")
     .addConditionalEdges("check", afterCheck, ["critique", "revise", "finalize"])
     .addConditionalEdges("critique", decide, ["revise", "finalize"])
@@ -303,7 +357,7 @@ export async function runQuizGraph(
     }
   }
   out ??= await graph.invoke(
-    { input, routeReason: "", context: "", questions: [], issues: {}, round: 0, repairs: 0, usage: emptyUsage(), trail: [] },
+    { input, routeReason: "", context: "", questions: [], facts: [], issues: {}, round: 0, repairs: 0, usage: emptyUsage(), trail: [] },
     runConfig,
   );
   return {

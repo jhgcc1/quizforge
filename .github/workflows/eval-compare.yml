@@ -1,0 +1,59 @@
+name: Compare generation structures
+
+# On-demand experiment: 3 LangGraph structures x 3 prompts over the golden set, scored by an LLM judge, deterministic
+# checks and embedding similarity (weighted average), one Langfuse Experiment per variant. About 15 minutes and
+# ~US$0.40 per repetition, so it is manual (e.g. before changing the prompt or the graph), never part of the PR gate.
+# The HTML report is uploaded as an artifact; the committed reference run lives in docs/eval/.
+on:
+  workflow_dispatch:
+    inputs:
+      variants:
+        description: "Only variants whose id contains one of these (comma separated, e.g. plan-then-write,conceptual). Empty = all 9"
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eval-compare
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    environment: llm-eval # holds MINIMAX_API_KEY, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22", cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: Cache the embedding model (~120 MB, downloaded from the Hugging Face hub)
+        uses: actions/cache@v4
+        with:
+          path: node_modules/.pnpm/@huggingface+transformers*/node_modules/@huggingface/transformers/.cache
+          key: embeddings-paraphrase-multilingual-minilm-l12-v2
+      - name: Compare structures and prompts (real model)
+        env:
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+          LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+          LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
+          LANGFUSE_BASE_URL: https://us.cloud.langfuse.com
+          VARIANTS: ${{ inputs.variants }}
+        run: |
+          args=(--out=compare-report)
+          [ -z "$VARIANTS" ] || args+=("--variants=$VARIANTS")
+          pnpm --filter @quizforge/evals exec tsx src/compare.ts "${args[@]}" | tee compare.txt
+      - name: Summary
+        if: always()
+        run: |
+          echo '### Structure comparison' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"; cat compare.txt >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true; echo '```' >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: structure-comparison, path: compare-report/, retention-days: 30 }

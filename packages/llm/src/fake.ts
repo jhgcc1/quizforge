@@ -57,6 +57,16 @@ export function createFakeLlm(): LlmClient {
         return reply({ questions: makeQuestions(doc, n) });
       }
       if (name.startsWith("generate:section")) return reply({ questions: makeQuestions(doc, 2) });
+      if (name === "plan") {
+        const n = Number(/Choose exactly (\d+) facts/.exec(user)?.[1] ?? 6);
+        const facts = makeQuestions(doc, n).map((q) => ({ topic: q.sourceQuote.split(" ").slice(0, 3).join(" "), quote: q.sourceQuote, angle: "what the document states" }));
+        return reply({ facts });
+      }
+      if (name.startsWith("generate:write")) {
+        const facts = JSON.parse(/Planned facts:\n([\s\S]*?)\n\n<document>/.exec(user)?.[1] ?? "[]") as { quote: string }[];
+        const base = makeQuestions(doc, Math.max(facts.length, 1));
+        return reply({ questions: facts.map((f, i) => ({ ...base[i % base.length]!, sourceQuote: f.quote })) });
+      }
       if (name.startsWith("critique")) {
         const count = (user.match(/"prompt"/g) ?? []).length;
         return reply({ verdicts: Array.from({ length: count }, (_, i) => ({ index: i + 1, ok: true, issues: [] })) });

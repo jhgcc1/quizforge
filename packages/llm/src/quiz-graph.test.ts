@@ -210,3 +210,55 @@ describe("checkpoint resume (SQS redelivery)", () => {
     expect(f.calls).toHaveLength(2);
   });
 });
+
+
+describe("plan-then-write structure and prompt variants", () => {
+  const plan = (n: number, quotes?: string[]) =>
+    JSON.stringify({ facts: Array.from({ length: n }, (_, i) => ({ topic: `topic ${i}`, quote: quotes?.[i] ?? quoteOf(i), angle: "what it states" })) });
+
+  it("plans first, then writes one question per fact (2 calls, same checks afterwards)", async () => {
+    const f = scripted({ plan: plan(7), "generate:write": (m) => ok(...[0, 1, 2, 3, 4].map((i) => q(i))) });
+    const r = await runQuizGraph({ llm: f.llm, budget: new JobBudget() }, { sourceText: SHORT_DOC, numQuestions: 5, strategy: "single-shot", planFirst: true });
+    expect(f.calls).toEqual(["plan", "generate:write"]);
+    expect(r.questions).toHaveLength(5);
+    expect(r.trail).toEqual(expect.arrayContaining(["plan:5 facts", "generate:plan-write"]));
+  });
+
+  it("drops planned facts whose quote is not in the document and asks for extra ones", async () => {
+    const quotes = [0, 1, 2, 3, 4, 5, 6].map(quoteOf);
+    quotes[1] = "an invented sentence that is nowhere in the source";
+    let planPrompt = "";
+    let writePrompt = "";
+    const f = scripted({
+      plan: (m) => ((planPrompt = m.find((x) => x.role === "user")!.content), plan(7, quotes)),
+      "generate:write": (m) => ((writePrompt = m.find((x) => x.role === "user")!.content), ok(...[0, 1, 2, 3, 4].map((i) => q(i)))),
+    });
+    await runQuizGraph({ llm: f.llm, budget: new JobBudget() }, { sourceText: SHORT_DOC, numQuestions: 5, strategy: "single-shot", planFirst: true });
+    expect(planPrompt).toContain("exactly 7 facts"); // n + 2 spare
+    expect(writePrompt).toContain("Write exactly 5 questions");
+    expect(writePrompt).not.toContain("invented sentence");
+  });
+
+  it("fails as a content error when fewer than 5 planned facts are grounded", async () => {
+    const f = scripted({ plan: plan(7, ["nope nope nope nope", "also not there at all", "still invented text here", quoteOf(3), quoteOf(4), "bogus bogus bogus", "missing missing missing"]) });
+    await expect(runQuizGraph({ llm: f.llm, budget: new JobBudget() }, { sourceText: SHORT_DOC, numQuestions: 5, planFirst: true })).rejects.toBeInstanceOf(QualityGateError);
+  });
+
+  it("promptVariant only appends guidance: baseline is the production prompt, the others extend it", async () => {
+    const { GENERATION_SYSTEM, generationSystem, PROMPT_VARIANTS } = await import("./prompts.js");
+    expect(generationSystem()).toBe(GENERATION_SYSTEM);
+    expect(generationSystem("baseline")).toBe(GENERATION_SYSTEM);
+    for (const v of PROMPT_VARIANTS.filter((x) => x !== "baseline")) {
+      const s = generationSystem(v);
+      expect(s.startsWith(GENERATION_SYSTEM)).toBe(true); // the JSON contract and safety rules are untouched
+      expect(s.length).toBeGreaterThan(GENERATION_SYSTEM.length);
+    }
+  });
+
+  it("the chosen variant reaches the model as the system prompt", async () => {
+    let system = "";
+    const f = scripted({ "generate:single-shot": (m) => ((system = m.find((x) => x.role === "system")!.content), ok(...five)) });
+    await runQuizGraph({ llm: f.llm, budget: new JobBudget() }, { sourceText: SHORT_DOC, numQuestions: 5, strategy: "single-shot", promptVariant: "conceptual" });
+    expect(system).toContain("understanding over trivia");
+  });
+});

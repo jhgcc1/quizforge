@@ -39,3 +39,6 @@ scratch-*.png
 
 # generated documentation with account-specific links (not committed)
 site/
+
+# local comparison reports (the committed reference run lives in docs/eval)
+evals/reports/

@@ -1,0 +1,36 @@
+{
+ "id": "portuguese-doc",
+ "authoredBy": "Claude (draft written from the pinned document; a human review is recommended)",
+ "questions": [
+  {
+   "prompt": "Sob qual licença a Biblioteca Aurora é distribuída?",
+   "answer": "Licença MIT.",
+   "sourceQuote": "distribuída sob a licença MIT"
+  },
+  {
+   "prompt": "Qual é a versão mínima suportada do Python?",
+   "answer": "Python 3.10.",
+   "sourceQuote": "A versão mínima suportada do Python é a 3.10"
+  },
+  {
+   "prompt": "Em quais formatos a biblioteca gera relatórios?",
+   "answer": "PDF, HTML e Markdown.",
+   "sourceQuote": "gera relatórios em PDF, HTML e Markdown"
+  },
+  {
+   "prompt": "Quanto tempo leva para processar planilhas de até cem mil linhas?",
+   "answer": "Menos de dez segundos em um computador comum.",
+   "sourceQuote": "Planilhas com até cem mil linhas são processadas em menos de dez segundos"
+  },
+  {
+   "prompt": "Como a Aurora trata arquivos maiores para manter o uso de memória baixo?",
+   "answer": "Lê os dados em blocos.",
+   "sourceQuote": "a Aurora lê os dados em blocos"
+  },
+  {
+   "prompt": "O que toda contribuição deve incluir?",
+   "answer": "Testes automatizados, e passar pela revisão de pelo menos um mantenedor.",
+   "sourceQuote": "Toda contribuição deve incluir testes automatizados"
+  }
+ ]
+}
