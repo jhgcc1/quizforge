@@ -1,14 +1,14 @@
 import type { GeneratedQuestion } from "@quizforge/core";
 import { JobBudget, type BudgetState, type Usage } from "./budget.js";
-import { judgeQuiz, type JudgeResult } from "./judge.js";
+import type { JudgeResult } from "./judge.js";
 import { quizMetrics, type QuizMetrics } from "./lint.js";
 import { QUALITY_VERSION, scoreQuiz } from "./quality.js";
+import { judgeNote, judgeWithRetry } from "./scoring.js";
 import type { LlmClient } from "./llm.js";
 import { scoreTrace, traced } from "./observability.js";
 import { PROMPT_VERSION } from "./prompts.js";
 import { runQuizGraph, type QuizGraphInput } from "./quiz-graph.js";
 import type { Strategy } from "./router.js";
-import { BudgetExceededError } from "./errors.js";
 import type { BaseCheckpointSaver } from "@langchain/langgraph";
 
 export interface GenerateQuizParams {
@@ -71,25 +71,18 @@ export async function generateQuiz(p: GenerateQuizParams): Promise<GeneratedQuiz
         ...(ctx.callbacks.length ? { callbacks: ctx.callbacks } : {}),
       });
       const metrics = quizMetrics(run.questions);
-      // The judge is advisory (a failure never fails the quiz) but is retried once, because a missing score is a hole in the monitoring.
       let judge: JudgeResult | undefined;
       let judgeFailed = false;
       if (p.judge !== false) {
-        for (let attempt = 1; attempt <= 2 && !judge; attempt++) {
-          try {
-            judge = await judgeQuiz({ llm: p.judgeLlm ?? p.llm, ...(p.judgeSamples ? { samples: p.judgeSamples } : {}), budget, context: p.input.sourceText.slice(0, 60_000), questions: run.questions });
-          } catch (err) {
-            console.warn(JSON.stringify({ level: "warn", msg: "judge failed", attempt, error: (err as Error).message }));
-            if (err instanceof BudgetExceededError) break; // retrying cannot help
-          }
-        }
-        judgeFailed = !judge;
+        const r = await judgeWithRetry({ llm: p.judgeLlm ?? p.llm, samples: p.judgeSamples, budget, sourceText: p.input.sourceText, questions: run.questions });
+        judge = r.judge;
+        judgeFailed = r.failed;
       }
       const q = await scoreQuiz({ questions: run.questions, sourceText: p.input.sourceText, judge });
-      const judgeNote = judge ? `judge=${(p.judgeLlm ?? p.llm).model} samples=${judge.samples} spread=${judge.spread.toFixed(2)} v=${QUALITY_VERSION}` : undefined;
+      const note = judge ? judgeNote((p.judgeLlm ?? p.llm).model, judge) : undefined;
       await Promise.all([
-        ...Object.entries(q.scores).map(([name, value]) => scoreTrace(ctx.traceId, name, value, name === "judge_overall" ? `${judgeNote} | ${judge?.scores.reasoning ?? ""}`.slice(0, 1500) : undefined)),
-        ...(q.quality !== undefined ? [scoreTrace(ctx.traceId, "quality_overall", q.quality, judgeNote)] : []),
+        ...Object.entries(q.scores).map(([name, value]) => scoreTrace(ctx.traceId, name, value, name === "judge_overall" ? `${note} | ${judge?.scores.reasoning ?? ""}`.slice(0, 1500) : undefined)),
+        ...(q.quality !== undefined ? [scoreTrace(ctx.traceId, "quality_overall", q.quality, note)] : []),
         ...(judgeFailed ? [scoreTrace(ctx.traceId, "judge_failed", 1)] : []),
         scoreTrace(ctx.traceId, "critique_rounds", run.rounds),
       ]);

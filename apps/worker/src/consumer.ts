@@ -5,7 +5,7 @@ import {
   type Message,
   type SQSClient,
 } from "@aws-sdk/client-sqs";
-import { QuizJobMessageSchema } from "@quizforge/core";
+import { QuizJobMessageSchema, type QuizJobMessage } from "@quizforge/core";
 import type { Logger } from "./log.js";
 import type { Outcome } from "./processor.js";
 
@@ -46,9 +46,11 @@ export class SqsTransport implements QueueTransport {
   }
 }
 
-export interface ConsumerOptions {
+export interface ConsumerOptions<M extends { requestId?: string | undefined } = QuizJobMessage> {
   transport: QueueTransport;
-  handler: (msg: { quizId: string; requestId?: string | undefined }, receive: { count: number }) => Promise<Outcome>;
+  /** Validates the body of a message of THIS queue (generation jobs by default; the scorer passes its own schema). */
+  parse?: (raw: unknown) => M;
+  handler: (msg: M, receive: { count: number }) => Promise<Outcome>;
   log: Logger;
   concurrency: number;
   visibilityTimeout: number;
@@ -63,14 +65,14 @@ export interface ConsumerOptions {
  * runs, a heartbeat keeps extending the visibility timeout so SQS does not hand the same job to a
  * second worker. `stop()` finishes in-flight jobs and returns.
  */
-export class Consumer {
+export class Consumer<M extends { requestId?: string | undefined } = QuizJobMessage> {
   private stopping = false;
   private inFlight = new Set<Promise<void>>();
   private loop: Promise<void> | undefined;
   /** Last time the poll loop made progress; the health endpoint uses it to detect a wedged worker. */
   lastActivity = Date.now();
 
-  constructor(private readonly o: ConsumerOptions) {}
+  constructor(private readonly o: ConsumerOptions<M>) {}
 
   start(): void {
     this.loop = this.run();
@@ -114,9 +116,9 @@ export class Consumer {
   private async handle(m: QueueMessage): Promise<void> {
     const t = this.o.transport;
     const log = this.o.log.child({ messageId: m.id });
-    let parsed;
+    let parsed: M;
     try {
-      parsed = QuizJobMessageSchema.parse(JSON.parse(m.body));
+      parsed = (this.o.parse ?? (QuizJobMessageSchema.parse as unknown as (raw: unknown) => M))(JSON.parse(m.body));
     } catch (err) {
       // Poison message: it can never succeed. Drop it (and say so loudly) rather than loop to the DLQ.
       log.error({ err, body: m.body.slice(0, 200) }, "invalid message dropped");
@@ -127,7 +129,7 @@ export class Consumer {
       t.setVisibility(m.receiptHandle, this.o.visibilityTimeout).catch((err) => log.warn({ err }, "heartbeat failed"));
     }, (this.o.visibilityTimeout * 1000) / 3);
     try {
-      const outcome = await this.o.handler({ quizId: parsed.quizId, requestId: parsed.requestId ?? m.requestId }, { count: m.receiveCount });
+      const outcome = await this.o.handler({ ...parsed, requestId: parsed.requestId ?? m.requestId }, { count: m.receiveCount });
       switch (outcome.kind) {
         case "done":
         case "skipped":

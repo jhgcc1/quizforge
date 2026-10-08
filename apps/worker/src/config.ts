@@ -11,7 +11,12 @@ const Schema = z
     DB_PASSWORD: z.string().optional(),
     DB_NAME: z.string().optional(),
 
+    /** `generate` = the worker that builds quizzes; `score` = the scorer service that judges them afterwards (same image). */
+    WORKER_ROLE: z.enum(["generate", "score"]).default("generate"),
+    /** The queue THIS role consumes. */
     SQS_QUEUE_URL: z.string().min(1),
+    /** Where the generation worker (and the sweeper) send scoring jobs. Empty = no separate scoring (quizzes are not scored). */
+    SCORING_QUEUE_URL: z.string().optional(),
     /** Must match the queue's redrive policy (maxReceiveCount). On the last receive a failure marks the quiz failed. */
     SQS_MAX_RECEIVE: z.coerce.number().int().min(1).default(3),
     /** Longer than a job can run; the heartbeat keeps extending it while a job is in flight. */

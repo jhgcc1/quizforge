@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ScoreJobMessageSchema, type ScoreJobMessage } from "@quizforge/core";
 import { Consumer, type QueueMessage, type QueueTransport } from "./consumer.js";
 import { createLogger, emitMetrics } from "./log.js";
 import type { Outcome } from "./processor.js";
@@ -123,5 +124,32 @@ describe("logging", () => {
     const emf = JSON.parse(out[0]!);
     expect(emf._aws.CloudWatchMetrics[0]).toMatchObject({ Namespace: "QuizForge", Dimensions: [["Service"]] });
     expect(emf.QuizQuality).toBe(0.8);
+  });
+});
+
+describe("Consumer with the scoring queue's own message schema", () => {
+  const JOB = "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d";
+  const scoreMsg = (body: unknown, over: Partial<QueueMessage> = {}): QueueMessage => ({ id: "s1", body: JSON.stringify(body), receiveCount: 1, receiptHandle: "rs1", ...over });
+
+  it("hands the handler the scoring message (quizId + jobId), and deletes it when done", async () => {
+    const { t, calls } = transport([[scoreMsg({ v: 1, quizId: QUIZ, jobId: JOB })]]);
+    const seen: ScoreJobMessage[] = [];
+    const c = new Consumer<ScoreJobMessage>({ transport: t, concurrency: 1, visibilityTimeout: 180, waitSeconds: 0, log: createLogger("error"), parse: (raw) => ScoreJobMessageSchema.parse(raw), handler: async (m) => (seen.push(m), { kind: "done" }) });
+    c.start();
+    await new Promise((r) => setTimeout(r, 120));
+    await c.stop(1000);
+    expect(seen).toEqual([{ v: 1, quizId: QUIZ, jobId: JOB, requestId: undefined }]);
+    expect(calls.deleted).toEqual(["rs1"]);
+  });
+
+  it("a generation-queue message on the scoring queue (no jobId) is a poison message: dropped, handler never called", async () => {
+    const { t, calls } = transport([[scoreMsg({ v: 1, quizId: QUIZ })]]);
+    let called = 0;
+    const c = new Consumer<ScoreJobMessage>({ transport: t, concurrency: 1, visibilityTimeout: 180, waitSeconds: 0, log: createLogger("error"), parse: (raw) => ScoreJobMessageSchema.parse(raw), handler: async () => (called++, { kind: "done" }) });
+    c.start();
+    await new Promise((r) => setTimeout(r, 120));
+    await c.stop(1000);
+    expect(called).toBe(0);
+    expect(calls.deleted).toEqual(["rs1"]);
   });
 });

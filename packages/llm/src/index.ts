@@ -16,3 +16,4 @@ export * from "./generate.js";
 export * from "./fake.js";
 export * from "./similarity.js";
 export * from "./quality.js";
+export * from "./scoring.js";

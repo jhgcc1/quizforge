@@ -98,8 +98,35 @@ describe("processQuizJob", () => {
     expect(job!.budgetState).toMatchObject({ calls: expect.any(Number) });
 
     const evals = await ctx.db.select().from(schema.evalScores).where(eq(schema.evalScores.targetId, quiz.id));
-    expect(evals.map((e) => e.evaluator)).toEqual(expect.arrayContaining(["quality_overall", "judge_overall", "judge_faithfulness"]));
-    expect(metrics.at(-1)).toMatchObject({ JobSucceeded: 1, QuizQuality: expect.any(Number), QuizCostUsd: expect.any(Number) });
+    // the fast metrics are stored now; the judge scores and quality_overall come later, from the scorer service
+    expect(evals.map((e) => e.evaluator)).toEqual(expect.arrayContaining(["grounded", "lint_pass", "question_diversity", "relevance", "language_match"]));
+    expect(evals.map((e) => e.evaluator)).not.toContain("judge_overall");
+    expect(evals.map((e) => e.evaluator)).not.toContain("quality_overall");
+    expect(metrics.at(-1)).toMatchObject({ JobSucceeded: 1, QuizCostUsd: expect.any(Number) });
+    expect(metrics.at(-1)).not.toHaveProperty("QuizQuality"); // emitted by the scorer
+    expect(job!.scoredAt).toBeNull();
+  });
+
+  it("does NOT run the judge: the quiz is ready after generation only, and a scoring job is queued for the scorer", async () => {
+    const quiz = await newQuiz();
+    const names: string[] = [];
+    const base = createFakeLlm();
+    const llm: LlmClient = { model: "spy", complete: (m, o) => (names.push(o?.name ?? ""), base.complete(m, o)) };
+    const queued: unknown[] = [];
+    const out = await processQuizJob(deps({ llm, publishScore: async (m) => void queued.push(m) }), { v: 1, quizId: quiz.id, requestId: "req-9" }, { count: 1, max: 3 });
+    expect(out.kind).toBe("done");
+    expect(names.some((n) => n.startsWith("judge"))).toBe(false); // no judge call during generation
+    const [job] = await ctx.db.select().from(schema.generationJobs).where(eq(schema.generationJobs.quizId, quiz.id));
+    expect(queued).toEqual([{ v: 1, quizId: quiz.id, jobId: job!.id, requestId: "req-9" }]);
+    expect((await status(quiz.id)).status).toBe("ready");
+  });
+
+  it("when the scoring job cannot be queued the quiz is still ready, the job succeeds, and a metric says so (the sweeper will queue it)", async () => {
+    const quiz = await newQuiz();
+    const out = await processQuizJob(deps({ publishScore: async () => { throw new Error("SQS unavailable"); } }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
+    expect(out.kind).toBe("done");
+    expect((await status(quiz.id)).status).toBe("ready");
+    expect(metrics.some((m) => m.ScoreJobNotQueued === 1)).toBe(true);
   });
 
   it("a duplicate delivery of a finished quiz is skipped without calling the LLM", async () => {

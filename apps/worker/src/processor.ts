@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { BaseCheckpointSaver } from "@langchain/langgraph";
-import type { QuizJobMessage } from "@quizforge/core";
+import type { QuizJobMessage, ScoreJobMessage } from "@quizforge/core";
 import { claimQuiz, completeQuiz, failQuiz, saveJobBudget, upsertSource, type Db } from "@quizforge/db";
 import {
   BudgetExceededError,
@@ -27,9 +27,11 @@ export type Outcome =
 export interface ProcessDeps {
   db: Db;
   llm: LlmClient;
-  judgeLlm?: LlmClient | undefined;
-  /** Judge samples per quiz (median). Same value as the CI evaluation, so production and CI scores are comparable. */
-  judgeSamples?: number | undefined;
+  /**
+   * Hands the finished quiz to the scorer service (the judge runs there, off the path of this job). Optional: without it the
+   * quiz is simply not scored. A failure to enqueue never fails the job: the sweeper re-queues unscored quizzes.
+   */
+  publishScore?: ((msg: ScoreJobMessage) => Promise<void>) | undefined;
   allowedHosts: string[];
   pricing: { inPerM: number; outPerM: number };
   log: Logger;
@@ -76,8 +78,6 @@ export async function processQuizJob(
     const gen = d.generateQuiz ?? defaultGenerate;
     const result = await gen({
       llm: d.llm,
-      ...(d.judgeLlm ? { judgeLlm: d.judgeLlm } : {}),
-      ...(d.judgeSamples ? { judgeSamples: d.judgeSamples } : {}),
       input: {
         sourceText: src.text,
         numQuestions: quiz.numQuestions,
@@ -86,7 +86,7 @@ export async function processQuizJob(
         critique: quiz.critique,
       },
       ...(job.budgetState ? { budgetState: job.budgetState as never } : {}),
-      judge: true,
+      judge: false, // the judge runs in the scorer service, after the quiz is already saved
       trace: { sessionId: quiz.id, userId: hashSub(quiz.ownerSub), ...(msg.requestId ? { requestId: msg.requestId } : {}) },
       threadId,
       ...(d.checkpointer ? { checkpointer: d.checkpointer } : {}),
@@ -94,11 +94,9 @@ export async function processQuizJob(
     budgetSnapshot = result.budget;
 
     const costUsd = (result.usage.promptTokens * d.pricing.inPerM + result.usage.completionTokens * d.pricing.outPerM) / 1e6;
-    // Every metric of the shared quality method is stored under the same name it has in Langfuse.
-    const evals = [
-      ...Object.entries(result.scores).map(([evaluator, value]) => ({ evaluator, value, ...(evaluator === "judge_overall" && result.judge ? { reasoning: result.judge.scores.reasoning } : {}) })),
-      ...(result.quality !== undefined ? [{ evaluator: "quality_overall", value: result.quality }] : []),
-    ];
+    // The fast metrics of the shared quality method (fixed checks, similarity, language), under the names they have in Langfuse.
+    // The judge scores and quality_overall are added later by the scorer service, with the same method.
+    const evals = Object.entries(result.scores).map(([evaluator, value]) => ({ evaluator, value }));
     await completeQuiz(d.db, {
       quizId: quiz.id,
       jobId: job.id,
@@ -117,15 +115,21 @@ export async function processQuizJob(
     });
     await saveJobBudget(d.db, job.id, result.budget);
 
+    // The quiz is READY now. Scoring is a separate job: the user does not wait for the judge.
+    if (d.publishScore) {
+      try {
+        await d.publishScore({ v: 1, quizId: quiz.id, jobId: job.id, ...(msg.requestId ? { requestId: msg.requestId } : {}) });
+      } catch (err) {
+        log.warn({ err, traceId: result.traceId }, "score job not queued; the sweeper will queue it");
+        emit({ ScoreJobNotQueued: { value: 1, unit: "Count" } });
+      }
+    }
+
     const ms = Date.now() - started;
-    log.info({ strategy: result.strategy, rounds: result.rounds, repairs: result.repairs, resumed: result.resumed, quality: result.quality, judgeFailed: result.judgeFailed, qualityVersion: result.qualityVersion, costUsd, ms, traceId: result.traceId }, "quiz generated");
-    if (result.judgeFailed) log.warn({ traceId: result.traceId }, "judge failed twice: quiz delivered without a quality score");
+    log.info({ strategy: result.strategy, rounds: result.rounds, repairs: result.repairs, resumed: result.resumed, qualityVersion: result.qualityVersion, costUsd, ms, traceId: result.traceId }, "quiz generated");
     emit({
       JobSucceeded: { value: 1, unit: "Count" },
       GenerationLatencyMs: { value: ms, unit: "Milliseconds" },
-      // only when the judge ran: a quiz without a judge score must not drag the average with a different formula
-      ...(result.quality !== undefined ? { QuizQuality: { value: result.quality } } : {}),
-      JudgeFailed: { value: result.judgeFailed ? 1 : 0, unit: "Count" },
       QuizCostUsd: { value: costUsd },
       PromptTokens: { value: result.usage.promptTokens, unit: "Count" },
       CompletionTokens: { value: result.usage.completionTokens, unit: "Count" },

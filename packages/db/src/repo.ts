@@ -419,3 +419,128 @@ export async function getAttemptProgress(
     answers: ans.map((a) => ({ questionId: a.questionId, revision: a.revision, optionIds: sels.filter((s) => s.answerId === a.id).map((s) => s.optionId) })),
   };
 }
+
+/* ------------------------------ scoring (the scorer service) ------------------------------ */
+
+export interface QuizForScoring {
+  quizId: string;
+  jobId: string;
+  traceId: string | null;
+  ownerSub: string;
+  scored: boolean;
+  attempts: number;
+  sourceText: string;
+  /** In the shape the quality scorer takes (same as the generator produced). */
+  questions: {
+    prompt: string;
+    options: string[];
+    correct: number[];
+    explanation: string;
+    sourceQuote: string;
+    difficulty: "easy" | "medium" | "hard";
+    type: "single" | "multiple";
+  }[];
+}
+
+/**
+ * Everything the scorer needs, from Postgres alone: the saved questions, the source document and the Langfuse trace of the
+ * generation. `undefined` = nothing to score (the quiz is gone, not ready, or the job is not a finished one).
+ */
+export async function getQuizForScoring(db: Db, quizId: string, jobId: string): Promise<QuizForScoring | undefined> {
+  const [row] = await db
+    .select({ quiz: t.quizzes, job: t.generationJobs, source: t.sources.contentText })
+    .from(t.generationJobs)
+    .innerJoin(t.quizzes, eq(t.quizzes.id, t.generationJobs.quizId))
+    .leftJoin(t.sources, eq(t.sources.id, t.quizzes.sourceId))
+    .where(and(eq(t.generationJobs.id, jobId), eq(t.generationJobs.quizId, quizId)));
+  if (!row || row.quiz.status !== "ready" || row.job.status !== "succeeded" || row.source == null) return undefined;
+  const qs = await db.select().from(t.questions).where(eq(t.questions.quizId, quizId)).orderBy(asc(t.questions.position));
+  if (qs.length === 0) return undefined;
+  const opts = await db.select().from(t.options).where(inArray(t.options.questionId, qs.map((q) => q.id))).orderBy(asc(t.options.position));
+  return {
+    quizId,
+    jobId,
+    traceId: row.job.langfuseTraceId,
+    ownerSub: row.quiz.ownerSub,
+    scored: row.job.scoredAt !== null,
+    attempts: row.job.scoringAttempts,
+    sourceText: row.source,
+    questions: qs.map((q) => {
+      const own = opts.filter((o) => o.questionId === q.id);
+      return {
+        prompt: q.prompt,
+        options: own.map((o) => o.text),
+        correct: own.flatMap((o, i) => (o.isCorrect ? [i] : [])),
+        explanation: q.explanation,
+        sourceQuote: q.sourceQuote,
+        difficulty: q.difficulty,
+        type: q.type,
+      };
+    }),
+  };
+}
+
+/** Counts one scoring attempt (bounds the sweeper). Returns the new count, or `undefined` if the job is already scored. */
+export async function claimScoring(db: Db, jobId: string): Promise<number | undefined> {
+  const [row] = await db
+    .update(t.generationJobs)
+    .set({ scoringAttempts: sql`${t.generationJobs.scoringAttempts} + 1` })
+    .where(and(eq(t.generationJobs.id, jobId), sql`${t.generationJobs.scoredAt} is null`))
+    .returning({ attempts: t.generationJobs.scoringAttempts });
+  return row?.attempts;
+}
+
+export interface SaveScoresInput {
+  quizId: string;
+  jobId: string;
+  scores: { evaluator: string; value: number; reasoning?: string | undefined; meta?: Record<string, unknown> | undefined }[];
+  /** What the judge cost: added to the job's totals (the generation worker no longer includes the judge). */
+  usage?: { promptTokens: number; completionTokens: number; cachedTokens: number; costUsd: number } | undefined;
+}
+
+/**
+ * Idempotent: replaces the stored value of every evaluator named in `scores` (so a re-score, or a second scorer that
+ * got the same message, ends in the same state), and marks the job as scored, in one transaction.
+ */
+export async function saveScores(db: Db, p: SaveScoresInput): Promise<void> {
+  await db.transaction(async (tx) => {
+    if (p.scores.length) {
+      await tx.delete(t.evalScores).where(and(eq(t.evalScores.targetType, "quiz"), eq(t.evalScores.targetId, p.quizId), inArray(t.evalScores.evaluator, p.scores.map((s) => s.evaluator))));
+      await tx.insert(t.evalScores).values(
+        p.scores.map((s) => ({ targetType: "quiz" as const, targetId: p.quizId, evaluator: s.evaluator, value: s.value.toFixed(4), reasoning: s.reasoning ?? null, meta: s.meta ?? null })),
+      );
+    }
+    await tx
+      .update(t.generationJobs)
+      .set({
+        scoredAt: new Date(),
+        ...(p.usage
+          ? {
+              promptTokens: sql`coalesce(${t.generationJobs.promptTokens}, 0) + ${p.usage.promptTokens}`,
+              completionTokens: sql`coalesce(${t.generationJobs.completionTokens}, 0) + ${p.usage.completionTokens}`,
+              cachedTokens: sql`coalesce(${t.generationJobs.cachedTokens}, 0) + ${p.usage.cachedTokens}`,
+              costUsd: sql`coalesce(${t.generationJobs.costUsd}, 0) + ${p.usage.costUsd.toFixed(6)}`,
+            }
+          : {}),
+      })
+      .where(eq(t.generationJobs.id, p.jobId));
+  });
+}
+
+/** Finished quizzes that never got their final scores (a lost message, a scorer that died): the sweeper re-queues them. */
+export async function findUnscoredJobs(db: Db, finishedBefore: Date, maxAttempts: number): Promise<{ quizId: string; jobId: string }[]> {
+  return db
+    .select({ quizId: t.generationJobs.quizId, jobId: t.generationJobs.id })
+    .from(t.generationJobs)
+    .innerJoin(t.quizzes, eq(t.quizzes.id, t.generationJobs.quizId))
+    .where(
+      and(
+        eq(t.generationJobs.status, "succeeded"),
+        eq(t.quizzes.status, "ready"),
+        sql`${t.generationJobs.scoredAt} is null`,
+        sql`${t.generationJobs.finishedAt} < ${finishedBefore}`,
+        sql`${t.generationJobs.scoringAttempts} < ${maxAttempts}`,
+      ),
+    )
+    .limit(100);
+}
