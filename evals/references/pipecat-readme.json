@@ -1,0 +1,56 @@
+{
+ "id": "pipecat-readme",
+ "authoredBy": "Claude (draft written from the pinned document; a human review is recommended)",
+ "questions": [
+  {
+   "prompt": "What kind of framework is Pipecat?",
+   "answer": "An open-source Python framework for building real-time voice and multimodal conversational agents.",
+   "sourceQuote": "open-source Python framework for building real-time voice and multimodal conversational agents"
+  },
+  {
+   "prompt": "What command does the README suggest to dive right in?",
+   "answer": "pipecat init quickstart",
+   "sourceQuote": "pipecat init quickstart"
+  },
+  {
+   "prompt": "In Pipecat's multi-agent model, what is each pipeline?",
+   "answer": "Each pipeline is an agent, and agents can be composed with handoff, parallel fan-out, sidecar workers or distributed deployments.",
+   "sourceQuote": "Each pipeline is an agent"
+  },
+  {
+   "prompt": "What does it mean that Pipecat is pluggable?",
+   "answer": "It supports many AI services and tools.",
+   "sourceQuote": "Supports many AI services and tools"
+  },
+  {
+   "prompt": "What is Pipecat Flows used for?",
+   "answer": "Predefined or dynamic conversation paths with state management.",
+   "sourceQuote": "predefined or dynamic conversation paths with state management"
+  },
+  {
+   "prompt": "What is Whisker?",
+   "answer": "A real-time Pipecat debugger.",
+   "sourceQuote": "a real-time Pipecat debugger"
+  },
+  {
+   "prompt": "Which tool must be installed first to run Pipecat locally?",
+   "answer": "uv",
+   "sourceQuote": "you'll need uv"
+  },
+  {
+   "prompt": "Why does a manual installation add extras such as pipecat-ai[option,...]?",
+   "answer": "Only the core framework is included by default to keep things lightweight; extras add third-party AI services.",
+   "sourceQuote": "only the core framework is included by default"
+  },
+  {
+   "prompt": "What is the minimum Python version for developing Pipecat?",
+   "answer": "Python 3.11 (3.12 or newer is recommended).",
+   "sourceQuote": "Minimum Python Version: 3.11"
+  },
+  {
+   "prompt": "How do you run all of Pipecat's tests?",
+   "answer": "uv run pytest from the root directory.",
+   "sourceQuote": "uv run pytest"
+  }
+ ]
+}

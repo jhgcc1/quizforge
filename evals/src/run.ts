@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 import { LangfuseClient } from "@langfuse/client";
 import { createFakeLlm, createMiniMaxClient, fetchMarkdown, flushTracing, generateQuiz, initTracing, tracingEnabled, type LlmClient } from "@quizforge/llm";
 import { ensureModelPrices } from "./ensure-models.js";
+import { DATASET, syncDataset } from "./dataset.js";
 import { GOLDEN, type GoldenItem } from "./golden.js";
 import { MEAN_JUDGE_MIN, THRESHOLDS, evaluateQuiz, type QuizEval } from "./metrics.js";
 
@@ -51,7 +52,6 @@ const llm = makeLlm();
 const judgeLlm: LlmClient | undefined = offline
   ? undefined
   : createMiniMaxClient({ apiKey: process.env.MINIMAX_API_KEY!, baseUrl: process.env.MINIMAX_BASE_URL ?? "https://api.minimax.io/v1", model: process.env.MINIMAX_JUDGE_MODEL ?? "MiniMax-M3" });
-const DATASET = "quizforge-golden";
 const items = GOLDEN.filter((g) => !only || g.id === only);
 const outcomes = new Map<string, Outcome>();
 
@@ -80,17 +80,8 @@ if (tracingEnabled() && !offline && !only) {
   const priced = await ensureModelPrices(lf); // without a price Langfuse shows tokens but no cost
   if (priced.length) console.log(`registered Langfuse prices for: ${priced.join(", ")}`);
 
-  // 1. mirror the golden set into a Langfuse Dataset (items are upserted by id, so this is idempotent)
-  await lf.api.datasets.create({ name: DATASET, description: "QuizForge golden set: documents the quiz generator must handle well", metadata: { thresholds: THRESHOLDS } });
-  for (const g of items) {
-    await lf.api.datasetItems.create({
-      datasetName: DATASET,
-      id: `golden-${g.id}`,
-      input: { id: g.id, source: g.source, numQuestions: g.numQuestions, strategy: g.strategy, critique: g.critique },
-      expectedOutput: { thresholds: THRESHOLDS, expect: g.expect ?? null },
-      metadata: { modelOnly: g.modelOnly ?? false },
-    });
-  }
+  // 1. mirror the golden set (and its reference questions) into a Langfuse Dataset
+  await syncDataset(lf, items);
 
   // 2. run the production agent over the dataset: one Experiment run, each item linked to its trace, metrics as scores
   const dataset = await lf.dataset.get(DATASET);
