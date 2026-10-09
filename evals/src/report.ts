@@ -452,21 +452,30 @@ ${table(["Check", "Result", "What it means"], [
     ["Run-to-run noise (including failed runs)", f3(repNoise(r)), "Larger when one repetition fails and the other passes: that is a reliability problem, not scoring noise."],
     ["LLM judge vs reference match (per quiz)", `r = ${f2(corr)}`, "Positive: both agree on what a good quiz is. Near 0: they measure different things, which is why we average them."],
     ["Variant ranking: score vs judge only (Spearman)", f2(spearman(compRank, judgeRank)), "1 means the same order."],
-    ["Production score (quality_overall) on these runs", f2(prod), "The number the production worker logs for every real quiz, computed here by the same code. See below."],
+    ["Production score (quality_overall) on these runs", f2(prod), "The number the production scorer stores for every real quiz, computed here by the same code. See below."],
   ])}
 </section>
 
 <section><h2>Production and evals use the same method</h2>
-<p>Every quiz generated in production is scored by the same function (<code>packages/llm/src/quality.ts</code>) that scores the quizzes in these experiments. Same code, same metric names, same weights.</p>
+<p>Every quiz generated in production is scored by the same function (<code>packages/llm/src/quality.ts</code>) that scores the quizzes in these experiments. Same code, same metric names, same weights. In production the work is split in two: the <strong>generation worker</strong> saves the quiz (it is ready for the user) and computes the fixed checks; then a separate <strong>scorer service</strong>, fed by its own queue, runs the judge and stores <code>quality_overall</code>. A slow or failing judge never delays or breaks a quiz.</p>
 ${table(["Metric (Langfuse score name)", "Every production quiz", "These experiments", "Notes"], [
     ["grounded, lint_pass, difficulty_spread", "yes", "yes", "Fixed code"],
     ["question_diversity, relevance, coverage", "yes", "yes", "Free TF-IDF similarity"],
     ["language_match", "yes", "yes", "Quiz language vs document language"],
-    ["judge_overall, judge_faithfulness, judge_clarity, judge_distractors, judge_coverage, judge_difficulty_mix", "yes", "yes", "Same rubric, same model, median of 3 runs"],
+    ["judge_overall, judge_faithfulness, judge_clarity, judge_distractors, judge_coverage, judge_difficulty_mix", "yes", "yes", "Same rubric, same model, median of 3 runs (in production: the scorer service, after the quiz is saved)"],
     ["quality_overall", "yes", "yes", "Weighted average; 0 if a gate fails; absent if the judge failed (never a different formula)"],
     ["ref_recall, ref_precision, emb_relevance, emb_diversity, composite", "no", "yes", "Need reference questions or a local embedding model: evaluation only"],
   ])}
-<p>Alerts (CloudWatch → e-mail): hourly average of <code>quality_overall</code> below 0.6, <strong>any single quiz below 0.4</strong>, the judge failing repeatedly, plus queue, error, cost and database alarms. Langfuse Hobby allows only 2 score alerts (Slack, webhook or GitHub Actions, no e-mail), so the main alarms live in CloudWatch, which sends e-mail.</p>
+<p>Alerts (CloudWatch → e-mail): hourly average of <code>quality_overall</code> below 0.6, <strong>any single quiz below 0.4</strong>, the judge failing repeatedly, plus queue (jobs and scoring), error, cost and database alarms. Langfuse Hobby allows only 2 score alerts (Slack, webhook or GitHub Actions, no e-mail), so the main alarms live in CloudWatch, which sends e-mail.</p>
+</section>
+
+<section><h2>How this report talks to the other systems</h2>
+${table(["Step", "Protocol", "Notes"], [
+    ["Generate and judge", "HTTPS, OpenAI chat-completions protocol (same client as production)", "90 s timeout, 3 retries; the answer's <code>&lt;think&gt;</code> text is dropped and the JSON is checked by the same schema, with up to 2 repairs"],
+    ["Embeddings", "Local ONNX model, no network after the first download", "Hugging Face hub is contacted once; used only for the on-topic and no-repeat metrics"],
+    ["Langfuse", "REST (datasets, items, experiment runs) + OTLP spans + REST scores", "One experiment per variant; every score has the same name as in production"],
+    ["The report", "A static HTML file + a JSON file with the raw numbers", "Committed in <code>docs/eval</code>; also an artifact of the manual workflow"],
+  ])}
 </section>
 
 <section><h2>Where to find it</h2>
