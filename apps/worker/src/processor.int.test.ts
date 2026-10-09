@@ -98,10 +98,8 @@ describe("processQuizJob", () => {
     expect(job!.budgetState).toMatchObject({ calls: expect.any(Number) });
 
     const evals = await ctx.db.select().from(schema.evalScores).where(eq(schema.evalScores.targetId, quiz.id));
-    // the fast metrics are stored now; the judge scores and quality_overall come later, from the scorer service
-    expect(evals.map((e) => e.evaluator)).toEqual(expect.arrayContaining(["grounded", "lint_pass", "question_diversity", "relevance", "language_match"]));
-    expect(evals.map((e) => e.evaluator)).not.toContain("judge_overall");
-    expect(evals.map((e) => e.evaluator)).not.toContain("quality_overall");
+    // the worker only generates and saves: EVERY score (fixed checks, judge, quality_overall) comes later, from the scorer service
+    expect(evals).toEqual([]);
     expect(metrics.at(-1)).toMatchObject({ JobSucceeded: 1, QuizCostUsd: expect.any(Number) });
     expect(metrics.at(-1)).not.toHaveProperty("QuizQuality"); // emitted by the scorer
     expect(job!.scoredAt).toBeNull();

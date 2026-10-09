@@ -125,7 +125,7 @@ test("the quiz is ready first, and the scorer service judges it afterwards (own 
   try {
     await expect
       .poll(async () => (await db.query("select evaluator from eval_scores where target_id = $1", [quizId])).rows.map((r) => r.evaluator as string), { timeout: 40_000, intervals: [500, 1000] })
-      .toEqual(expect.arrayContaining(["quality_overall", "judge_overall", "grounded", "lint_pass"])); // fast scores from the worker + judge scores from the scorer
+      .toEqual(expect.arrayContaining(["quality_overall", "judge_overall", "grounded", "lint_pass"])); // every score comes from the scorer service: the worker saves the quiz and no scores
     const job = (await db.query("select scored_at, scoring_attempts from generation_jobs where quiz_id = $1", [quizId])).rows[0];
     expect(job.scored_at).not.toBeNull();
     expect(job.scoring_attempts).toBe(1);

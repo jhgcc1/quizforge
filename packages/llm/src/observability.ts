@@ -75,7 +75,8 @@ export async function scoreTrace(
   const lf = langfuse();
   if (!lf || !traceId) return;
   try {
-    lf.score.create({ traceId, name, value, dataType: "NUMERIC", ...(comment ? { comment } : {}) });
+    // The id makes the call idempotent: a redelivered score job or a sweeper re-queue updates the score instead of adding a copy.
+    lf.score.create({ id: `${traceId}:${name}`, traceId, name, value, dataType: "NUMERIC", ...(comment ? { comment } : {}) });
   } catch (err) {
     console.warn("langfuse score failed", (err as Error).message);
   }

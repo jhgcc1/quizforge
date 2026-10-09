@@ -64,7 +64,7 @@ async function readyQuiz() {
   const quotes = ["When the arena is ninety percent full", "Entries marked pinned are never evicted", "writes a snapshot to disk every five minutes", "loads the newest complete snapshot", "very little RAM"];
   await completeQuiz(ctx.db, {
     quizId: quiz.id, jobId: claimed.job.id, sourceId, strategyUsed: "single-shot",
-    evals: [{ evaluator: "lint_pass", value: 1 }, { evaluator: "grounded", value: 1 }],
+    evals: [], // like the generation worker: it saves the quiz and no scores
     job: { model: "fake", promptTokens: 1000, completionTokens: 500, cachedTokens: 0, costUsd: 0.001, traceId: "trace-123" },
     questions: quotes.map((quote, i) => ({ prompt: `Question ${i + 1} about the Zephyr Cache documentation?`, options: ["right answer", "wrong one", "wrong two", "wrong three"], correct: [0], explanation: "Because the document says so.", sourceQuote: quote, difficulty: "medium" as const, type: "single" as const })),
   });
@@ -81,8 +81,8 @@ describe("processScoreJob (the scorer service)", () => {
     expect(out).toEqual({ kind: "done" });
 
     const e = await evals(q.quizId);
-    expect(e).toMatchObject({ lint_pass: 1, grounded: 1 }); // the fast scores written at generation are untouched
-    expect(Object.keys(e)).toEqual(expect.arrayContaining(["judge_overall", "judge_faithfulness", "judge_clarity", "judge_distractors", "quality_overall"]));
+    expect(e).toMatchObject({ lint_pass: 1, grounded: 1 }); // the scorer also computes the fixed scores: the worker saved none
+    expect(Object.keys(e)).toEqual(expect.arrayContaining(["grounded", "lint_pass", "question_diversity", "relevance", "language_match", "judge_overall", "judge_faithfulness", "judge_clarity", "judge_distractors", "quality_overall"]));
     expect(e.quality_overall).toBeGreaterThan(0);
 
     const after = await job(q.jobId);
@@ -159,7 +159,7 @@ describe("processScoreJob (the scorer service)", () => {
 
     const last = await processScoreJob(deps({ judgeLlm: broken }), { v: 1, ...q }, { count: 3, max: 3 });
     expect(last.kind).toBe("failed");
-    expect(await evals(q.quizId)).toMatchObject({ judge_failed: 1 });
+    expect(await evals(q.quizId)).toMatchObject({ judge_failed: 1, lint_pass: expect.any(Number), grounded: expect.any(Number) }); // the fixed scores are kept
     expect(await evals(q.quizId)).not.toHaveProperty("quality_overall");
     expect((await job(q.jobId)).scoredAt).not.toBeNull(); // so the sweeper does not re-queue it forever
     expect(metrics.at(-1)).toMatchObject({ JudgeFailed: 1 });
