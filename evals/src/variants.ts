@@ -10,9 +10,9 @@ export interface Structure {
 }
 
 export const STRUCTURES: Structure[] = [
-  { id: "one-shot", title: "One-shot", graph: "route → generate → check → finalize", input: { strategy: "single-shot", critique: false } },
+  { id: "one-shot", title: "One-shot", graph: "route → generate → check → (revise ≤2× if flagged) → finalize", input: { strategy: "single-shot", critique: false } },
   { id: "critique-loop", title: "Generate → critique → revise", graph: "route → generate → check → critique → revise ⟲ check → finalize", input: { strategy: "auto", critique: true } },
-  { id: "plan-then-write", title: "Plan then write", graph: "route → plan(facts + quotes) → write(1 question/fact) → check → finalize", input: { strategy: "single-shot", critique: false, planFirst: true } },
+  { id: "plan-then-write", title: "Plan then write", graph: "route → plan(facts + quotes) → write(1 question/fact) → check → (revise ≤2× if flagged) → finalize", input: { strategy: "single-shot", critique: false, planFirst: true } },
 ];
 
 export const PROMPTS: { id: PromptVariant; title: string }[] = [

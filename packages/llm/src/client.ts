@@ -6,7 +6,7 @@ export interface MiniMaxConfig {
   apiKey: string;
   baseUrl?: string;
   model: string;
-  /** HTTP-level retries (network, 429, 5xx) handled by the OpenAI SDK with backoff + Retry-After. */
+  /** Retries after a failed HTTP call, done by LangChain with growing, randomized delays: 3 retries = up to 4 attempts. */
   maxRetries?: number;
   timeoutMs?: number;
   callbacks?: BaseCallbackHandler[];

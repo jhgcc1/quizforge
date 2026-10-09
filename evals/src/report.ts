@@ -147,9 +147,9 @@ const arrow = (x1: number, y1: number, x2: number, y2: number, dash = false): st
 function structuresDiagram(): string {
   let b = "";
   const rows: { title: string; y: number; nodes: [string, Kind, string?][]; loop?: [number, number] }[] = [
-    { title: "one-shot", y: 30, nodes: [["Route", "det", "short / long doc"], ["Generate", "llm", "1 prompt"], ["Check", "det", "quotes, lint"], ["Finalize", "det", "drop bad ones"]] },
-    { title: "critique-loop", y: 140, nodes: [["Route", "det"], ["Generate", "llm"], ["Check", "det"], ["Critique", "llm", "AI reviewer"], ["Revise", "llm", "fix flagged"], ["Finalize", "det"]], loop: [4, 2] },
-    { title: "plan-then-write", y: 250, nodes: [["Route", "det"], ["Plan", "llm", "facts + quotes"], ["Write", "llm", "1 question / fact"], ["Check", "det"], ["Finalize", "det"]] },
+    { title: "one-shot (no AI reviewer)", y: 30, nodes: [["Route", "det", "short / long doc"], ["Generate", "llm", "1 prompt"], ["Check", "det", "quotes, lint"], ["Revise", "llm", "only if the checks flag"], ["Finalize", "det", "drop bad ones"]], loop: [3, 2] },
+    { title: "critique-loop (one AI review first)", y: 140, nodes: [["Route", "det"], ["Generate", "llm"], ["Check", "det"], ["Critique", "llm", "AI reviewer"], ["Revise", "llm", "fix flagged"], ["Finalize", "det"]], loop: [4, 2] },
+    { title: "plan-then-write", y: 250, nodes: [["Route", "det"], ["Plan", "llm", "facts + quotes"], ["Write", "llm", "1 question / fact"], ["Check", "det"], ["Revise", "llm", "only if the checks flag"], ["Finalize", "det"]], loop: [4, 3] },
   ];
   for (const r of rows) {
     b += `<text x="10" y="${r.y - 8}" class="h">${esc(r.title)}</text>`;
@@ -254,7 +254,7 @@ function tradeoffChart(rows: ReturnType<typeof aggregate>): string {
   let b = "";
   for (let t = Math.ceil(x0 / 10) * 10; t <= x1; t += 10) b += `<line x1="${X(t)}" y1="${top}" x2="${X(t)}" y2="${h - bottom}" class="grid"/><text x="${X(t)}" y="${h - bottom + 16}" text-anchor="middle" class="s">${t}s</text>`;
   for (let t = Math.ceil(y0 * 20) / 20; t <= y1 + 1e-9; t += 0.05) b += `<line x1="${left}" y1="${Y(t)}" x2="${w - right}" y2="${Y(t)}" class="grid"/><text x="${left - 8}" y="${Y(t) + 4}" text-anchor="end" class="s">${t.toFixed(2)}</text>`;
-  b += `<text x="${(left + w - right) / 2}" y="${h - 22}" text-anchor="middle" class="s">time to generate one document (faster to the left)</text>`;
+  b += `<text x="${(left + w - right) / 2}" y="${h - 22}" text-anchor="middle" class="s">time per document, including judging (faster to the left)</text>`;
   b += `<text x="14" y="${(top + h - bottom) / 2}" text-anchor="middle" class="s" transform="rotate(-90 14 ${(top + h - bottom) / 2})">score (higher is better)</text>`;
   rows.forEach((x) => {
     const k = structures.indexOf(x.v.structure);
@@ -377,7 +377,7 @@ ${table(["Variant", "Ignored the attack", "Score on this document"], rows)}
       rowsT.push(["Does a better prompt help?", `conceptual ${f3(concept.composite)} · original ${f3(base.composite)} · few-shot ${f3(few.composite)}; LLM judge alone moves ${signed(dj)} for conceptual`, `Conceptual gain ${signed(concept.composite - base.composite)} (${near(concept.composite - base.composite)}). Mostly the LLM judge moves, which can be taste, not quality. Few-shot: ${few.failed} failed run${few.failed === 1 ? "" : "s"}.`]);
     }
     const failedCells = r.cells.filter((c) => !c.ok);
-    rowsT.push(["Is it reliable?", `${failedCells.length} failed of ${r.cells.length}`, failedCells.length ? `Failed: ${[...new Set(failedCells.map((c) => c.variant))].map((v) => `<code>${esc(v)}</code>`).join(", ")}. Watch this variant before using it.` : "No failures."]);
+    rowsT.push(["Is it reliable?", `${failedCells.length} failed of ${r.cells.length}`, failedCells.length ? `Failed: ${[...new Set(failedCells.map((c) => c.variant))].map((v) => { const x = rows.find((y) => y.v.id === v)!; const okMean = mean(x.cells.filter((c) => c.ok).map((c) => c.composite)); return `<code>${esc(v)}</code> (average ${f3(x.composite)} with the failed run counted as 0, ${f3(okMean)} without it)`; }).join("; ")}. A failed run scores 0, so one failure alone can push a variant down the ranking.` : "No failures."]);
     const inj = r.cells.filter((c) => c.scores.injection_resisted !== undefined);
     if (inj.length) rowsT.push(["Is it safe against the attack document?", `${inj.filter((c) => c.scores.injection_resisted === 1).length} of ${inj.length} resisted`, inj.every((c) => c.scores.injection_resisted === 1) ? "Pass for every variant. It is one document and 4 strings, not proof." : "At least one generation obeyed the attack: see the table below."]);
     const spent = r.cells.reduce((a, c) => a + (c.costUsd ?? 0), 0);
@@ -432,7 +432,7 @@ details{margin:6px 0;border:1px solid var(--line);border-radius:8px;padding:6px 
     ref_precision: ["Is each question close to some reference question?", "Cosine similarity of embeddings (low weight: a valid question can be outside a short reference set)"],
     emb_relevance: ["Does each question stay on the document?", "Cosine similarity of embeddings"],
     emb_diversity: ["Are any two questions the same question in different words?", "1 minus the highest cosine between two questions"],
-    lint_pass: ["Any 'all of the above', give-away option lengths, duplicates?", "Fixed code"],
+    lint_pass: ["Wrong 'select all' wording, 'all of the above', letter prefixes, a correct option much longer than the rest?", "Fixed code (duplicate questions are rejected earlier, by the schema)"],
     coverage: ["Do the questions come from different sections?", "Fixed code (only for documents with 3+ sections; otherwise the weight is shared)"],
   };
 
@@ -464,7 +464,7 @@ details{margin:6px 0;border:1px solid var(--line);border-radius:8px;padding:6px 
 </div>
 ${rankingChart(rows)}
 ${takeaways}
-${table(["#", "Structure", "Prompt", "Score", "LLM judge", "Reference match", "No duplicates", "Lint", "Coverage", "Failed", "Time / doc"], ranked.map((x, i) => [String(i + 1), esc(shown(x.v.structureTitle)), esc(shown(x.v.prompt)), `<strong>${f3(x.composite)}</strong>`, f2(x.metric("judge_overall")), f2(x.metric("ref_recall")), f2(x.metric("emb_diversity")), f2(x.metric("lint_pass")), f2(x.metric("coverage")), `${x.failed} of ${x.cells.length}`, `${x.seconds.toFixed(0)}s`]))}
+${table(["#", "Structure", "Prompt", "Score", "LLM judge", "Reference match", "No duplicates", "Lint", "Coverage", "Failed", "Time / doc (with judging)"], ranked.map((x, i) => [String(i + 1), esc(shown(x.v.structureTitle)), esc(shown(x.v.prompt)), `<strong>${f3(x.composite)}</strong>`, f2(x.metric("judge_overall")), f2(x.metric("ref_recall")), f2(x.metric("emb_diversity")), f2(x.metric("lint_pass")), f2(x.metric("coverage")), `${x.failed} of ${x.cells.length}`, `${x.seconds.toFixed(0)}s`]))}
 </section>
 
 <section><h2>What was compared</h2>
@@ -484,8 +484,8 @@ ${table(["Metric", "Weight", "Question it answers", "How it is measured"], (Obje
 </section>
 
 <section><h2>What made the difference?</h2>
-${table(["Structure", "Score", "Time / doc", "Cost / variant", "Failed runs"], groupRows("structure").sort((a, b) => b.composite - a.composite).map((x) => [esc(shown(x.title)), `<strong>${f3(x.composite)}</strong>`, `${x.seconds.toFixed(0)}s`, `$${x.cost.toFixed(3)}`, `${x.failed} of ${x.runs}`]))}
-${table(["Prompt", "Score", "Time / doc", "Cost / variant", "Failed runs"], groupRows("prompt").sort((a, b) => b.composite - a.composite).map((x) => [esc(shown(x.title)), `<strong>${f3(x.composite)}</strong>`, `${x.seconds.toFixed(0)}s`, `$${x.cost.toFixed(3)}`, `${x.failed} of ${x.runs}`]))}
+${table(["Structure", "Score", "Time / doc (with judging)", "Cost / variant", "Failed runs"], groupRows("structure").sort((a, b) => b.composite - a.composite).map((x) => [esc(shown(x.title)), `<strong>${f3(x.composite)}</strong>`, `${x.seconds.toFixed(0)}s`, `$${x.cost.toFixed(3)}`, `${x.failed} of ${x.runs}`]))}
+${table(["Prompt", "Score", "Time / doc (with judging)", "Cost / variant", "Failed runs"], groupRows("prompt").sort((a, b) => b.composite - a.composite).map((x) => [esc(shown(x.title)), `<strong>${f3(x.composite)}</strong>`, `${x.seconds.toFixed(0)}s`, `$${x.cost.toFixed(3)}`, `${x.failed} of ${x.runs}`]))}
 <h3>What changes when you switch (metric by metric)</h3>
 <p>Structures are compared with <code>critique-loop</code>, prompts with the original prompt: each choice has its own control. Look at <em>which</em> instrument moves. If only the LLM judge moves, the gain may be the judge's taste, not a better quiz.</p>
 ${effectTable("structure", "critique-loop", "critique-loop")}
@@ -513,7 +513,7 @@ ${table(["Check", "Result", "What it means"], [
 </section>
 
 <section><h2>Production and evals use the same method</h2>
-<p>Every quiz generated in production is scored by the same function (<code>packages/llm/src/quality.ts</code>) that scores the quizzes in these experiments. Same code, same metric names, same weights. In production the work is split in two: the <strong>generation worker</strong> saves the quiz (it is ready for the user) and computes the fixed checks; then a separate <strong>scorer service</strong>, fed by its own queue, runs the judge and stores <code>quality_overall</code>. A slow or failing judge never delays or breaks a quiz.</p>
+<p>Every quiz generated in production is scored by the same function (<code>packages/llm/src/quality.ts</code>) that scores the quizzes in these experiments. Same code and the same metric names. The <code>quality_overall</code> number uses the production weights (judge 0.45, lint 0.15, on-topic 0.15, no duplicates 0.15, coverage 0.10); the ranking number in this report (<em>Score</em>) uses its own weights and one more gate (the injection check), because it also has reference questions and embeddings. In production the work is split in two: the <strong>generation worker</strong> saves the quiz (it is ready for the user) and computes the fixed checks; then a separate <strong>scorer service</strong>, fed by its own queue, runs the judge and stores <code>quality_overall</code>. A slow or failing judge never delays or breaks a quiz.</p>
 ${table(["Metric (Langfuse score name)", "Every production quiz", "These experiments", "Notes"], [
     ["grounded, lint_pass, difficulty_spread", "yes", "yes", "Fixed code"],
     ["question_diversity, relevance, coverage", "yes", "yes", "Free TF-IDF similarity"],
@@ -527,7 +527,7 @@ ${table(["Metric (Langfuse score name)", "Every production quiz", "These experim
 
 <section><h2>How this report talks to the other systems</h2>
 ${table(["Step", "Protocol", "Notes"], [
-    ["Generate and judge", "HTTPS, OpenAI chat-completions protocol (same client as production)", "90 s timeout, 3 retries; the answer's <code>&lt;think&gt;</code> text is dropped and the JSON is checked by the same schema, with up to 2 repairs"],
+    ["Generate and judge", "HTTPS, OpenAI chat-completions protocol (same client as production)", "90 s timeout, 3 retries; the answer's <code>&lt;think&gt;</code> text is dropped and the JSON is checked by the same schema, with up to 2 repairs (the judge: 1)"],
     ["Embeddings", "Local ONNX model, no network after the first download", "Hugging Face hub is contacted once; used only for the on-topic and no-repeat metrics"],
     ["Langfuse", "REST (datasets, items, experiment runs) + OTLP spans + REST scores", "One experiment per variant; every score has the same name as in production"],
     ["The report", "A static HTML file + a JSON file with the raw numbers", "Committed in <code>docs/eval</code>; also an artifact of the manual workflow"],

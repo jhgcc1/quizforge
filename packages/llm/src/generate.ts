@@ -61,7 +61,7 @@ export async function generateQuiz(p: GenerateQuizParams): Promise<GeneratedQuiz
       ...(p.trace?.sessionId ? { sessionId: p.trace.sessionId } : {}),
       ...(p.trace?.userId ? { userId: p.trace.userId } : {}),
       tags: ["quizforge", ...(p.trace?.tags ?? [])],
-      metadata: { requestId: p.trace?.requestId, promptVersion: PROMPT_VERSION, qualityVersion: QUALITY_VERSION, model: p.llm.model, judgeModel: (p.judgeLlm ?? p.llm).model, structure: p.input.planFirst ? "plan-then-write" : p.input.critique ? "critique-loop" : "one-shot", promptVariant: p.input.promptVariant ?? "baseline" },
+      metadata: { requestId: p.trace?.requestId, promptVersion: PROMPT_VERSION, qualityVersion: QUALITY_VERSION, model: p.llm.model, ...(p.judge !== false ? { judgeModel: (p.judgeLlm ?? p.llm).model } : {}), structure: p.input.planFirst ? "plan-then-write" : p.input.critique ? "critique-loop" : "one-shot", promptVariant: p.input.promptVariant ?? "baseline" },
     },
     async (ctx) => {
       const budget = new JobBudget(undefined, p.budgetState);
