@@ -86,7 +86,7 @@ export async function processQuizJob(
         critique: quiz.critique,
       },
       ...(job.budgetState ? { budgetState: job.budgetState as never } : {}),
-      judge: false, // the judge runs in the scorer service, after the quiz is already saved
+      score: false, // every score (fixed checks and judge) is computed by the scorer service, after the quiz is already saved
       trace: { sessionId: quiz.id, userId: hashSub(quiz.ownerSub), ...(msg.requestId ? { requestId: msg.requestId } : {}) },
       threadId,
       ...(d.checkpointer ? { checkpointer: d.checkpointer } : {}),
@@ -94,9 +94,6 @@ export async function processQuizJob(
     budgetSnapshot = result.budget;
 
     const costUsd = (result.usage.promptTokens * d.pricing.inPerM + result.usage.completionTokens * d.pricing.outPerM) / 1e6;
-    // The fast metrics of the shared quality method (fixed checks, similarity, language), under the names they have in Langfuse.
-    // The judge scores and quality_overall are added later by the scorer service, with the same method.
-    const evals = Object.entries(result.scores).map(([evaluator, value]) => ({ evaluator, value }));
     await completeQuiz(d.db, {
       quizId: quiz.id,
       jobId: job.id,
@@ -111,7 +108,7 @@ export async function processQuizJob(
         costUsd,
         traceId: result.traceId,
       },
-      evals,
+      evals: [], // scores come later, from the scorer service
     });
     await saveJobBudget(d.db, job.id, result.budget);
 

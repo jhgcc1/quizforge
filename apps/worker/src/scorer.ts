@@ -15,13 +15,13 @@ export interface ScoreDeps {
 }
 
 /**
- * Scorer service: judge a quiz that is already saved as `ready`, off the path of the user's request.
+ * Scorer service: score a quiz that is already saved as `ready` (every metric of the shared method, judge included), off the path of the user's request.
  * Everything it needs is read from Postgres (the message carries ids only), so a duplicate or redelivered message is harmless:
  * an already scored job is skipped, and the stored scores are replaced, never doubled.
  *
- *   judge ok            -> store judge_* + quality_overall, mark the job scored          -> done
+ *   judge ok            -> store every score + quality_overall, mark the job scored      -> done
  *   judge failed, tries -> leave the message (SQS redelivers with backoff)               -> retry
- *   judge failed, last  -> store judge_failed = 1, mark scored (no endless re-queueing),
+ *   judge failed, last  -> store the fixed scores + judge_failed = 1, mark scored (no endless re-queueing),
  *                          emit JudgeFailed (the judge-failing alarm)                    -> failed
  */
 export async function processScoreJob(d: ScoreDeps, msg: ScoreJobMessage, receive: { count: number; max: number }): Promise<Outcome> {
@@ -45,6 +45,10 @@ export async function processScoreJob(d: ScoreDeps, msg: ScoreJobMessage, receiv
   const usage = { ...r.usage, costUsd };
   const ms = Date.now() - started;
 
+  const fastScores = Object.entries(r.scores)
+    .filter(([name]) => !name.startsWith("judge_"))
+    .map(([evaluator, value]) => ({ evaluator, value, meta: { qualityVersion: r.qualityVersion } }));
+
   if (r.judgeFailed) {
     const last = receive.count >= receive.max;
     log.error({ last, ms }, "judge failed");
@@ -53,11 +57,13 @@ export async function processScoreJob(d: ScoreDeps, msg: ScoreJobMessage, receiv
       await releaseScoring(d.db, msg.jobId); // so the redelivered message can take the job again
       return { kind: "retry", error: "judge failed" };
     }
-    await saveScores(d.db, { quizId: msg.quizId, jobId: msg.jobId, scores: [{ evaluator: "judge_failed", value: 1, meta: { qualityVersion: r.qualityVersion, judgeModel: r.judgeModel } }], usage });
+    // The fixed metrics do not need the judge: keep them, and record that the judge failed (no quality_overall).
+    await saveScores(d.db, { quizId: msg.quizId, jobId: msg.jobId, scores: [...fastScores, { evaluator: "judge_failed", value: 1, meta: { qualityVersion: r.qualityVersion, judgeModel: r.judgeModel } }], usage });
     return { kind: "failed", error: "judge failed on every attempt" };
   }
 
   const scores = [
+    ...fastScores,
     ...Object.entries(r.scores)
       .filter(([name]) => name.startsWith("judge_"))
       .map(([evaluator, value]) => ({ evaluator, value, ...(evaluator === "judge_overall" && r.judge ? { reasoning: r.judge.scores.reasoning } : {}), meta: { qualityVersion: r.qualityVersion, judgeModel: r.judgeModel, samples: r.judge?.samples, spread: r.judge?.spread } })),

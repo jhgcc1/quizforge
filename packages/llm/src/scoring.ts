@@ -37,7 +37,7 @@ export interface ScoreExistingParams {
   judgeSamples?: number | undefined;
   questions: GeneratedQuestion[];
   sourceText: string;
-  /** Langfuse trace of the GENERATION: the judge scores are attached to it, next to the fast scores that are already there. */
+  /** Langfuse trace of the GENERATION: every score (fixed checks, similarity, language and the judge ones) is attached to it. */
   traceId?: string | null | undefined;
   quizId?: string | undefined;
 }
@@ -55,7 +55,7 @@ export interface ScoreExistingResult {
 
 /**
  * Score a quiz that is ALREADY saved: run the judge, compute every metric with the one shared method (quality.ts) and send
- * the judge-dependent scores to Langfuse. This is what the scorer service runs, off the path of the user's request.
+ * ALL the scores to Langfuse. This is what the scorer service runs, off the path of the user's request.
  * The judge calls are traced as generations (time, tokens, cost) in a "quiz-scoring" trace of the same session.
  */
 export async function scoreExistingQuiz(p: ScoreExistingParams): Promise<ScoreExistingResult> {
@@ -70,7 +70,6 @@ export async function scoreExistingQuiz(p: ScoreExistingParams): Promise<ScoreEx
       const traceId = p.traceId ?? undefined;
       await Promise.all([
         ...Object.entries(q.scores)
-          .filter(([name]) => name.startsWith("judge_"))
           .map(([name, value]) => scoreTrace(traceId, name, value, name === "judge_overall" ? `${note} | ${judge?.scores.reasoning ?? ""}`.slice(0, 1500) : undefined)),
         ...(q.quality !== undefined ? [scoreTrace(traceId, "quality_overall", q.quality, note)] : []),
         ...(failed ? [scoreTrace(traceId, "judge_failed", 1)] : []),

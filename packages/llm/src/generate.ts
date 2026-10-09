@@ -24,6 +24,11 @@ export interface GenerateQuizParams {
   /** Resume a previous allowance after an SQS redelivery. */
   budgetState?: BudgetState;
   judge?: boolean;
+  /**
+   * Compute and send the quality scores (default true). The production worker passes false: it only generates and saves the quiz;
+   * the scorer service computes every score afterwards with the same method (see scoring.ts). Implies no judge.
+   */
+  score?: boolean;
   trace?: { sessionId?: string; userId?: string; requestId?: string; tags?: string[] };
   threadId?: string;
   checkpointer?: BaseCheckpointSaver;
@@ -61,7 +66,7 @@ export async function generateQuiz(p: GenerateQuizParams): Promise<GeneratedQuiz
       ...(p.trace?.sessionId ? { sessionId: p.trace.sessionId } : {}),
       ...(p.trace?.userId ? { userId: p.trace.userId } : {}),
       tags: ["quizforge", ...(p.trace?.tags ?? [])],
-      metadata: { requestId: p.trace?.requestId, promptVersion: PROMPT_VERSION, qualityVersion: QUALITY_VERSION, model: p.llm.model, judgeModel: (p.judgeLlm ?? p.llm).model, structure: p.input.planFirst ? "plan-then-write" : p.input.critique ? "critique-loop" : "one-shot", promptVariant: p.input.promptVariant ?? "baseline" },
+      metadata: { requestId: p.trace?.requestId, promptVersion: PROMPT_VERSION, qualityVersion: QUALITY_VERSION, model: p.llm.model, ...(p.judge !== false && p.score !== false ? { judgeModel: (p.judgeLlm ?? p.llm).model } : {}), structure: p.input.planFirst ? "plan-then-write" : p.input.critique ? "critique-loop" : "one-shot", promptVariant: p.input.promptVariant ?? "baseline" },
     },
     async (ctx) => {
       const budget = new JobBudget(undefined, p.budgetState);
@@ -73,12 +78,13 @@ export async function generateQuiz(p: GenerateQuizParams): Promise<GeneratedQuiz
       const metrics = quizMetrics(run.questions);
       let judge: JudgeResult | undefined;
       let judgeFailed = false;
-      if (p.judge !== false) {
+      const scoring = p.score !== false;
+      if (scoring && p.judge !== false) {
         const r = await judgeWithRetry({ llm: p.judgeLlm ?? p.llm, samples: p.judgeSamples, budget, sourceText: p.input.sourceText, questions: run.questions });
         judge = r.judge;
         judgeFailed = r.failed;
       }
-      const q = await scoreQuiz({ questions: run.questions, sourceText: p.input.sourceText, judge });
+      const q = scoring ? await scoreQuiz({ questions: run.questions, sourceText: p.input.sourceText, judge }) : { scores: {} as Record<string, number>, quality: undefined };
       const note = judge ? judgeNote((p.judgeLlm ?? p.llm).model, judge) : undefined;
       await Promise.all([
         ...Object.entries(q.scores).map(([name, value]) => scoreTrace(ctx.traceId, name, value, name === "judge_overall" ? `${note} | ${judge?.scores.reasoning ?? ""}`.slice(0, 1500) : undefined)),
