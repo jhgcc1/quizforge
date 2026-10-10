@@ -1,5 +1,5 @@
 /**
- * Semantic-ish similarity WITHOUT an embedding API (used by the production worker for every quiz, and by the evals). The MiniMax Token Plan key has no usable embeddings, and a
+ * Semantic-ish similarity WITHOUT an embedding API (used by the scorer service for every quiz, and by the evals). The MiniMax Token Plan key has no usable embeddings, and a
  * deterministic, free metric is better for a CI gate anyway (no extra model, no extra flakiness). TF-IDF cosine over
  * word uni+bi-grams is enough to catch what we care about: near-duplicate questions and questions unrelated to the
  * document. The Embedder interface lets real embeddings (Bedrock Titan, OpenAI, ...) replace it without touching metrics.

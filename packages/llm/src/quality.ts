@@ -11,7 +11,7 @@ import { splitSections } from "./source.js";
  * Bump QUALITY_VERSION when anything here changes: scores are only comparable within one version.
  *
  * What differs between environments is only the INPUT, and it is recorded: the judge model and the number of judge
- * samples (the production worker is configured with the same judge as the CI evaluation).
+ * samples (the production scorer service is configured with the same judge as the CI evaluation).
  */
 export const QUALITY_VERSION = "2026-10-08.1";
 

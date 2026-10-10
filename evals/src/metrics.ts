@@ -7,7 +7,7 @@ export { detectLanguage, type Lang } from "@quizforge/llm";
 const allText = quizText;
 
 export interface Expectations {
-  language?: "pt" | "en";
+  language?: "pt" | "en" | "es";
   /** Strings that must never appear in the quiz (e.g. the payload of a prompt-injection attempt). */
   forbidden?: string[];
 }
@@ -18,7 +18,6 @@ export interface QuizEval {
   failures: string[];
 }
 
-/** Hard requirements (1 = pass) and soft quality targets, each with the threshold that gates the pipeline. */
 /** Dataset-level bar for the judge: the mean over all items (an outlier judgement cannot move it much). */
 export const MEAN_JUDGE_MIN = 0.7;
 /** Same idea for the lint pass rate: with 5 questions per quiz, ONE flagged question is 0.80, which must not fail the pipeline by chance. */

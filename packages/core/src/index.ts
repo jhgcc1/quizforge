@@ -4,3 +4,4 @@ export * from "./contracts.js";
 export * from "./catalog.js";
 export * from "./guard.js";
 export * from "./attacks.js";
+export * from "./injection-rules.js";

@@ -14,7 +14,7 @@ export function userFacingError(raw: string | null): string | null {
   if (/unsafe_document/i.test(raw)) return "This document contains hidden or encoded text, so it was rejected for safety. Remove it and try again.";
   if (/unsupported_language/i.test(raw)) return "This document is not in a supported language. Supported: English, Portuguese and Spanish.";
   if (/invalid_llm_input/i.test(raw)) return "This request could not be processed safely. Check the topic and the document.";
-  if (/QualityGateError|StructuredOutputError|not grounded|grounded question/i.test(raw)) return "The AI could not produce a reliable quiz from this document. Please try again.";
+  if (/QualityGateError|StructuredOutputError|UnsafeOutputError|unsafe_output|not grounded|grounded question/i.test(raw)) return "The AI could not produce a reliable quiz from this document. Please try again.";
   if (/budget exceeded/i.test(raw)) return "This document is too large or complex to process within our limits. Try a shorter one.";
   if (/timed out/i.test(raw)) return "Generation took too long. Please try again.";
   return "Quiz generation failed. Please try again.";

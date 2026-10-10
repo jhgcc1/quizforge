@@ -25,7 +25,7 @@ export function proseOf(text: string): string {
     .replace(/<[^>]+>/g, " ")
     .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/https?:\/\/\S+/g, " ")
-    .replace(/[#>*_|=~\-]{1,}/g, " ")
+    .replace(/[#>*_|=~-]{1,}/g, " ")
     .replace(/[0-9]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();

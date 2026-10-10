@@ -78,7 +78,7 @@ async function runCell(v: Variant, g: GoldenItem): Promise<CellResult> {
     });
     const ev = await evaluateQuiz({ questions: r.questions, sourceText, judgeOverall: r.judge?.overall, expect: g.expect });
     const sem = await semanticScores({ questions: r.questions, references: refs.get(g.id)!, sourceText, embedder, otherReferences: othersOf(g.id) });
-    // `quality_overall` is the production formula (quality.ts): the same number the worker logs for every real quiz
+    // `quality_overall` is the production formula (quality.ts): the same number the scorer service stores for every real quiz
     const scores = { ...ev.scores, ...sem, ...(r.quality !== undefined ? { quality_overall: r.quality } : {}) };
     const c = composite(scores);
     const cost = (r.usage.promptTokens * 0.3 + r.usage.completionTokens * 1.2) / 1e6;

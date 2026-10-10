@@ -135,7 +135,7 @@ async function readCapped(res: Response, maxBytes: number): Promise<string> {
 
 /** Normalize so hashing, grounding and chunking all see the same text. */
 export function normalizeMarkdown(text: string): string {
-  return text.replace(/^﻿/, "").replace(/\r\n?/g, "\n").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  return text.replace(/^\ufeff/, "").replace(/\r\n?/g, "\n").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 export async function fetchMarkdown(

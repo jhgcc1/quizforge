@@ -217,7 +217,7 @@ describe("plan-then-write structure and prompt variants", () => {
     JSON.stringify({ facts: Array.from({ length: n }, (_, i) => ({ topic: `topic ${i}`, quote: quotes?.[i] ?? quoteOf(i), angle: "what it states" })) });
 
   it("plans first, then writes one question per fact (2 calls, same checks afterwards)", async () => {
-    const f = scripted({ plan: plan(7), "generate:write": (m) => ok(...[0, 1, 2, 3, 4].map((i) => q(i))) });
+    const f = scripted({ plan: plan(7), "generate:write": () => ok(...[0, 1, 2, 3, 4].map((i) => q(i))) });
     const r = await runQuizGraph({ llm: f.llm, budget: new JobBudget() }, { sourceText: SHORT_DOC, numQuestions: 5, strategy: "single-shot", planFirst: true });
     expect(f.calls).toEqual(["plan", "generate:write"]);
     expect(r.questions).toHaveLength(5);

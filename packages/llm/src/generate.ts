@@ -5,6 +5,7 @@ import { quizMetrics, type QuizMetrics } from "./lint.js";
 import { QUALITY_VERSION, scoreQuiz } from "./quality.js";
 import { judgeNote, judgeWithRetry } from "./scoring.js";
 import { guardLlm, parseQuizInput } from "./llm-input.js";
+import { assertQuizOutput } from "./output-guard.js";
 import type { LlmClient } from "./llm.js";
 import { scoreTrace, traced } from "./observability.js";
 import { PROMPT_VERSION } from "./prompts.js";
@@ -24,6 +25,7 @@ export interface GenerateQuizParams {
   judgeSamples?: number;
   /** Resume a previous allowance after an SQS redelivery. */
   budgetState?: BudgetState;
+  /** Run the LLM judge inside this call (default true; the evals use it). The production worker passes `score: false` instead. */
   judge?: boolean;
   /**
    * Compute and send the quality scores (default true). The production worker passes false: it only generates and saves the quiz;
@@ -78,6 +80,7 @@ export async function generateQuiz(params: GenerateQuizParams): Promise<Generate
         ...(p.checkpointer ? { checkpointer: p.checkpointer } : {}),
         ...(ctx.callbacks.length ? { callbacks: ctx.callbacks } : {}),
       });
+      assertQuizOutput(run.questions, { sourceText: p.input.sourceText }); // last line of defence: only a clean quiz is saved
       const metrics = quizMetrics(run.questions);
       let judge: JudgeResult | undefined;
       let judgeFailed = false;

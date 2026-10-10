@@ -9,10 +9,14 @@ import {
   StructuredOutputError,
   SourceError,
   UnsafeDocumentError,
+  UnsafeOutputError,
   UnsupportedLanguageError,
   admitDocument,
+  screenWithDetector,
   fetchMarkdown as defaultFetch,
   generateQuiz as defaultGenerate,
+  type DetectorMode,
+  type InjectionDetector,
   type LlmClient,
   type SupportedLanguage,
 } from "@quizforge/llm";
@@ -39,6 +43,9 @@ export interface ProcessDeps {
   allowedHosts: string[];
   /** Languages a document may be written in; any other is rejected before the model is called. Default: en, pt, es. */
   allowedLanguages?: readonly SupportedLanguage[] | undefined;
+  /** Optional semantic classifier (English only) and what to do with its verdict. Default: not used. */
+  detector?: InjectionDetector | undefined;
+  detectorMode?: DetectorMode | undefined;
   pricing: { inPerM: number; outPerM: number };
   log: Logger;
   checkpointer?: BaseCheckpointSaver | undefined;
@@ -86,6 +93,20 @@ export async function processQuizJob(
     if (flagged.length) {
       log.warn({ findings: flagged.map((f) => ({ kind: f.kind, detail: f.detail })) }, "the document contains instructions aimed at a model (kept as data)");
       emit({ InjectionFlagged: { value: 1, unit: "Count" } });
+    }
+    // Optional second opinion from a classifier model (English only; skipped for other languages). Never throws.
+    const screened = await screenWithDetector(doc.text, doc.language, d.detector, d.detectorMode ?? "off").catch((err: unknown) => {
+      log.error({ err }, "semantic detector failed; continuing without it");
+      emit({ DetectorFailed: { value: 1, unit: "Count" } });
+      return undefined;
+    });
+    if (screened && screened.status !== "skipped") {
+      emit({ DetectorMs: { value: screened.result.ms, unit: "Milliseconds" } });
+      if (screened.status === "flagged" || screened.status === "blocked") {
+        log.warn({ detector: d.detector?.name, score: screened.result.score }, "the semantic detector flags this document");
+        emit({ InjectionDetected: { value: 1, unit: "Count" } });
+        if (screened.status === "blocked") throw new UnsafeDocumentError(screened.finding.detail);
+      }
     }
     const sourceId = await upsertSource(d.db, { url: quiz.sourceUrl, rawUrl: src.rawUrl, sha256: src.sha256, text: doc.text });
 
@@ -154,7 +175,7 @@ export async function processQuizJob(
     const permanent = isPermanent(err);
     // A content failure (the model produced something unusable) is not an infrastructure hiccup: resuming from its
     // checkpoint would just replay the same dead end. Drop the thread so the next delivery regenerates from scratch.
-    if (err instanceof QualityGateError || err instanceof StructuredOutputError) {
+    if (err instanceof QualityGateError || err instanceof StructuredOutputError || err instanceof UnsafeOutputError) {
       await d.checkpointer?.deleteThread(threadId).catch((e: unknown) => log.warn({ err: e }, "could not delete checkpoint thread"));
     }
     const exhausted = receive.count >= receive.max;

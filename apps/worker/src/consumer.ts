@@ -91,7 +91,7 @@ export class Consumer<M extends { requestId?: string | undefined } = QuizJobMess
         await Promise.race(this.inFlight);
         continue;
       }
-      let messages: QueueMessage[] = [];
+      let messages: QueueMessage[];
       try {
         messages = await this.o.transport.receive(Math.min(free, 10), this.o.waitSeconds ?? 20);
       } catch (err) {

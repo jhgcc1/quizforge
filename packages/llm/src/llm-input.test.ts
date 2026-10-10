@@ -4,7 +4,7 @@ import { InvalidLlmInputError, UnsafeDocumentError } from "./errors.js";
 import { createFakeLlm } from "./fake.js";
 import { generateQuiz } from "./generate.js";
 import { UnsupportedLanguageError } from "./language.js";
-import { admitDocument, assertLlmRequest, guardLlm, parseQuizInput } from "./llm-input.js";
+import { DEFAULT_MAX_OUTPUT_TOKENS, admitDocument, assertLlmRequest, guardLlm, parseQuizInput } from "./llm-input.js";
 import type { ChatMessage, LlmClient } from "./llm.js";
 
 /** A model client that records what it was asked: the proof of what reaches the provider. */
@@ -77,6 +77,14 @@ describe("door 2: guardLlm validates every single call", () => {
     expect(seen).toHaveLength(1);
   });
 
+  it("caps the reply of every call that has no cap of its own, and keeps a smaller one", async () => {
+    const caps: (number | undefined)[] = [];
+    const llm: LlmClient = { model: "m", complete: async (_m, o) => (caps.push(o?.maxTokens), { text: "ok", usage: { promptTokens: 1, completionTokens: 1, cachedTokens: 0 } }) };
+    await guardLlm(llm).complete([{ role: "user", content: "hello" }]);
+    await guardLlm(llm).complete([{ role: "user", content: "hello" }], { maxTokens: 500 });
+    expect(caps).toEqual([DEFAULT_MAX_OUTPUT_TOKENS, 500]);
+  });
+
   it("is idempotent and keeps the model name", () => {
     const llm = spy();
     const g = guardLlm(llm);
@@ -98,7 +106,7 @@ describe("door 2: guardLlm validates every single call", () => {
     expect(() => assertLlmRequest(Array.from({ length: 9 }, () => m("user", "x")))).toThrow(InvalidLlmInputError);
     expect(() => assertLlmRequest([m("user", "")])).toThrow(InvalidLlmInputError);
     expect(() => assertLlmRequest([m("tool", "x")])).toThrow(InvalidLlmInputError);
-    expect(() => assertLlmRequest([m("user", "a".repeat(700_001))])).toThrow(InvalidLlmInputError);
+    expect(() => assertLlmRequest([m("user", "a".repeat(200_001))])).toThrow(InvalidLlmInputError);
     expect(() => assertLlmRequest([m("user", "ok")], { temperature: 5 })).toThrow(InvalidLlmInputError);
     expect(() => assertLlmRequest([m("user", "ok")], { maxTokens: 999_999 })).toThrow(InvalidLlmInputError);
     expect(() => assertLlmRequest([m("user", "ok")], { surprise: true } as never)).toThrow(InvalidLlmInputError);

@@ -2,7 +2,7 @@ import type { ZodError, ZodTypeAny, z } from "zod";
 import type { JobBudget, Usage } from "./budget.js";
 import { emptyUsage } from "./budget.js";
 import { StructuredOutputError } from "./errors.js";
-import { JsonExtractionError, extractJson } from "./json.js";
+import { JsonExtractionError, extractJson, stripThink } from "./json.js";
 import type { ChatMessage, CompleteOptions, LlmClient } from "./llm.js";
 
 export interface StructuredRequest<S extends ZodTypeAny> {
@@ -14,6 +14,11 @@ export interface StructuredRequest<S extends ZodTypeAny> {
   /** Repair rounds after the first attempt (total attempts = 1 + maxRepairs). */
   maxRepairs?: number;
   options?: CompleteOptions;
+  /**
+   * Extra deterministic check on a value that already matches the schema (output rails, see output-guard.ts). Returns the problem
+   * to send back for a repair round, or undefined when the value is fine. Receives the reply without <think>.
+   */
+  check?: (value: z.output<S>, reply: string) => string | undefined;
 }
 
 export interface StructuredResult<T> {
@@ -62,8 +67,13 @@ export async function generateStructured<S extends ZodTypeAny>(req: StructuredRe
     let problem: string;
     try {
       const parsed = req.schema.safeParse(extractJson(res.text));
-      if (parsed.success) return { value: parsed.data, attempts: attempt + 1, repairs: attempt, usage };
-      problem = `The JSON did not match the required schema:\n${formatZodIssues(parsed.error)}`;
+      if (parsed.success) {
+        const bad = req.check?.(parsed.data, stripThink(res.text));
+        if (!bad) return { value: parsed.data, attempts: attempt + 1, repairs: attempt, usage };
+        problem = bad;
+      } else {
+        problem = `The JSON did not match the required schema:\n${formatZodIssues(parsed.error)}`;
+      }
     } catch (err) {
       if (!(err instanceof JsonExtractionError)) throw err;
       problem = `Your reply was not parseable JSON (${err.message}).`;
@@ -75,7 +85,7 @@ export async function generateStructured<S extends ZodTypeAny>(req: StructuredRe
     );
   }
   throw new StructuredOutputError(
-    `model output still invalid after ${maxRepairs + 1} attempts: ${lastProblem.split("\n")[0]}`,
+    `model output still invalid after ${maxRepairs + 1} attempts: ${lastProblem.split("\n").filter(Boolean).join(" | ").slice(0, 400)}`,
     lastRaw,
     maxRepairs + 1,
   );
