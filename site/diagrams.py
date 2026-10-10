@@ -725,6 +725,8 @@ def pipeline_overview():
         b += arrow(x1, 215, x2, 215)
     b += box(190, 270, 230, 46, "Langfuse: experiment run", "dataset quizforge-golden · scores", "ext", small=True)
     b += arrow(305, 250, 305, 270, dash=True)
+    b += box(450, 270, 380, 46, "publish-prompts (after every gate)", "changed prompts → Langfuse: new version, label production + sha", "ext", small=True)
+    b += arrow(400, 250, 500, 270, dash=True)
 
     b += text(10, 350, "3 · Always on: nobody has to push", "t")
     b += box(10, 366, 280, 70, "nightly eval.yml (05:43 UTC)", "golden set + promptfoo LIVE: model or provider drift", "ai", small=True)
@@ -736,6 +738,6 @@ def pipeline_overview():
     b += box(880, 456, 290, 46, "Langfuse + CloudWatch", "traces, scores, QuizQuality, alarms", "ext", small=True)
     for x in (150, 720, 1025):
         b += arrow(x, 436, x, 456, dash=True)
-    b += text(10, 530, "Langfuse receives data in 4 places only: llm-eval on main, the nightly eval, the manual comparison, and production. A pull request never talks to it.", "note")
+    b += text(10, 530, "Langfuse receives data in 5 places only: llm-eval and publish-prompts on main, the nightly eval, the manual comparison, and production. A pull request never talks to it.", "note")
     b += text(10, 550, "promptfoo runs in 3: OFFLINE on every PR and main (81 tests, required), LIVE inside llm-eval on main (blocks the deploy) and in the nightly run.", "note")
     return svg(1180, 572, b, "The whole pipeline over time: where promptfoo runs and where Langfuse gets data")

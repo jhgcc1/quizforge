@@ -795,7 +795,7 @@ def evaluation():
 
 
 def cicd():
-    body = callout("ok", "The pipeline in one paragraph", "Every change is a pull request. Nine jobs run in parallel (no secrets, nothing deployed); <b>eight of them must be green</b> before GitHub allows the squash merge. After the merge the same jobs run on <code>main</code>, plus <code>llm-eval</code> (the real model, Langfuse and the live promptfoo suite). Only when all of that is green does the <code>deploy</code> job ask a human to approve. Three more things run without a push: the nightly evaluation, the nightly drift check and the manual structure comparison.")
+    body = callout("ok", "The pipeline in one paragraph", "Every change is a pull request. Nine jobs run in parallel (no secrets, nothing deployed); <b>eight of them must be green</b> before GitHub allows the squash merge. After the merge the same jobs run on <code>main</code>, plus <code>llm-eval</code> (the real model, Langfuse and the live promptfoo suite). When all of that is green, <code>publish-prompts</code> sends the prompts that changed to Langfuse, and the <code>deploy</code> job asks a human to approve. Three more things run without a push: the nightly evaluation, the nightly drift check and the manual structure comparison.")
     body += d.pipeline_overview()
     body += "<h3>Every job</h3>" + table(["Job", "What it checks", "Runs on", "Secrets / AWS", "Blocks merge", "Blocks deploy"], [
         ["<b>quality</b>", "Typecheck, ESLint, 443 unit tests, offline evaluation with a fake model", "PR + main", "None", "Yes", "Yes"],
@@ -807,6 +807,7 @@ def cicd():
         ["<b>secrets-scan</b>", "gitleaks over the full Git history", "PR + main", "None", "Yes", "Yes"],
         ["<b>promptfoo</b>", "Offline suite, 81 tests: hidden and encoded attacks, languages, topics, bad model replies, prompt rules", "PR + main", "None", "Yes (8th check)", "Yes"],
         ["<b>terraform-plan</b>", "A read-only <code>plan</code> against the real account, commented on the PR", "PR only", "AWS plan role (OIDC, read-only)", "No (informational)", "No"],
+        ["<b>publish-prompts</b>", "Pushes the prompts that changed to Langfuse Prompt Management (new version, label <code>production</code> + <code>sha-commit</code>); nothing if no text changed", "main only, after <b>every</b> gate", "Environment <code>llm-eval</code>: Langfuse keys", "n/a", "No (it does not gate the deploy: it needs the gates)"],
         ["<b>llm-eval</b>", "Golden set on the real model (grounding, lint, judge, injection, language) logged to Langfuse, then the live promptfoo suite (21 tests)", "main only", "Environment <code>llm-eval</code>: MiniMax and Langfuse keys", "n/a", "Yes"],
         ["<b>deploy</b>", "Build and push ARM64 images, drift check, migration, <code>terraform apply</code>, smoke test", "main only", "Environment <code>production</code>: human approval, AWS deploy role (OIDC)", "n/a", "This is the deploy"],
     ], widths=["13%", "42%", "9%", "18%", "9%", "9%"])
@@ -816,6 +817,7 @@ def cicd():
     body += '<div class="shots">' + img("gh-6-eval-run.png", "The nightly LLM evaluation (<code>eval.yml</code>): one job, the golden set and the live promptfoo suite on the real model") + "</div>"
     body += "<h3>When does data go to Langfuse?</h3>" + table(["When", "What is sent", "Where you see it"], [
         ["Pull request", "<b>Nothing.</b> No job has the Langfuse keys, and the promptfoo provider deletes them from its environment", "–"],
+        ["Merge to <code>main</code> (<code>publish-prompts</code>)", "The <b>prompts</b> whose text changed: a new version in Prompt Management, labelled <code>production</code> and <code>sha-commit</code>, with the prompt version and the commit in its config", "Langfuse → Prompts → <code>quizforge/…</code>"],
         ["Merge to <code>main</code> (<code>llm-eval</code>)", "One <b>experiment run</b> on the dataset <code>quizforge-golden</code>: every generated quiz as a trace with its scores", "Langfuse → Datasets → quizforge-golden → Runs"],
         ["Every night (<code>eval.yml</code>)", "The same experiment, to catch a provider or model change when nobody pushed", "Same page: a new run each night"],
         ["Manual <code>Compare generation structures</code>", "9 experiments (variant × prompt), each document linked to its trace", "The structure-comparison report links to every run"],
@@ -827,6 +829,13 @@ def cicd():
         ["Live (21 tests)", "<code>llm-eval</code> on <code>main</code>", "Real MiniMax", "Blocks the deploy"],
         ["Live (21 tests)", "Nightly <code>eval.yml</code> and on demand", "Real MiniMax", "A red run you see in the morning"],
     ], widths=["22%", "36%", "20%", "22%"])
+    body += "<h3>Prompts: from Git to Langfuse, only through the pipeline</h3>" + table(["Step", "What happens", "Langfuse touched?"], [
+        ["1 · Edit", "The prompt is code (<code>packages/llm/src/prompts.ts</code>). A test fails until <code>PROMPT_VERSION</code> is bumped and <code>pnpm prompts:lock</code> updates <code>prompts/prompts.lock.json</code>: a prompt change is always visible in the diff", "No"],
+        ["2 · Pull request", "The checks run: promptfoo offline (safety rules, bad replies, attacks), unit tests, offline evaluation. <b>A red check blocks the merge</b>. The job only runs <code>prompts:publish --dry-run</code>, which lists the 7 prompts", "No: no job of a PR has the Langfuse keys"],
+        ["3 · Merge", "The same checks run again on <code>main</code>, then <code>llm-eval</code>: the golden set on the real model and the live promptfoo suite", "Only the evaluation experiment"],
+        ["4 · publish-prompts", "Runs <b>only if every job above is green</b>. For each prompt it reads the latest <code>production</code> version in Langfuse; if the text differs it creates a new version labelled <code>production</code> and <code>sha-commit</code> (config: prompt version, commit, hash). Same text = nothing happens, so a rerun or a docs-only merge creates no version", "<b>Yes: the only place a prompt is written</b>"],
+    ], widths=["16%", "62%", "22%"])
+    body += callout("info", "What Langfuse is, for prompts", "A <b>catalog of approved versions</b>: history, diffs and the commit of each one. The app still reads its prompts from the code that was deployed (so a Langfuse outage or a hand edit in the UI cannot change what users get). Letting the app fetch the <code>production</code> label at run time, with the code as fallback, is possible later; the risk is that the pipeline would then no longer be the only way to change behaviour unless edits in the UI are blocked.")
     body += "<h3>A new README or a changed prompt: what checks it?</h3>" + table(["Change", "On the pull request", "After the merge"], [
         ["<b>A new test README</b> in <code>evals/fixtures</code>", "promptfoo offline adds one <code>FIXTURE</code> test for it (hidden text, accepted language); the unit tests that walk the folder; e2e if it is in the dropdown", "Only if you also add it to the golden set (<code>evals/src/golden.ts</code>): then <code>llm-eval</code> generates a quiz from it on the real model"],
         ["<b>A changed prompt</b> (<code>prompts.ts</code>, judge, graph)", "promptfoo offline: the safety rules must still be in every prompt (<code>PROMPTS</code>), bad replies must still be rejected (<code>OUTPUT</code>); unit tests; offline evaluation. A notice says the live suite runs later", "<code>llm-eval</code> on <code>main</code>: golden set and the live promptfoo suite (21) on the real model. Red = no deploy"],
