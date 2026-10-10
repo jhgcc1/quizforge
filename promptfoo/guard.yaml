@@ -1,0 +1,13 @@
+# Offline suite: no model, no secrets, deterministic. Runs on EVERY pull request (job "promptfoo" in ci.yml).
+# It proves what happens before and around the model: hidden or encoded text and unsupported languages are rejected
+# before any model call, bad topics are refused, plain instructions arrive sanitized inside <document> tags, and the
+# prompts keep their safety rules.
+description: QuizForge input guard and prompt rules (offline)
+prompts:
+  - "{{kind}}"
+providers:
+  - id: file://provider.ts
+    label: pipeline-offline
+    config:
+      mode: offline
+tests: file://tests.ts:offline

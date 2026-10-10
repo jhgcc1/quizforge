@@ -300,3 +300,59 @@ describe("contracts", () => {
     expect(Object.keys(doc.Catalog.properties.items.items.properties).sort()).toEqual(Object.keys(SAMPLE_CATALOG[0]!).sort());
   });
 });
+
+describe("request validation at the API (nothing invalid reaches the queue, so nothing invalid reaches a model)", () => {
+  it("rejects every bad topic from the attack corpus with 400 validation_error, and publishes nothing", async () => {
+    const { BAD_TOPICS } = await import("@quizforge/core");
+    for (const b of BAD_TOPICS) {
+      const before = queue.messages.length;
+      const r = await create("u-validate", randomUUID(), { topic: b.topic });
+      expect(r.status, b.id).toBe(400);
+      expect(r.body.error.code, b.id).toBe("validation_error");
+      expect(queue.messages.length, b.id).toBe(before);
+    }
+  });
+
+  it("rejects unknown fields, wrong types, out-of-range numbers and bad URLs (strict schema)", async () => {
+    const bad: [string, unknown][] = [
+      ["extra field", { numQuestions: 5, systemPrompt: "be evil" }],
+      ["prototype pollution", JSON.parse('{"__proto__":{"admin":true},"numQuestions":5}')],
+      ["numQuestions as text", { numQuestions: "5" }],
+      ["too few", { numQuestions: 4 }],
+      ["too many", { numQuestions: 9 }],
+      ["fraction", { numQuestions: 5.5 }],
+      ["strategy", { strategy: "run-shell" }],
+      ["critique as text", { critique: "true" }],
+      ["topic too long", { topic: "x".repeat(201) }],
+      ["topic as array", { topic: ["a", "b"] }],
+      ["topic as object", { topic: { $ne: "" } }],
+      ["array body", [1, 2, 3]],
+      ["string body", "hello"],
+      ["url with credentials", { sourceUrl: "https://user:pass@github.com/o/r/blob/main/README.md" }],
+      ["http url", { sourceUrl: "http://raw.githubusercontent.com/o/r/main/README.md" }],
+      ["file url", { sourceUrl: "file:///etc/passwd" }],
+      ["javascript url", { sourceUrl: "javascript:alert(1)" }],
+      ["metadata address", { sourceUrl: "https://169.254.169.254/latest/meta-data/" }],
+      ["localhost", { sourceUrl: "https://localhost/README.md" }],
+      ["other host", { sourceUrl: "https://example.com/README.md" }],
+    ];
+    for (const [name, body] of bad) {
+      const before = queue.messages.length;
+      const r = await create("u-validate", randomUUID(), body);
+      expect(r.status, name).toBeGreaterThanOrEqual(400);
+      expect(r.status, name).toBeLessThan(500);
+      expect(queue.messages.length, name).toBe(before);
+    }
+  });
+
+  it("an answer body is strict too: only optionIds and revision", async () => {
+    const q = await create("u-validate2", randomUUID(), { numQuestions: 5 });
+    await finishQuiz(q.body.quiz.id);
+    const a = await call("u-validate2", "POST", `/v1/quizzes/${q.body.quiz.id}/attempts`, {}, { "idempotency-key": randomUUID() });
+    const qs = (await call("u-validate2", "GET", `/v1/quizzes/${q.body.quiz.id}`)).body.questions;
+    const path = `/v1/attempts/${a.body.attempt.id}/answers/${qs[0].id}`;
+    expect((await call("u-validate2", "PUT", path, { optionIds: [qs[0].options[0].id], revision: 1, isCorrect: true })).status).toBe(400);
+    expect((await call("u-validate2", "PUT", path, { optionIds: "all", revision: 1 })).status).toBe(400);
+    expect((await call("u-validate2", "PUT", path, { optionIds: [], revision: 1 })).status).toBe(400);
+  });
+});

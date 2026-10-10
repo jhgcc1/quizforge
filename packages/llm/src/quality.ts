@@ -1,5 +1,6 @@
 import { checkGrounding, visibleText, type GeneratedQuestion } from "@quizforge/core";
 import type { JudgeResult } from "./judge.js";
+import { detectLanguage, type Lang } from "./language.js";
 import { quizMetrics } from "./lint.js";
 import { cosine, maxPairwise, tfidfEmbedder } from "./similarity.js";
 import { splitSections } from "./source.js";
@@ -14,22 +15,7 @@ import { splitSections } from "./source.js";
  */
 export const QUALITY_VERSION = "2026-10-08.1";
 
-export type Lang = "pt" | "en" | "unknown";
-
-const STOP: Record<"pt" | "en", Set<string>> = {
-  pt: new Set(["que", "de", "para", "com", "uma", "um", "os", "as", "não", "do", "da", "em", "por", "se", "qual", "quais", "é", "são", "ao", "dos", "das", "pelo", "pela", "como"]),
-  en: new Set(["the", "of", "and", "is", "to", "in", "which", "what", "that", "for", "are", "does", "with", "by", "it", "an", "be", "when", "how"]),
-};
-
-/** Cheap, deterministic language guess by stop-word share. Good enough to tell Portuguese from English. */
-export function detectLanguage(text: string): Lang {
-  const words = text.toLowerCase().normalize("NFC").split(/[^\p{L}]+/u).filter(Boolean);
-  if (words.length < 8) return "unknown";
-  const score = (l: "pt" | "en") => words.filter((w) => STOP[l].has(w)).length / words.length;
-  const [pt, en] = [score("pt"), score("en")];
-  if (Math.max(pt, en) < 0.05) return "unknown";
-  return pt > en ? "pt" : "en";
-}
+export { detectLanguage, type Lang };
 
 export const quizText = (qs: GeneratedQuestion[]): string => qs.flatMap((q) => [q.prompt, ...q.options, q.explanation]).join("\n");
 
