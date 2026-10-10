@@ -262,7 +262,7 @@ def cicd():
     b = ""
     b += group(10, 10, 1160, 230, "Pull request (never deploys)", "grp")
     gates = [("quality", "typecheck · lint · tests · eval"), ("integration", "real Postgres"), ("migrations", "drift · policy · applies twice"), ("e2e", "Playwright + Chrome"),
-             ("docker-build", "build + Trivy"), ("terraform-validate", "fmt · validate · Trivy"), ("secrets-scan", "gitleaks"), ("promptfoo", "guard + prompt rules, 72 tests"), ("terraform-plan", "plan on the PR (informational)")]
+             ("docker-build", "build + Trivy"), ("terraform-validate", "fmt · validate · Trivy"), ("secrets-scan", "gitleaks"), ("promptfoo", "guard + prompt rules, 81 tests"), ("terraform-plan", "plan on the PR (informational)")]
     for i, (n, s) in enumerate(gates):
         x = 30 + (i % 5) * 226; y = 48 + (i // 5) * 88
         b += box(x, y, 206, 66, n, s, "ci", small=True)
@@ -677,7 +677,7 @@ def input_defense():
 def promptfoo_flow():
     b = ""
     lanes = [
-        (14, "Every pull request", "promptfoo OFFLINE · 72 tests", "no model, no secrets, ~1 minute", "ci", "required to merge"),
+        (14, "Every pull request", "promptfoo OFFLINE · 81 tests", "no model, no secrets, ~1 minute", "ci", "required to merge"),
         (110, "Merge to main", "promptfoo LIVE · 21 tests", "real MiniMax, inside llm-eval", "ai", "blocks the deploy"),
         (206, "Every night + on demand", "promptfoo LIVE · 21 tests", "catches provider or model drift", "mgd", "opens a red run"),
     ]
@@ -710,7 +710,7 @@ def pipeline_overview():
     b += text(400, 62, "9 jobs in parallel (no secrets)", "t-s", "middle")
     b += text(400, 86, "quality (typecheck, lint, tests, offline eval) · integration · migrations", "note", "middle")
     b += text(400, 104, "e2e · docker-build · terraform-validate · secrets-scan", "note", "middle")
-    b += text(400, 122, "terraform-plan · promptfoo OFFLINE (72 tests)", "note", "middle")
+    b += text(400, 122, "terraform-plan · promptfoo OFFLINE (81 tests)", "note", "middle")
     b += box(660, 40, 190, 96, "8 required checks", "green + linear history", "sec", small=True)
     b += box(880, 40, 130, 96, "squash merge", "no bypass", "data", small=True)
     for x1, x2 in ((140, 170), (630, 660), (850, 880)):
@@ -737,5 +737,5 @@ def pipeline_overview():
     for x in (150, 720, 1025):
         b += arrow(x, 436, x, 456, dash=True)
     b += text(10, 530, "Langfuse receives data in 4 places only: llm-eval on main, the nightly eval, the manual comparison, and production. A pull request never talks to it.", "note")
-    b += text(10, 550, "promptfoo runs in 3: OFFLINE on every PR and main (72 tests, required), LIVE inside llm-eval on main (blocks the deploy) and in the nightly run.", "note")
+    b += text(10, 550, "promptfoo runs in 3: OFFLINE on every PR and main (81 tests, required), LIVE inside llm-eval on main (blocks the deploy) and in the nightly run.", "note")
     return svg(1180, 572, b, "The whole pipeline over time: where promptfoo runs and where Langfuse gets data")

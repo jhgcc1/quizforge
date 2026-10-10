@@ -10,6 +10,8 @@
  *
  * The result is JSON text; the assertions are in assertions.js.
  */
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import {
   ATTACK_MARKER,
   ATTACK_TECHNIQUES,
@@ -31,6 +33,7 @@ import {
   StructuredOutputError,
   UnsafeDocumentError,
   UnsupportedLanguageError,
+  admitDocument,
   createFakeLlm,
   createMiniMaxClient,
   detectLanguage,
@@ -40,7 +43,7 @@ import {
 } from "@quizforge/llm";
 
 interface Vars {
-  kind: "attack" | "language" | "topic" | "clean" | "off-purpose-topic" | "prompts" | "bad-output";
+  kind: "attack" | "language" | "topic" | "clean" | "off-purpose-topic" | "prompts" | "bad-output" | "fixture";
   id?: string;
   /** For "attack": which payload (default: the English one). */
   payload?: string;
@@ -102,6 +105,18 @@ export default class QuizPipelineProvider {
   private async run(v: Vars): Promise<Record<string, unknown>> {
     if (v.kind === "prompts") {
       return { status: "prompts", prompts: { generation: GENERATION_SYSTEM, critique: CRITIQUE_SYSTEM, revise: REVISE_SYSTEM, plan: PLAN_SYSTEM, judge: JUDGE_SYSTEM } };
+    }
+
+    if (v.kind === "fixture") {
+      // a document of the repository (evals/fixtures: the test documents of the dropdown and the golden set), through door 1 only
+      const text = readFileSync(fileURLToPath(new URL(`../evals/fixtures/${v.id}.md`, import.meta.url)), "utf8");
+      try {
+        const r = admitDocument(text);
+        return { kind: "fixture", id: v.id, status: "admitted", language: r.language, flagged: r.findings.filter((f) => f.severity === "flag").map((f) => f.kind) };
+      } catch (err) {
+        const status = err instanceof UnsafeDocumentError ? "blocked" : err instanceof UnsupportedLanguageError ? "rejected_language" : "error";
+        return { kind: "fixture", id: v.id, status, reason: err instanceof Error ? err.message.slice(0, 200) : String(err) };
+      }
     }
 
     let doc = benignDocument();

@@ -4,6 +4,8 @@
  *   live:    the real model. Plain-text attacks must not hijack it; the agent must stay on its purpose. Runs on main (before a deploy),
  *            every night and on demand.
  */
+import { readdirSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { ATTACK_TECHNIQUES, BAD_TOPICS, SUPPORTED_LANGUAGE_DOCS, UNSUPPORTED_LANGUAGE_DOCS } from "@quizforge/core";
 
 const A = (fn: string) => ({ type: "javascript", value: `file://assertions.js:${fn}` });
@@ -39,10 +41,16 @@ const OUTPUT_CASES: [string, string][] = [
 ];
 const outputTests: Test[] = OUTPUT_CASES.map(([id, what]) => ({ description: `OUTPUT rails reject a reply that ${what}`, vars: { kind: "bad-output", id }, assert: [A("rejectedOutput")] }));
 
+/** One test per document in evals/fixtures: add a README there and its pull request is checked. */
+const fixtureTests: Test[] = readdirSync(fileURLToPath(new URL("../evals/fixtures/", import.meta.url)))
+  .filter((f) => f.endsWith(".md"))
+  .sort()
+  .map((f) => ({ description: `FIXTURE ${f} is admitted (no hidden text, accepted language)`, vars: { kind: "fixture", id: f.replace(/\.md$/, "") }, assert: [A("admittedDocument")] }));
+
 const ruleTests: Test[] = [{ description: "PROMPTS keep their safety rules", vars: { kind: "prompts" }, assert: [A("promptRules")] }];
 
 export function offline(): Test[] {
-  return [...ruleTests, ...blockedAttacks, ...languageTests, ...topicTests, ...outputTests, ...plainAttacks(["sanitizedPrompt"])];
+  return [...ruleTests, ...fixtureTests, ...blockedAttacks, ...languageTests, ...topicTests, ...outputTests, ...plainAttacks(["sanitizedPrompt"])];
 }
 
 export function live(): Test[] {
