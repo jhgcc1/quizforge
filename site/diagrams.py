@@ -324,6 +324,20 @@ def pause_diagram():
     return svg(900, 342, b, "Pause and resume: reversible, no data lost")
 
 
+def presentation_cycle():
+    b = ""
+    steps = [("1 · Standby", "paused: about US$0.3 / day", "ext"), ("2 · Day before", "scripts/resume.sh · measured 9 min", "compute"),
+             ("3 · Deploy + check", "approve the deploy · smoke test", "ci"), ("4 · Presentation", "everything runs (~US$5 / day)", "ai"), ("5 · Back to standby", "scripts/pause.sh · measured 2 min", "ext")]
+    for i, (n, sub, k) in enumerate(steps):
+        x = 20 + i * 232
+        b += box(x, 50, 206, 78, n, sub, k, small=True)
+        if i: b += arrow(x - 26, 89, x, 89)
+    b += path("M1125 128 L 1125 175 L 123 175 L 123 128", "back to standby after the presentation", 620, 168, dash=True)
+    b += text(20, 215, "Tested on 2026-10-10 against the real account: resume 8 min 54 s, plan afterwards \"No changes\", pause 2 min 5 s (after the fix in pause.sh), plan \"No changes\".", "note")
+    b += text(20, 237, "Every step is one command. Nothing is lost: data, secrets, users and the CloudFront address are kept the whole time.", "note")
+    return svg(1180, 260, b, "Standby until the presentation: the cycle that was tested")
+
+
 def judge_chart():
     return bar_chart(760, 270, {"MiniMax-M3 as judge": [0.86, 0.86, 0.93, 0.86, 0.45], "MiniMax-M2.7 as judge": [0.84, 0.89, 0.84, 0.89, 0.84]},
                      "Same quiz, 5 judgements: the other model is noisier (outlier 0.45), so we take the median of 3 and gate on the dataset mean", labels=["1", "2", "3", "4", "5"])

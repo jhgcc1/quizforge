@@ -988,7 +988,7 @@ def live_state():
         ["Autoscaling", "web and api follow CPU at 60% (out 60 s, in 300 s); worker adds a task when 1 or more jobs wait; the worker and scorer get 120 s to stop; deploys use a circuit breaker with rollback"],
         ["Logs", "6 log groups (web, api, worker, scorer, sweeper, migrate), 30 days; ECR keeps the last 25 images and scans on push"],
         ["Metrics from the scorer", "They carry <code>Service=worker</code>, so the existing alarms also cover the scorer"],
-        ["Cost not in the table", "Public IPv4 addresses: about $7 a month for the ALB (kept while paused) and about $3.65 for the NAT address; the sweeper runs"],
+        ["Cost not in the table", "Public IPv4 addresses: about $7 a month for the load balancer and about $3.65 for the NAT address; both exist only while running (deleted while paused); the sweeper runs"],
     ], widths=["22%", "78%"])
     body += "<h3>Pipeline facts that matter</h3>" + table(["Topic", "Fact"], [
         ["Concurrency", "PR runs cancel older runs of the same PR; main runs never cancel; the deploy has its own group and is never cancelled"],
@@ -1094,7 +1094,7 @@ def costs():
         ["<code>scripts/resume.sh</code>", "Everything back (about 15 min, the load balancer and WAF are recreated): waits until the services are healthy, then prints the HTTP status of the app. <code>pause.sh</code> sets <code>PAUSED=true</code> before the apply, <code>resume.sh</code> sets it to false after (needs <code>gh</code> logged in)"],
         ["<code>scripts/env-status.sh</code>", "RUNNING or PAUSED, resource by resource"],
     ], widths=["34%", "66%"])
-    body += callout("warn", "Limits", "AWS restarts a stopped RDS after 7 days (run <code>pause.sh</code> again). Starting a stopped RDS can fail briefly if AWS has no capacity in its zone: just try again. Costs are estimates from the price list, not the bill. <code>terraform destroy</code> gives zero cost.")
+    body += callout("warn", "Limits", "AWS restarts a stopped RDS after 7 days (run <code>pause.sh</code> again). Starting a stopped RDS can fail briefly if AWS has no capacity in its zone: just try again. Costs are estimates from the price list, not the bill. <code>terraform destroy</code> gives zero cost. The full switch-on and switch-off cycle was tested for real: see \"Standby until the presentation\" at the end.")
     return sec("pause", "Cost, pause and resume", body)
 
 
@@ -1156,6 +1156,41 @@ def glossary():
     return sec("glossary", "Glossary", body, "The words used in this page, in plain English.")
 
 
+def presentation():
+    body = d.presentation_cycle()
+    body += "<h3>The idea</h3><p>Keep the AWS part in standby (about US$0.3 a day) and switch it on only for the days when everything must run: the final tests and the presentation. The cycle was <b>run for real</b> on 2026-10-10 (resume, check, pause again) and it found one bug, now fixed.</p>"
+    body += "<h3>The procedure</h3>" + table(["Step", "Command", "What happens", "Measured"], [
+        ["Standby (now)", "<code>scripts/env-status.sh</code>", "Shows PAUSED: tasks at 0, RDS stopped, no NAT, no load balancer, no WAF", "—"],
+        ["Switch on", "<code>AWS_PROFILE=... scripts/resume.sh</code>", "Creates the NAT, load balancer and WAF, starts the database, scales the 4 services up, waits until healthy, prints the HTTP status of the app", "<b>8 min 54 s</b> (app answered 200 on <code>/</code> and <code>/openapi.json</code>)"],
+        ["Deploy the current code", "Approve the <code>production</code> deploy on the latest run of <code>main</code> (it refuses to run while <code>PAUSED=true</code>; <code>resume.sh</code> sets it to false)", "Builds the images of PRs #8 to #23, runs the migration, rolls the services, smoke test", "Pipeline time (not part of this test)"],
+        ["Switch off", "<code>AWS_PROFILE=... scripts/pause.sh</code>", "CloudFront lets go of the WAF and the load balancer, then tasks to 0, WAF and load balancer deleted, NAT removed, RDS stopped, sweeper off", "<b>2 min 5 s</b>"],
+    ], widths=["16%", "30%", "36%", "18%"])
+    body += "<h3>Checks done after each step</h3>" + table(["After", "Check", "Result"], [
+        ["Resume", "<code>terraform plan</code> with <code>paused=false</code>", "No changes (no drift)"],
+        ["Resume", "App through CloudFront: <code>/</code>, <code>/openapi.json</code>, <code>/v1/quizzes</code> without a token", "200, 200, 401 (the API answers and still asks for a login)"],
+        ["Resume", "Resources", "web 2, api 2, worker 1, scorer 1 running · RDS available · NAT, load balancer and WAF present · sweeper enabled"],
+        ["Pause", "<code>scripts/env-status.sh</code>", "All services 0 · RDS stopped · no NAT · no load balancer · sweeper disabled · PAUSED"],
+        ["Pause", "<code>terraform plan</code> with <code>paused=true</code>", "No changes"],
+        ["Pause", "WAF web ACLs in the account, and the CloudFront WebACLId", "0 and empty: the WAF is really gone, CloudFront is still there"],
+        ["Next resume", "<code>terraform plan</code> with <code>paused=false</code>", "8 to add, 9 to change, 1 to destroy: the same numbers as the real resume"],
+    ], widths=["14%", "46%", "40%"])
+    body += "<h3>The bug the test found</h3>"
+    body += callout("warn", "Pausing failed with <code>WAFAssociatedItemException</code>", "Terraform tried to delete the WAF while CloudFront still used it, and AWS refuses that. Terraform does not put “update the distribution” before “delete the web ACL” when the web ACL disappears with <code>count = 0</code>. The apply stopped half-way (load balancer and NAT already gone, tasks still up). <b>Fix:</b> <code>pause.sh</code> now runs two applies. Phase 1 (<code>-target</code> the distribution, <code>keep_waf=true</code>) only updates CloudFront so it releases the WAF and the load balancer. Phase 2 deletes the rest. Resume needed no change: creating things in order is what Terraform does well.")
+    body += "<h3>Files</h3>" + table(["File", "Role"], [
+        ["<code>scripts/pause.sh</code>", "The two-phase pause (the fix); sets <code>PAUSED=true</code>"],
+        ["<code>scripts/resume.sh</code>", "The resume and the health wait; sets <code>PAUSED=false</code>"],
+        ["<code>scripts/env-status.sh</code>", "One-screen status: RUNNING or PAUSED, resource by resource"],
+        ["<code>scripts/_env.sh</code>", "Shared helpers: Terraform init, the deployed image tag, running tasks, the <code>PAUSED</code> variable"],
+        ["<code>infra/terraform/pause.tf</code>", "The <code>paused</code> flag: what is stopped, and the RDS start/stop"],
+        ["<code>infra/terraform/edge.tf</code>", "Load balancer and WAF (<code>count</code> follows <code>paused</code>), the CloudFront distribution, the <code>keep_waf</code> switch"],
+        ["<code>infra/terraform/variables.tf</code>", "Variables <code>paused</code> and <code>keep_waf</code>"],
+        ["<code>infra/terraform/network.tf</code>", "The NAT gateway and its address (removed while paused)"],
+        ["<code>.github/workflows/ci.yml</code>", "The deploy job refuses to run while <code>PAUSED=true</code>"],
+    ], widths=["34%", "66%"])
+    body += callout("info", "Before the presentation", "Resume at least one hour before (9 minutes for the stack, plus the deploy and the smoke test). After it, run <code>pause.sh</code> the same day. If you stay paused for more than 7 days, run <code>pause.sh</code> again, because AWS restarts a stopped RDS by itself.")
+    return sec("standby", "Standby until the presentation", body, "How to spend almost nothing until the day everything must run on AWS, and the test that proves the switch on and off works.")
+
+
 def limits():
     body = table(["Limit", "Detail"], [
         ["No custom domain", "CloudFront → ALB is HTTP inside AWS (the ALB is locked to CloudFront). A domain + ACM certificate fixes it."],
@@ -1176,9 +1211,9 @@ def limits():
 
 def all_sections():
     return [overview(), links(), architecture(), communication(), flows(), documents(), validation(), guardrails(), input_security(), agent(), quality(), langfuse(), langfuse_eval(), scoring_arch(), secrets(), data(), security(), resilience(), observability(), evaluation(), cicd(), state(),
-            decisions(), bugs(), costs(), evidence(), runbook(), live_state(), limits(), improvements(), glossary()]
+            decisions(), bugs(), costs(), evidence(), runbook(), live_state(), limits(), improvements(), glossary(), presentation()]
 
 
 NAV = [("summary", "Summary"), ("links", "Links"), ("architecture", "Architecture"), ("comm", "Communication"), ("flows", "Flows"), ("documents", "Documents"), ("validation", "Validation"), ("guardrails", "Guardrails"), ("inputsec", "Input security"), ("agent", "Agent"),
        ("quality", "Quality & alerts"), ("langfuse", "Langfuse"), ("lfeval", "Langfuse judge"), ("scoringarch", "Scoring service"), ("secrets", "Secrets"), ("data", "Data"), ("security", "Security"), ("resilience", "Resilience"), ("observability", "Observability"), ("evaluation", "Evaluation"),
-       ("cicd", "CI/CD"), ("state", "TF state"), ("decisions", "Decisions"), ("bugs", "Bugs"), ("pause", "Cost & pause"), ("evidence", "Evidence"), ("runbook", "Runbook"), ("live", "Live vs main"), ("limits", "Limits"), ("improve", "Improvements"), ("glossary", "Glossary")]
+       ("cicd", "CI/CD"), ("state", "TF state"), ("decisions", "Decisions"), ("bugs", "Bugs"), ("pause", "Cost & pause"), ("evidence", "Evidence"), ("runbook", "Runbook"), ("live", "Live vs main"), ("limits", "Limits"), ("improve", "Improvements"), ("glossary", "Glossary"), ("standby", "Standby")]
