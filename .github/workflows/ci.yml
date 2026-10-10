@@ -41,7 +41,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Typecheck (all workspaces)
         run: pnpm typecheck
-      - name: Lint (ESLint: typescript-eslint recommended)
+      - name: Lint (ESLint, typescript-eslint recommended rules)
         run: pnpm lint
       - name: Unit tests (scoring, schemas, SSRF guard, JSON extraction, graph, migration policy ...)
         run: pnpm test
