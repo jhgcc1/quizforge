@@ -3,7 +3,7 @@ import { SQSClient, SendMessageCommand } from "@aws-sdk/client-sqs";
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import { ScoreJobMessageSchema, QuizJobMessageSchema, type ScoreJobMessage } from "@quizforge/core";
 import { createDb } from "@quizforge/db";
-import { createFakeLlm, createMiniMaxClient, flushTracing, initTracing, type LlmClient } from "@quizforge/llm";
+import { createFakeLlm, createMiniMaxClient, flushTracing, initTracing, parseAllowedLanguages, type LlmClient } from "@quizforge/llm";
 import { loadConfig } from "./config.js";
 import { Consumer, SqsTransport } from "./consumer.js";
 import { createLogger } from "./log.js";
@@ -61,7 +61,7 @@ if (config.WORKER_ROLE === "score") {
     ...common,
     transport,
     parse: (raw) => QuizJobMessageSchema.parse(raw),
-    handler: (msg, receive) => processQuizJob({ db, llm, publishScore, checkpointer, log, allowedHosts: config.allowedHosts, pricing }, msg, { count: receive.count, max: config.SQS_MAX_RECEIVE }),
+    handler: (msg, receive) => processQuizJob({ db, llm, publishScore, checkpointer, log, allowedHosts: config.allowedHosts, allowedLanguages: parseAllowedLanguages(config.ALLOWED_LANGUAGES), pricing }, msg, { count: receive.count, max: config.SQS_MAX_RECEIVE }),
   });
 }
 

@@ -4,6 +4,7 @@ import type { JudgeResult } from "./judge.js";
 import { quizMetrics, type QuizMetrics } from "./lint.js";
 import { QUALITY_VERSION, scoreQuiz } from "./quality.js";
 import { judgeNote, judgeWithRetry } from "./scoring.js";
+import { guardLlm, parseQuizInput } from "./llm-input.js";
 import type { LlmClient } from "./llm.js";
 import { scoreTrace, traced } from "./observability.js";
 import { PROMPT_VERSION } from "./prompts.js";
@@ -59,7 +60,9 @@ export interface GeneratedQuizResult {
   judgeModel: string;
 }
 
-export async function generateQuiz(p: GenerateQuizParams): Promise<GeneratedQuizResult> {
+export async function generateQuiz(params: GenerateQuizParams): Promise<GeneratedQuizResult> {
+  // The two doors to the model (see llm-input.ts): a validated, sanitized input, and clients that re-validate every call.
+  const p: GenerateQuizParams = { ...params, llm: guardLlm(params.llm), ...(params.judgeLlm ? { judgeLlm: guardLlm(params.judgeLlm) } : {}), input: parseQuizInput(params.input) };
   return traced(
     "quiz-generation",
     {

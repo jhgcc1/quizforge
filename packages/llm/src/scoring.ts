@@ -2,6 +2,7 @@ import type { GeneratedQuestion } from "@quizforge/core";
 import { JobBudget, type Usage } from "./budget.js";
 import { BudgetExceededError } from "./errors.js";
 import { judgeQuiz, type JudgeResult } from "./judge.js";
+import { guardLlm } from "./llm-input.js";
 import type { LlmClient } from "./llm.js";
 import { scoreTrace, traced, withGenerationTracing } from "./observability.js";
 import { QUALITY_VERSION, scoreQuiz } from "./quality.js";
@@ -58,7 +59,8 @@ export interface ScoreExistingResult {
  * ALL the scores to Langfuse. This is what the scorer service runs, off the path of the user's request.
  * The judge calls are traced as generations (time, tokens, cost) in a "quiz-scoring" trace of the same session.
  */
-export async function scoreExistingQuiz(p: ScoreExistingParams): Promise<ScoreExistingResult> {
+export async function scoreExistingQuiz(params: ScoreExistingParams): Promise<ScoreExistingResult> {
+  const p: ScoreExistingParams = { ...params, llm: guardLlm(params.llm) };
   return traced(
     "quiz-scoring",
     { ...(p.quizId ? { sessionId: p.quizId } : {}), tags: ["quizforge", "scoring"], metadata: { qualityVersion: QUALITY_VERSION, judgeModel: p.llm.model, generationTrace: p.traceId ?? undefined } },

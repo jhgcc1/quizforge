@@ -1,0 +1,12 @@
+# Live suite: the real MiniMax model. Plain-text attacks (the ones the guard lets through on purpose) must not hijack it,
+# and the agent must stay on its purpose: a quiz about the document. Runs on main before a deploy, nightly and on demand.
+# Needs MINIMAX_API_KEY (GitHub environment llm-eval). Costs about 20 generations.
+description: QuizForge prompt injection and purpose (live model)
+prompts:
+  - "{{kind}}"
+providers:
+  - id: file://provider.ts
+    label: pipeline-live
+    config:
+      mode: live
+tests: file://tests.ts:live

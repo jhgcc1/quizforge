@@ -1,4 +1,6 @@
 import { z } from "zod";
+// no ".js" extension: this file is also bundled for the browser, and Turbopack does not map ".js" to the ".ts" source
+import { checkShortText } from "./guard";
 
 /**
  * Request and response contracts shared by the API, the web BFF and the browser, so none of them can drift.
@@ -13,7 +15,17 @@ export const CreateQuizBodySchema = z
   .object({
     /** Markdown document to quiz on. Falls back to the server default when omitted. */
     sourceUrl: z.string().trim().url().max(2000).optional(),
-    topic: z.string().trim().min(2).max(200).optional(),
+    /** Free text that ends up in a prompt: one plain line, no invisible characters, no instructions, no encoded text (see guard.ts). */
+    topic: z
+      .string()
+      .trim()
+      .min(2)
+      .max(200)
+      .superRefine((t, ctx) => {
+        const issue = checkShortText(t);
+        if (issue) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `The topic ${issue.message}` });
+      })
+      .optional(),
     numQuestions: z.number().int().min(5).max(8).default(6),
     strategy: z.enum(STRATEGIES).default("auto"),
     critique: z.boolean().default(true),

@@ -187,3 +187,70 @@ describe("processQuizJob", () => {
     expect(new JobBudget()).toBeDefined();
   });
 });
+
+describe("the input guard in the worker (door 1)", () => {
+  const docFetch = (text: string) => (async (url: string) => ({ url, rawUrl: url, text, sha256: randomUUID().replace(/-/g, "").padEnd(64, "0") })) as never;
+  const countingLlm = () => {
+    const inner = createFakeLlm();
+    const calls: string[] = [];
+    const llm: LlmClient = { model: inner.model, complete: (m, o) => (calls.push(o?.name ?? "?"), inner.complete(m, o)) };
+    return { llm, calls };
+  };
+  const sourcesCount = async () => (await ctx.db.select().from(schema.sources)).length;
+
+  it("a document with an encoded instruction is rejected: quiz failed, no model call, nothing stored, its own metric and no job-failure alarm", async () => {
+    const { ATTACK_TECHNIQUES, DEFAULT_PAYLOAD } = await import("@quizforge/core");
+    const text = ATTACK_TECHNIQUES.find((t) => t.id === "base64")!.embed(DEFAULT_PAYLOAD);
+    const quiz = await newQuiz();
+    const { llm, calls } = countingLlm();
+    const before = await sourcesCount();
+    metrics.length = 0;
+    const out = await processQuizJob(deps({ llm, fetchMarkdown: docFetch(text) }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
+    expect(out.kind).toBe("failed");
+    expect((await status(quiz.id)).status).toBe("failed");
+    expect((await status(quiz.id)).error).toContain("unsafe_document");
+    expect(calls).toEqual([]);
+    expect(await sourcesCount()).toBe(before);
+    expect(metrics.at(-1)).toMatchObject({ DocumentRejected: 1 });
+    expect(metrics.at(-1)).not.toHaveProperty("JobFailed");
+  });
+
+  it("a document in an unsupported language is rejected the same way", async () => {
+    const { UNSUPPORTED_LANGUAGE_DOCS } = await import("@quizforge/core");
+    const quiz = await newQuiz();
+    const { llm, calls } = countingLlm();
+    const out = await processQuizJob(deps({ llm, fetchMarkdown: docFetch(UNSUPPORTED_LANGUAGE_DOCS.find((d) => d.id === "french")!.text) }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
+    expect(out.kind).toBe("failed");
+    expect((await status(quiz.id)).error).toContain("unsupported_language");
+    expect(calls).toEqual([]);
+  });
+
+  it("the allowed languages can be narrowed by configuration", async () => {
+    const { SUPPORTED_LANGUAGE_DOCS } = await import("@quizforge/core");
+    const quiz = await newQuiz();
+    const pt = SUPPORTED_LANGUAGE_DOCS.find((d) => d.language === "pt")!.text;
+    const out = await processQuizJob(deps({ allowedLanguages: ["en"], fetchMarkdown: docFetch(pt) }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
+    expect(out.kind).toBe("failed");
+  });
+
+  it("a plain instruction is kept as data: the quiz is generated, the document is flagged, the flag has a metric", async () => {
+    const { ATTACK_TECHNIQUES, DEFAULT_PAYLOAD } = await import("@quizforge/core");
+    const text = ATTACK_TECHNIQUES.find((t) => t.id === "plain-english")!.embed(DEFAULT_PAYLOAD);
+    const quiz = await newQuiz({ numQuestions: 5 });
+    metrics.length = 0;
+    const out = await processQuizJob(deps({ fetchMarkdown: docFetch(text) }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
+    expect(out.kind).toBe("done");
+    expect(metrics.some((m) => m.InjectionFlagged === 1)).toBe(true);
+  });
+
+  it("the sanitized text is what is stored (HTML comments and invisible characters removed), so the scorer reads the same text", async () => {
+    const { benignDocument } = await import("@quizforge/core");
+    const quiz = await newQuiz({ numQuestions: 5 });
+    const text = benignDocument().replace("## Retries", "<!-- toc -->\u200B## Retries");
+    await processQuizJob(deps({ fetchMarkdown: docFetch(text) }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
+    const row = await status(quiz.id);
+    const [src] = await ctx.db.select().from(schema.sources).where(eq(schema.sources.id, row.sourceId!));
+    expect(src!.contentText).not.toContain("<!--");
+    expect(src!.contentText).not.toContain("\u200B");
+  });
+});

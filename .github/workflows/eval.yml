@@ -54,6 +54,14 @@ jobs:
         run: |
           echo '### LLM evaluation' >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"; cat eval.txt >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true; echo '```' >> "$GITHUB_STEP_SUMMARY"
+      - name: promptfoo live suite (prompt injection and agent purpose, real model)
+        env:
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+          MINIMAX_MODEL: ${{ inputs.model }}
+          PROMPTFOO_VERSION: "0.124.1"
+        run: |
+          [ -n "$MINIMAX_MODEL" ] || unset MINIMAX_MODEL
+          scripts/promptfoo.sh live
       - uses: actions/upload-artifact@v4
         if: always()
-        with: { name: eval-report, path: evals/report.json, retention-days: 30 }
+        with: { name: eval-report, path: "evals/report.json\npromptfoo/out/live.json", retention-days: 30 }

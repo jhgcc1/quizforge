@@ -8,9 +8,13 @@ import {
   QualityGateError,
   StructuredOutputError,
   SourceError,
+  UnsafeDocumentError,
+  UnsupportedLanguageError,
+  admitDocument,
   fetchMarkdown as defaultFetch,
   generateQuiz as defaultGenerate,
   type LlmClient,
+  type SupportedLanguage,
 } from "@quizforge/llm";
 import { emitMetrics, type Logger } from "./log.js";
 
@@ -33,6 +37,8 @@ export interface ProcessDeps {
    */
   publishScore?: ((msg: ScoreJobMessage) => Promise<void>) | undefined;
   allowedHosts: string[];
+  /** Languages a document may be written in; any other is rejected before the model is called. Default: en, pt, es. */
+  allowedLanguages?: readonly SupportedLanguage[] | undefined;
   pricing: { inPerM: number; outPerM: number };
   log: Logger;
   checkpointer?: BaseCheckpointSaver | undefined;
@@ -73,13 +79,21 @@ export async function processQuizJob(
   try {
     const fetchSource = d.fetchMarkdown ?? defaultFetch;
     const src = await fetchSource(quiz.sourceUrl, { allowedHosts: d.allowedHosts });
-    const sourceId = await upsertSource(d.db, { url: quiz.sourceUrl, rawUrl: src.rawUrl, sha256: src.sha256, text: src.text });
+    // Door 1: reject hidden/encoded text and unsupported languages BEFORE anything is stored or sent to a model.
+    // From here on only the sanitized text is used, and the scorer reads the same text back from Postgres.
+    const doc = admitDocument(src.text, d.allowedLanguages ? { allowedLanguages: d.allowedLanguages } : {});
+    const flagged = doc.findings.filter((f) => f.severity === "flag");
+    if (flagged.length) {
+      log.warn({ findings: flagged.map((f) => ({ kind: f.kind, detail: f.detail })) }, "the document contains instructions aimed at a model (kept as data)");
+      emit({ InjectionFlagged: { value: 1, unit: "Count" } });
+    }
+    const sourceId = await upsertSource(d.db, { url: quiz.sourceUrl, rawUrl: src.rawUrl, sha256: src.sha256, text: doc.text });
 
     const gen = d.generateQuiz ?? defaultGenerate;
     const result = await gen({
       llm: d.llm,
       input: {
-        sourceText: src.text,
+        sourceText: doc.text,
         numQuestions: quiz.numQuestions,
         topic: quiz.topic ?? undefined,
         strategy: quiz.strategyRequested as "auto" | "single-shot" | "section-map-reduce",
@@ -145,7 +159,9 @@ export async function processQuizJob(
     }
     const exhausted = receive.count >= receive.max;
     log.error({ err, permanent, exhausted }, "quiz generation failed");
-    emit({ JobFailed: { value: 1, unit: "Count" }, JobPermanentFailure: { value: permanent ? 1 : 0, unit: "Count" } });
+    // A rejected document is the guard doing its job (and a user typo is not an outage): it has its own metric and does not feed the job-failure alarm.
+    if (err instanceof UnsafeDocumentError || err instanceof UnsupportedLanguageError) emit({ DocumentRejected: { value: 1, unit: "Count" } });
+    else emit({ JobFailed: { value: 1, unit: "Count" }, JobPermanentFailure: { value: permanent ? 1 : 0, unit: "Count" } });
 
     if (permanent || exhausted) {
       await failQuiz(d.db, { quizId: quiz.id, jobId: job.id, error: message });

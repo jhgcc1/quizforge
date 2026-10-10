@@ -1,0 +1,19 @@
+{
+  "name": "@quizforge/promptfoo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "promptfoo suites for the input guard, prompt injection and agent purpose (see README in the architecture report)",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "offline": "promptfoo eval -c guard.yaml --no-cache --no-progress-bar --no-table -o out/guard.json",
+    "live": "promptfoo eval -c live.yaml --no-cache --no-progress-bar --no-table -j 3 -o out/live.json"
+  },
+  "dependencies": {
+    "@quizforge/core": "workspace:*",
+    "@quizforge/llm": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0"
+  }
+}
