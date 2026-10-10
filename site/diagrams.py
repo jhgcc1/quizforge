@@ -741,3 +741,27 @@ def pipeline_overview():
     b += text(10, 530, "Langfuse receives data in 5 places only: llm-eval and publish-prompts on main, the nightly eval, the manual comparison, and production. A pull request never talks to it.", "note")
     b += text(10, 550, "promptfoo runs in 3: OFFLINE on every PR and main (81 tests, required), LIVE inside llm-eval on main (blocks the deploy) and in the nightly run.", "note")
     return svg(1180, 572, b, "The whole pipeline over time: where promptfoo runs and where Langfuse gets data")
+
+
+def repo_structure():
+    """The folders of the repository and who depends on whom."""
+    b = ""
+
+    def panel(x, y, w, h, title, kind, lines):
+        out = group(x, y, w, h, title, "grp")
+        for i, (name, what) in enumerate(lines):
+            out += text(x + 14, y + 40 + i * 34, name, "t-s")
+            out += text(x + 14, y + 56 + i * 34, what, "note")
+        return out
+
+    b += panel(10, 10, 300, 150, "apps/  (the 3 services)", "compute", [("web", "Next.js: UI + BFF (cookies, PKCE, validation)"), ("api", "Fastify REST: auth, quota, idempotency, queue"), ("worker", "one image, 3 roles: generate · score · sweeper")])
+    b += panel(10, 180, 300, 190, "packages/  (shared code)", "ai", [("core", "schemas, guard, 49 rules, scoring (browser-safe)"), ("llm", "graph, prompts, guardLlm, output rails, quality"), ("db", "Drizzle schema, migrations, repositories"), ("detector", "optional ONNX injection classifier (English)")])
+    b += panel(330, 10, 300, 150, "tests and quality gates", "ci", [("evals/", "golden set, comparison, reports, publish-prompts"), ("promptfoo/", "81 offline + 21 live tests, provider, assertions"), ("e2e/", "Playwright in real Chrome (4 local services)")])
+    b += panel(330, 180, 300, 190, "data of the agent", "data", [("prompts/", "prompts.lock.json: hash of every prompt"), ("evals/fixtures/", "test READMEs (dropdown + golden set)"), ("evals/references/", "hand-written reference questions"), ("docker/ · docker-compose", "local Postgres + SQS emulator")])
+    b += panel(650, 10, 300, 150, "infra/  (Terraform)", "sec", [("bootstrap/", "state bucket, ECR, OIDC roles (applied by hand)"), ("terraform/", "the platform: VPC, ECS, RDS, SQS, edge, alarms"), ("github/", "ruleset, environments, variables (by hand)")])
+    b += panel(650, 180, 300, 190, "operations and docs", "mgd", [(".github/workflows/", "ci.yml · eval.yml · drift.yml · compare"), ("scripts/", "pause · resume · audit-aws · promptfoo · reports"), ("docs/", "the committed reports (HTML)"), ("site/", "generator of the architecture report")])
+    # dependencies
+    b += arrow(160, 160, 160, 180, "imports")
+    b += text(10, 398, "apps import packages; evals, promptfoo and e2e test the same code the services run (they import packages, never the apps); infra is separate and only knows image tags.", "note")
+    b += text(10, 418, "One image for the worker, scorer, sweeper and migration task (apps/worker); web and api have their own Dockerfile.", "note")
+    return svg(970, 438, b, "Where things live in the repository")

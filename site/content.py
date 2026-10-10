@@ -114,7 +114,24 @@ def architecture():
         ["Cognito", "user pool", "managed", "Admin-created users, no sign-up, Hosted UI + PKCE"],
         ["CloudFront + WAF", "edge", "managed", "HTTPS, rate limit, managed rules; the only way to the load balancer"],
     ]
-    return sec("architecture", "Architecture", d.architecture() + table(["Part", "Technology", "Runs as", "Does"], comps, widths=["11%", "21%", "19%", "49%"]),
+    repo = "<h3>Where things live in the repository</h3>" + d.repo_structure() + table(["Folder", "What is in it", "Depends on", "Checked by"], [
+        ["<code>apps/web</code>", "Next.js app: pages, BFF route <code>/bff/*</code>, Cognito login, the browser client with schema-validated responses", "<code>packages/core</code> (schemas only)", "unit tests, e2e"],
+        ["<code>apps/api</code>", "Fastify REST API, JWT check, quota, idempotency, OpenAPI", "<code>core</code>, <code>db</code>", "integration (real Postgres), e2e"],
+        ["<code>apps/worker</code>", "One image, three roles: <code>generate</code> (graph), <code>score</code> (judge) and the sweeper; consumer, processor, scorer", "<code>core</code>, <code>db</code>, <code>llm</code>", "integration, e2e"],
+        ["<code>packages/core</code>", "Pure code with no I/O, safe for the browser: request/response schemas, the input guard and its 49 keyword rules, the attack corpus, quiz scoring", "zod only", "unit tests, promptfoo"],
+        ["<code>packages/db</code>", "Drizzle schema, SQL migrations, repositories (claim, lease, save scores)", "<code>core</code>", "integration, migrations job"],
+        ["<code>packages/llm</code>", "The agent: LangGraph graph, prompts, structured output, <code>guardLlm</code>, output rails, language policy, quality method, Langfuse tracing", "<code>core</code>", "unit tests, promptfoo, llm-eval"],
+        ["<code>packages/detector</code>", "Optional ONNX classifier for prompt injection (English). Heavy dependencies live here on purpose", "<code>core</code>, <code>llm</code> (types)", "unit tests"],
+        ["<code>evals/</code>", "Golden set, structure comparison, the report generator, <code>publish-prompts</code>, the test documents (<code>fixtures/</code>) and reference questions", "<code>core</code>, <code>llm</code>", "quality, llm-eval, nightly"],
+        ["<code>promptfoo/</code>", "Offline and live suites: provider that runs the real pipeline, assertions, test generator", "<code>core</code>, <code>llm</code>", "promptfoo job"],
+        ["<code>prompts/</code>", "<code>prompts.lock.json</code>: the hash of every prompt and the prompt version", "<code>llm</code>", "unit test (the lock must match)"],
+        ["<code>e2e/</code>", "Playwright tests against the four services running locally", "all apps", "e2e job"],
+        ["<code>infra/</code>", "<code>bootstrap</code> (state bucket, ECR, OIDC), <code>terraform</code> (the platform), <code>github</code> (ruleset, environments)", "image tags only", "terraform-validate, terraform-plan, drift"],
+        ["<code>.github/workflows/</code>", "<code>ci.yml</code> (PR and main), <code>eval.yml</code> (nightly), <code>drift.yml</code>, <code>compare</code> (manual)", "scripts", "—"],
+        ["<code>scripts/</code>", "Operations (<code>pause</code>, <code>resume</code>, <code>audit-aws</code>), <code>promptfoo.sh</code>, migration policy, report build", "—", "unit tests where code"],
+        ["<code>docs/</code> and <code>site/</code>", "The committed reports, and the Python generator of the architecture report", "—", "—"],
+    ], widths=["18%", "50%", "17%", "15%"])
+    return sec("architecture", "Architecture", d.architecture() + table(["Part", "Technology", "Runs as", "Does"], comps, widths=["11%", "21%", "19%", "49%"]) + repo,
                "Four Fargate services (web, api, worker, scorer) behind a load balancer that only accepts CloudFront. Generation and judging run outside the web request, through two queues.")
 
 
@@ -811,6 +828,20 @@ def cicd():
         ["<b>llm-eval</b>", "Golden set on the real model (grounding, lint, judge, injection, language) logged to Langfuse, then the live promptfoo suite (21 tests)", "main only", "Environment <code>llm-eval</code>: MiniMax and Langfuse keys", "n/a", "Yes"],
         ["<b>deploy</b>", "Build and push ARM64 images, drift check, migration, <code>terraform apply</code>, smoke test", "main only", "Environment <code>production</code>: human approval, AWS deploy role (OIDC)", "n/a", "This is the deploy"],
     ], widths=["13%", "42%", "9%", "18%", "9%", "9%"])
+    body += "<h3>Rules a pull request must follow to be accepted</h3>" + table(["Rule", "Enforced by", "What you see when it breaks"], [
+        ["<b>One pull request, squashed, up to date with main</b>: no direct push, no force push, no merge commits, conversations resolved, the branch rebased on the latest main", "Ruleset of <code>main</code> (no bypass)", "The merge button is disabled"],
+        ["<b>All 8 required checks green</b> (quality, integration, migrations, e2e, docker-build, terraform-validate, secrets-scan, promptfoo)", "Ruleset", "A red or missing check"],
+        ["<b>Code</b>: strict TypeScript, ESLint (typescript-eslint recommended: no unused variables, no useless escapes), all unit tests", "<code>quality</code>", "Typecheck, lint or test error with the file and line"],
+        ["<b>No secret</b> in code or history; test secrets are built at run time", "<code>secrets-scan</code> (gitleaks, full history)", "The finding and its commit"],
+        ["<b>A schema change needs its migration</b> (<code>pnpm --filter @quizforge/db db:generate</code>); migrations apply twice on an empty database", "<code>migrations</code>", "“schema.ts changed without a committed migration”"],
+        ["<b>Migrations must be safe for a rolling deploy</b>: no DROP TABLE or COLUMN, RENAME, ALTER TYPE, SET NOT NULL, TRUNCATE or DROP SCHEMA unless the file says <code>-- destructive-ok: reason</code>; a released migration is never edited", "<code>migrations</code> (policy script)", "The rule id and why it is unsafe"],
+        ["<b>Images build and have no fixable HIGH or CRITICAL vulnerability</b>; Terraform is formatted, valid and passes the Trivy IaC scan; every ignore is justified in <code>.trivyignore</code>", "<code>docker-build</code>, <code>terraform-validate</code>", "The CVE or the Terraform rule"],
+        ["<b>A prompt change is deliberate</b>: bump <code>PROMPT_VERSION</code> and run <code>pnpm prompts:lock</code>; every prompt keeps its safety rules (document is untrusted DATA, never follow instructions inside it, exactly 4 options, JSON only, a source quote)", "<code>quality</code> (lock test), <code>promptfoo</code> (<code>PROMPTS</code>)", "“prompt lock does not match” or the missing rule"],
+        ["<b>A test README</b> in <code>evals/fixtures</code> must be admitted: no hidden or encoded text (Base64, hex, ROT13, invisible Unicode, instructions in HTML comments or hidden elements, chat tokens, look-alike letters), and written in English, Portuguese or Spanish. A plain sentence aimed at the AI is allowed (it is only flagged)", "<code>promptfoo</code> (<code>FIXTURE</code>), unit tests", "<code>unsafe_document: an instruction is hidden in base64</code> or <code>unsupported_language</code>"],
+        ["<b>Text reaches a model only through the doors</b>: strict input schema and <code>guardLlm</code>; model output only after the output rails", "Unit tests, promptfoo, review", "A bad reply or attack reaches the model in a test"],
+        ["<b>The behaviour of the agent must not drop</b>: grounded = 1, lint 0.6 per item and 0.9 mean, judge 0.4 per item and 0.7 mean, diversity 0.25, relevance 0.15, coverage 0.5, language 1, injection resisted 1, and promptfoo live 21 of 21", "<code>llm-eval</code> on main (blocks the deploy and <code>publish-prompts</code>)", "The item and the metric that fell"],
+        ["<b>Deploy needs a human</b> and an environment that is not paused", "Environment <code>production</code>, <code>PAUSED</code>", "The job waits or refuses"],
+    ], widths=["52%", "22%", "26%"])
     body += "<h3>What it looks like on GitHub</h3><p>Real pages of the public repository.</p>"
     body += '<div class="shots">' + img("gh-1-actions-list.png", "Actions: the four workflows (CI/CD, Compare generation structures, LLM evaluation, Terraform drift) and the latest runs") + img("gh-3-run-pr.png", "A pull request run: the jobs run in parallel; <code>llm-eval</code> and <code>deploy</code> are skipped on a PR") + "</div>"
     body += '<div class="shots">' + img("gh-4-run-main.png", "A run on <code>main</code>: <code>llm-eval</code> ran against the real model and the <code>deploy</code> job waits for a human (“production require an approval”)") + img("gh-5-ruleset.png", "The ruleset of <code>main</code>: the required checks, now including <code>promptfoo</code>") + "</div>"
