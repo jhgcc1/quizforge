@@ -13,7 +13,9 @@
     "db:up": "docker compose up -d postgres elasticmq",
     "test:e2e": "tsx e2e/prepare.ts && playwright test --config e2e/playwright.config.ts",
     "typecheck": "pnpm -r typecheck",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "prompts:lock": "pnpm --filter @quizforge/evals exec tsx src/publish-prompts.ts --write-lock",
+    "prompts:publish": "pnpm --filter @quizforge/evals exec tsx src/publish-prompts.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
