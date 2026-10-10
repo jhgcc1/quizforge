@@ -945,14 +945,14 @@ def bugs():
 def costs():
     body = d.cost_chart() + d.pause_diagram()
     body += "<h3>Cost</h3>" + table(["Item", "Running ($/month)", "Paused ($/month)"], [
-        ["Fargate ARM (6 small tasks, incl. the scorer)", "~79", "0"], ["Load balancer", "~20", "~20"], ["NAT gateway", "~35", "0"],
-        ["RDS t4g.micro + 20 GB", "~15", "~2.5 (storage)"], ["CloudFront, WAF, logs, KMS, secrets", "~10", "~10"],
-        ["<b>Total</b>", "<b>~160 (≈ $5 / day)</b>", "<b>~30–45 (≈ $1–2 / day)</b>"],
+        ["Fargate ARM (6 small tasks, incl. the scorer)", "~79", "0"], ["Load balancer", "~20", "0 (deleted while paused)"], ["NAT gateway", "~35", "0"],
+        ["RDS t4g.micro + 20 GB", "~15", "~2.5 (storage)"], ["CloudFront, WAF, logs, KMS, secrets", "~10", "~5 (WAF deleted; CloudFront is free idle)"],
+        ["<b>Total</b>", "<b>~160 (≈ $5 / day)</b>", "<b>~8 (≈ $0.3 / day)</b>"],
         ["LLM per quiz", "about one cent or less (measured: $0.009 per generation, judge included)", "0"],
     ], widths=["50%", "25%", "25%"])
     body += table(["Command", "Does"], [
         ["<code>scripts/pause.sh</code>", "Tasks to 0, RDS stopped, NAT removed, sweeper off. Data and image version kept."],
-        ["<code>scripts/resume.sh</code>", "Everything back (about 10 min): waits until the services are healthy, then prints the HTTP status of the app. <code>pause.sh</code> sets <code>PAUSED=true</code> before the apply, <code>resume.sh</code> sets it to false after (needs <code>gh</code> logged in)"],
+        ["<code>scripts/resume.sh</code>", "Everything back (about 15 min, the load balancer and WAF are recreated): waits until the services are healthy, then prints the HTTP status of the app. <code>pause.sh</code> sets <code>PAUSED=true</code> before the apply, <code>resume.sh</code> sets it to false after (needs <code>gh</code> logged in)"],
         ["<code>scripts/env-status.sh</code>", "RUNNING or PAUSED, resource by resource"],
     ], widths=["34%", "66%"])
     body += callout("warn", "Limits", "AWS restarts a stopped RDS after 7 days (run <code>pause.sh</code> again). Starting a stopped RDS can fail briefly if AWS has no capacity in its zone: just try again. Costs are estimates from the price list, not the bill. <code>terraform destroy</code> gives zero cost.")

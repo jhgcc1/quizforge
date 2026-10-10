@@ -314,13 +314,13 @@ def pause_diagram():
     b += group(30, 60, 340, 200, "RUNNING  (~$5 / day)", "grp")
     for i, t in enumerate(["web ×2 · api ×2 · worker ×1 · scorer ×1", "RDS available", "NAT Gateway + Elastic IP", "sweeper ENABLED", "ALB · WAF · CloudFront · KMS · secrets"]):
         b += text(50, 100 + i * 28, "• " + t, "note")
-    b += group(530, 60, 340, 200, "PAUSED  (~$1–2 / day)", "grp mgd")
-    for i, t in enumerate(["web/api/worker/scorer = 0 tasks", "RDS stopped (data preserved)", "NAT Gateway and Elastic IP removed", "sweeper DISABLED", "ALB · WAF · CloudFront · KMS · secrets stay"]):
+    b += group(530, 60, 340, 200, "PAUSED  (~$8 / month)", "grp mgd")
+    for i, t in enumerate(["web/api/worker/scorer = 0 tasks", "RDS stopped (data preserved)", "NAT, Elastic IP, load balancer, WAF removed", "sweeper DISABLED", "CloudFront · KMS · secrets · RDS storage stay"]):
         b += text(550, 100 + i * 28, "• " + t, "note")
     b += arrow(372, 120, 528, 120, "pause.sh", lx=450, ly=110)
     b += arrow(528, 210, 372, 210, "resume.sh (~10 min)", lx=450, ly=232)
     b += text(30, 300, "The repository variable PAUSED keeps the pipeline consistent: with PAUSED=true the deploy refuses to run.", "note")
-    b += text(30, 320, "AWS restarts a stopped RDS after 7 days: if you stay paused longer, run pause.sh again.", "note")
+    b += text(30, 320, "AWS restarts a stopped RDS after 7 days: if you stay paused longer, run pause.sh again. Resume recreates the load balancer and WAF (~15 min).", "note")
     return svg(900, 342, b, "Pause and resume: reversible, no data lost")
 
 
@@ -336,7 +336,7 @@ def eval_chart():
 
 
 def cost_chart():
-    return bar_chart(720, 250, {"running": [79, 20, 35, 15, 10], "paused": [0, 20, 0, 2.5, 10]}, "$ per month per item: what pausing removes", ymax=90,
+    return bar_chart(720, 250, {"running": [79, 20, 35, 15, 10], "paused": [0, 0, 0, 2.5, 5]}, "$ per month per item: what pausing removes", ymax=90,
                      labels=["Fargate", "ALB", "NAT", "RDS", "other"])
 
 
