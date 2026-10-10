@@ -64,24 +64,32 @@ def inline_images(html: str) -> str:
 
 PUBLIC = "--public" in sys.argv
 
-OMITTED = '<div class="omitted">Screenshot omitted from the public copy (it can show account, project or user details). The full page is generated locally.</div>'
+
+def secret_values() -> list[str]:
+    """Values of passwords, keys and tokens in the git-ignored env files: none of them may ever appear in a report."""
+    out = []
+    for f in [HERE.parent / ".env", HERE.parent / ".local" / "e2e-user.env"]:
+        if f.exists():
+            for line in f.read_text().splitlines():
+                k, _, v = line.partition("=")
+                v = v.strip().strip('"')
+                if len(v) >= 8 and re.search(r"KEY|SECRET|PASSWORD|TOKEN", k, re.I):
+                    out.append(v)
+    return out
 
 
 def redact(html: str) -> str:
-    """The copy that is committed (the repository is public): no account ids, no e-mail address, no screenshots."""
-    import json
-
-    html = re.sub(r'<img src="img/[^"]+"[^>]*>', OMITTED, html)
-    links = json.loads((HERE.parent / ".local/links.json").read_text())
-    values = sorted({v for k, v in links.items() if isinstance(v, str) and len(v) >= 6 and k != "region"}, key=len, reverse=True)
-    for v in values:
-        html = html.replace(v, "&lt;redacted&gt;")
-    html = html.replace("cmuyh1njb00yxad0j2ixxfwnq", "&lt;project&gt;")
+    """The committed copy (the repository is public): the same page, with the AWS account id removed.
+    The build FAILS if a password, key or token from the local env files is found in the page."""
     html = re.sub(r"\b\d{12}\b", "&lt;account-id&gt;", html)
-    html = re.sub(r"[\w.+-]+@(?!example\.com)[\w-]+\.[\w.]+", "&lt;e-mail&gt;", html)
-    html = html.replace("Generated from the real repository and AWS account. Contains account-specific IDs: do not publish.", "Public copy: account ids, e-mail addresses and screenshots are removed. The full page is generated locally with <code>site/build.py</code>.")
-    html = html.replace("</style>", ".omitted{border:1px dashed var(--line);border-radius:8px;padding:14px;color:var(--mute);font-size:13px;margin:8px 0}</style>", 1)
+    html = html.replace("Generated from the real repository and AWS account. Contains account-specific IDs: do not publish.", "Public copy: the AWS account id is removed. The full page is generated locally with <code>site/build.py</code>.")
     return html
+
+
+def assert_no_secrets(html: str) -> None:
+    leaked = [v[:4] + "…" for v in secret_values() if v in html]
+    if leaked:
+        raise SystemExit(f"refusing to write the page: it contains secret values from the local env files ({leaked})")
 
 
 def main():
@@ -97,12 +105,13 @@ def main():
         "<footer>Generated from the real repository and AWS account. Contains account-specific IDs: do not publish.</footer>"
         f"<script>{JS}</script></body></html>"
     )
+    html = inline_images(html)
+    assert_no_secrets(html)
     if PUBLIC:
         html = redact(html)
         out = HERE.parent / "docs" / "architecture" / "quizforge-architecture.html"
         out.parent.mkdir(parents=True, exist_ok=True)
     else:
-        html = inline_images(html)
         out = HERE / "quizforge-architecture.html"
     out.write_text(html, encoding="utf-8")
     print(f"{out} {out.stat().st_size / 1e6:.2f} MB, {html.count('<svg')} diagrams, {html.count('<table')} tables, {html.count('data:image/png')} images")
