@@ -38,7 +38,11 @@ test-results-aws/
 scratch-*.png
 
 # generated documentation with account-specific links (not committed)
-site/
+# architecture report: the generator (site/*.py) is tracked; the local build, screenshots and status notes are not
+site/*.html
+site/img/
+site/status.txt
+site/__pycache__/
 
 # local comparison reports (the committed reference run lives in docs/eval)
 evals/reports/
