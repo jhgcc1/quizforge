@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { checkShortText } from "./guard.js";
+// no ".js" extension: this file is also bundled for the browser, and Turbopack does not map ".js" to the ".ts" source
+import { checkShortText } from "./guard";
 
 /**
  * Request and response contracts shared by the API, the web BFF and the browser, so none of them can drift.
