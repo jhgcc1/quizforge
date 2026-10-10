@@ -21,3 +21,4 @@ export * from "./language.js";
 export * from "./llm-input.js";
 export * from "./output-guard.js";
 export * from "./detector.js";
+export * from "./prompt-catalog.js";

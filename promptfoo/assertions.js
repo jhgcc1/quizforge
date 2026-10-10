@@ -18,6 +18,15 @@ export function rejectedLanguage(output) {
   return res(r.status === "rejected_language" && r.llmCalls === 0, `status=${r.status}, model calls=${r.llmCalls}`);
 }
 
+/**
+ * A document of the repository (the dropdown's test documents, the golden set) must be admitted: no hidden text, an accepted language.
+ * A NEW README added to evals/fixtures is checked here on its pull request.
+ */
+export function admittedDocument(output) {
+  const r = parse(output);
+  return res(r.status === "admitted", `status=${r.status}, language=${r.language ?? "?"}${r.reason ? ", " + r.reason : ""}${r.flagged?.length ? ", flagged: " + r.flagged.join(",") : ""}`);
+}
+
 /** A bad topic: refused as invalid input, and the model was never called. */
 export function rejectedInput(output) {
   const r = parse(output);

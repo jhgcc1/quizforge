@@ -1,0 +1,12 @@
+{
+  "promptVersion": "2026-10-07.2",
+  "prompts": {
+    "quizforge/generation": "bb0748e34fdbf1d34bf4410bfbbb2e2a35889a35ad92b3e9cc20871a3d2b121f",
+    "quizforge/generation-conceptual": "e9075505396f434d0a88373b0065cd7438a9ca30df694d3aa57da5c18be94acb",
+    "quizforge/generation-fewshot": "ea4b76f0763ea1c70adf7174a7ce93bd0e27c5355bdccb37062a1844a57ec988",
+    "quizforge/critique": "02d068dbe3dd666470947c433965785f2b2a5677de6d5738b5017fe81fda792e",
+    "quizforge/revise": "7159773c702f7a084a33d47dc3c4da25cb21a74f188e754dfe2686ca3ccd4c1a",
+    "quizforge/plan": "16405dd37a1a9a3a012a2d0b1b9907878386a1b9ca138a9f98ebca4456befe68",
+    "quizforge/judge": "a83f78feecc901cfad8e04f7a13a8916b7b68c978e87b5d7c2c958ae38c88337"
+  }
+}

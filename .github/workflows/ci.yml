@@ -214,12 +214,14 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: promptfoo offline suite (no model, no secrets)
         run: scripts/promptfoo.sh offline
+      - name: Prompt catalog (dry run, nothing is sent to Langfuse)
+        run: pnpm prompts:publish -- --dry-run
       - name: Say when the live suite will run for this change
         if: github.event_name == 'pull_request'
         env:
           BASE_REF: ${{ github.base_ref }}
         run: |
-          changed=$(git diff --name-only "origin/${BASE_REF}...HEAD" | grep -E '^(packages/llm/src/(prompts|judge|quiz-graph|llm-input|language|output-guard|structured|detector)\.ts|packages/core/src/(guard|attacks|injection-rules)\.ts|packages/detector/|evals/fixtures/|promptfoo/)' || true)
+          changed=$(git diff --name-only "origin/${BASE_REF}...HEAD" | grep -E '^(packages/llm/src/(prompts|judge|quiz-graph|llm-input|language|output-guard|structured|detector)\.ts|packages/core/src/(guard|attacks|injection-rules)\.ts|packages/detector/|evals/fixtures/|promptfoo/|prompts/)' || true)
           if [ -n "$changed" ]; then
             echo "::notice title=Prompt or guard files changed::The live promptfoo suite (real model) runs on main before the deploy and every night. Files: $(echo $changed | tr '\n' ' ')"
           fi
@@ -261,6 +263,31 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: eval-report, path: "evals/report.json\npromptfoo/out/live.json", retention-days: 30 }
+
+  # ---------------------------------------------------------------- prompts to Langfuse (main only, after every gate)
+  # A prompt reaches Langfuse Prompt Management ONLY from here: after the pull request checks passed (and blocked the merge if not),
+  # and after the same checks, the real-model evaluation and the live promptfoo suite passed again on main. A prompt whose text
+  # differs from the latest `production` version becomes a new version labelled production and sha-<commit>.
+  publish-prompts:
+    name: publish-prompts
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [quality, integration, migrations, e2e, docker-build, terraform-validate, secrets-scan, promptfoo, llm-eval]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: llm-eval # holds the Langfuse keys; only main may use it
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "${{ env.NODE_VERSION }}", cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: Publish the prompts that changed
+        env:
+          LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+          LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
+          LANGFUSE_BASE_URL: https://us.cloud.langfuse.com
+          GITHUB_SHA: ${{ github.sha }}
+        run: pnpm prompts:publish
 
   # ---------------------------------------------------------------- terraform plan on PRs (comment)
   terraform-plan:

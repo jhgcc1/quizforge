@@ -261,8 +261,8 @@ def retries():
 def cicd():
     b = ""
     b += group(10, 10, 1160, 230, "Pull request (never deploys)", "grp")
-    gates = [("quality", "typecheck · lint · unit tests · offline eval"), ("integration", "real Postgres"), ("migrations", "drift · policy · applies twice"), ("e2e", "Playwright + Chrome"),
-             ("docker-build", "build + Trivy"), ("terraform-validate", "fmt · validate · Trivy"), ("secrets-scan", "gitleaks"), ("promptfoo", "guard + prompt rules, 72 tests"), ("terraform-plan", "plan on the PR (informational)")]
+    gates = [("quality", "typecheck · lint · tests · eval"), ("integration", "real Postgres"), ("migrations", "drift · policy · applies twice"), ("e2e", "Playwright + Chrome"),
+             ("docker-build", "build + Trivy"), ("terraform-validate", "fmt · validate · Trivy"), ("secrets-scan", "gitleaks"), ("promptfoo", "guard + prompt rules, 81 tests"), ("terraform-plan", "plan on the PR (informational)")]
     for i, (n, s) in enumerate(gates):
         x = 30 + (i % 5) * 226; y = 48 + (i // 5) * 88
         b += box(x, y, 206, 66, n, s, "ci", small=True)
@@ -677,7 +677,7 @@ def input_defense():
 def promptfoo_flow():
     b = ""
     lanes = [
-        (14, "Every pull request", "promptfoo OFFLINE · 72 tests", "no model, no secrets, ~1 minute", "ci", "required to merge"),
+        (14, "Every pull request", "promptfoo OFFLINE · 81 tests", "no model, no secrets, ~1 minute", "ci", "required to merge"),
         (110, "Merge to main", "promptfoo LIVE · 21 tests", "real MiniMax, inside llm-eval", "ai", "blocks the deploy"),
         (206, "Every night + on demand", "promptfoo LIVE · 21 tests", "catches provider or model drift", "mgd", "opens a red run"),
     ]
@@ -698,3 +698,70 @@ def promptfoo_flow():
     b += text(790, 196, "· a clean document still gives a normal quiz", "note")
     b += text(10, 300, "The attack corpus is ONE file (packages/core/src/attacks.ts): vitest and promptfoo test the same attacks.", "note")
     return svg(1160, 322, b, "promptfoo in the pipeline: what runs when, and what it blocks")
+
+
+def pipeline_overview():
+    """The whole pipeline over time: pull request, main, always-on. Where promptfoo runs and where Langfuse gets data."""
+    b = ""
+    # lane titles
+    b += text(10, 24, "1 · Pull request: nothing reaches AWS, nothing is deployed", "t")
+    b += box(10, 40, 130, 96, "push a branch", "open a PR", "ext", small=True)
+    b += box(170, 40, 460, 96, "", "", "ci", small=True)
+    b += text(400, 62, "9 jobs in parallel (no secrets)", "t-s", "middle")
+    b += text(400, 86, "quality (typecheck, lint, tests, offline eval) · integration · migrations", "note", "middle")
+    b += text(400, 104, "e2e · docker-build · terraform-validate · secrets-scan", "note", "middle")
+    b += text(400, 122, "terraform-plan · promptfoo OFFLINE (81 tests)", "note", "middle")
+    b += box(660, 40, 190, 96, "8 required checks", "green + linear history", "sec", small=True)
+    b += box(880, 40, 130, 96, "squash merge", "no bypass", "data", small=True)
+    for x1, x2 in ((140, 170), (630, 660), (850, 880)):
+        b += arrow(x1, 88, x2, 88)
+
+    b += text(10, 164, "2 · Merge to main: the same jobs, plus the real model, then a human decides", "t")
+    b += box(10, 180, 150, 70, "same 8 jobs", "on the merged code", "ci", small=True)
+    b += box(190, 180, 230, 70, "llm-eval (real MiniMax)", "golden set + promptfoo LIVE (21)", "ai", small=True)
+    b += box(450, 180, 170, 70, "human approval", "environment: production", "sec", small=True)
+    b += box(650, 180, 520, 70, "deploy", "build ARM64 → drift check → migrate → apply → smoke test · refused while PAUSED=true", "compute", small=True)
+    for x1, x2 in ((160, 190), (420, 450), (620, 650)):
+        b += arrow(x1, 215, x2, 215)
+    b += box(190, 270, 230, 46, "Langfuse: experiment run", "dataset quizforge-golden · scores", "ext", small=True)
+    b += arrow(305, 250, 305, 270, dash=True)
+    b += box(450, 270, 380, 46, "publish-prompts (after every gate)", "changed prompts → Langfuse: new version, label production + sha", "ext", small=True)
+    b += arrow(400, 250, 500, 270, dash=True)
+
+    b += text(10, 350, "3 · Always on: nobody has to push", "t")
+    b += box(10, 366, 280, 70, "nightly eval.yml (05:43 UTC)", "golden set + promptfoo LIVE: model or provider drift", "ai", small=True)
+    b += box(310, 366, 250, 70, "nightly drift.yml (06:17 UTC)", "terraform vs the real account → issue", "ci", small=True)
+    b += box(580, 366, 280, 70, "manual: compare structures", "9 variants × 5 documents → HTML report", "mgd", small=True)
+    b += box(880, 366, 290, 70, "production, every quiz", "worker + scorer → traces and scores", "data", small=True)
+    b += box(10, 456, 280, 46, "Langfuse: experiment run", "", "ext", small=True)
+    b += box(580, 456, 280, 46, "Langfuse: 9 experiments", "docs/eval report links to them", "ext", small=True)
+    b += box(880, 456, 290, 46, "Langfuse + CloudWatch", "traces, scores, QuizQuality, alarms", "ext", small=True)
+    for x in (150, 720, 1025):
+        b += arrow(x, 436, x, 456, dash=True)
+    b += text(10, 530, "Langfuse receives data in 5 places only: llm-eval and publish-prompts on main, the nightly eval, the manual comparison, and production. A pull request never talks to it.", "note")
+    b += text(10, 550, "promptfoo runs in 3: OFFLINE on every PR and main (81 tests, required), LIVE inside llm-eval on main (blocks the deploy) and in the nightly run.", "note")
+    return svg(1180, 572, b, "The whole pipeline over time: where promptfoo runs and where Langfuse gets data")
+
+
+def repo_structure():
+    """The folders of the repository and who depends on whom."""
+    b = ""
+
+    def panel(x, y, w, h, title, kind, lines):
+        out = group(x, y, w, h, title, "grp")
+        for i, (name, what) in enumerate(lines):
+            out += text(x + 14, y + 40 + i * 34, name, "t-s")
+            out += text(x + 14, y + 56 + i * 34, what, "note")
+        return out
+
+    b += panel(10, 10, 300, 150, "apps/  (the 3 services)", "compute", [("web", "Next.js: UI + BFF (cookies, PKCE, validation)"), ("api", "Fastify REST: auth, quota, idempotency, queue"), ("worker", "one image, 3 roles: generate · score · sweeper")])
+    b += panel(10, 180, 300, 190, "packages/  (shared code)", "ai", [("core", "schemas, guard, 49 rules, scoring (browser-safe)"), ("llm", "graph, prompts, guardLlm, output rails, quality"), ("db", "Drizzle schema, migrations, repositories"), ("detector", "optional ONNX injection classifier (English)")])
+    b += panel(330, 10, 300, 150, "tests and quality gates", "ci", [("evals/", "golden set, comparison, reports, publish-prompts"), ("promptfoo/", "81 offline + 21 live tests, provider, assertions"), ("e2e/", "Playwright in real Chrome (4 local services)")])
+    b += panel(330, 180, 300, 190, "data of the agent", "data", [("prompts/", "prompts.lock.json: hash of every prompt"), ("evals/fixtures/", "test READMEs (dropdown + golden set)"), ("evals/references/", "hand-written reference questions"), ("docker/ · docker-compose", "local Postgres + SQS emulator")])
+    b += panel(650, 10, 300, 150, "infra/  (Terraform)", "sec", [("bootstrap/", "state bucket, ECR, OIDC roles (applied by hand)"), ("terraform/", "the platform: VPC, ECS, RDS, SQS, edge, alarms"), ("github/", "ruleset, environments, variables (by hand)")])
+    b += panel(650, 180, 300, 190, "operations and docs", "mgd", [(".github/workflows/", "ci.yml · eval.yml · drift.yml · compare"), ("scripts/", "pause · resume · audit-aws · promptfoo · reports"), ("docs/", "the committed reports (HTML)"), ("site/", "generator of the architecture report")])
+    # dependencies
+    b += arrow(160, 160, 160, 180, "imports")
+    b += text(10, 398, "apps import packages; evals, promptfoo and e2e test the same code the services run (they import packages, never the apps); infra is separate and only knows image tags.", "note")
+    b += text(10, 418, "One image for the worker, scorer, sweeper and migration task (apps/worker); web and api have their own Dockerfile.", "note")
+    return svg(970, 438, b, "Where things live in the repository")
