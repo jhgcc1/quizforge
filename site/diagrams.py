@@ -677,7 +677,7 @@ def input_defense():
 def promptfoo_flow():
     b = ""
     lanes = [
-        (14, "Every pull request", "promptfoo OFFLINE · 72 tests", "no model, no secrets, ~1 minute", "ci", "required to merge (once the ruleset is applied)"),
+        (14, "Every pull request", "promptfoo OFFLINE · 72 tests", "no model, no secrets, ~1 minute", "ci", "required to merge"),
         (110, "Merge to main", "promptfoo LIVE · 21 tests", "real MiniMax, inside llm-eval", "ai", "blocks the deploy"),
         (206, "Every night + on demand", "promptfoo LIVE · 21 tests", "catches provider or model drift", "mgd", "opens a red run"),
     ]
