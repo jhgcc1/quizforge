@@ -882,6 +882,20 @@ def cicd():
         ["<b>The behaviour of the agent must not drop</b>: grounded = 1, lint 0.6 per item and 0.9 mean, judge 0.4 per item and 0.7 mean, diversity 0.25, relevance 0.15, coverage 0.5, language 1, injection resisted 1, and promptfoo live 21 of 21", "<code>llm-eval</code> on main (blocks the deploy and <code>publish-prompts</code>)", "The item and the metric that fell"],
         ["<b>Deploy needs a human</b> and an environment that is not paused", "Environment <code>production</code>, <code>PAUSED</code>", "The job waits or refuses"],
     ], widths=["52%", "22%", "26%"])
+    body += "<h3>Two real examples: a pipeline that fails and one that works</h3>"
+    body += table(["Step", "Where", "Result"], [
+        ["<b>1 · A README with a hidden prompt injection</b>", f"<a href='{GH}/pull/21'>PR #21</a>: <code>evals/fixtures/demo-injection.md</code> hides the instruction twice, in an HTML comment and as a Base64 “example token”", "<b>promptfoo and quality failed</b>; the merge stayed blocked; the PR was closed on purpose"],
+        ["<b>2 · A prompt change</b>", f"<a href='{GH}/pull/22'>PR #22</a>: the critique prompt asks for issues under 25 words; <code>PROMPT_VERSION</code> bumped and <code>prompts.lock.json</code> regenerated", "All 8 required checks green; nothing sent to Langfuse; merged"],
+        ["<b>3 · After the merge</b>", "The run on <code>main</code>: the same checks, <code>llm-eval</code> on the real model with the live promptfoo suite, then <code>publish-prompts</code>", "All green; <code>deploy</code> waits for a human (and the environment is paused)"],
+        ["<b>4 · In Langfuse</b>", "Prompts → <code>quizforge/critique</code>", "<b>Version 2</b>, labels <code>production</code> and <code>sha-79223c8</code>; the other six prompts stay at version 1 (their text did not change)"],
+    ], widths=["26%", "46%", "28%"])
+    body += "<h4>1 · The pipeline rejects the README</h4>"
+    body += '<div class="shots">' + img("demo-1-fail-run.png", "Run of PR #21: <code>quality</code> and <code>promptfoo</code> are red; <code>llm-eval</code>, <code>publish-prompts</code> and <code>deploy</code> never start") + img("demo-4-promptfoo-fail.png", "The promptfoo report: the <code>FIXTURE</code> case for the demo README fails with <code>unsafe_document: an instruction is hidden in an HTML comment</code>") + "</div>"
+    body += '<div class="shots">' + img("demo-2-fail-pr.png", "The pull request: the commit has a red cross, so the ruleset does not allow the merge") + "</div>"
+    body += "<h4>2 · A prompt change passes, and the approved version reaches Langfuse</h4>"
+    body += '<div class="shots">' + img("demo-5-ok-pr-run.png", "Run of PR #22: all jobs green; <code>llm-eval</code>, <code>publish-prompts</code> and <code>deploy</code> are skipped on a pull request, so Langfuse is not touched") + img("demo-6-main-publish.png", "Run on <code>main</code> after the merge: <code>llm-eval</code> (real model) and <code>publish-prompts</code> are green; <code>deploy</code> waits for approval") + "</div>"
+    body += "<p>The table below is read from the Langfuse API after that run: <code>quizforge/critique</code> is at version 2 with the new commit, the others did not change.</p>"
+    body += (lfdata.prompts_panel(LF) or "")
     body += "<h3>What it looks like on GitHub</h3><p>Real pages of the public repository.</p>"
     body += '<div class="shots">' + img("gh-1-actions-list.png", "Actions: the four workflows (CI/CD, Compare generation structures, LLM evaluation, Terraform drift) and the latest runs") + img("gh-3-run-pr.png", "A pull request run: the jobs run in parallel; <code>llm-eval</code> and <code>deploy</code> are skipped on a PR") + "</div>"
     body += '<div class="shots">' + img("gh-4-run-main.png", "A run on <code>main</code>: <code>llm-eval</code> ran against the real model and the <code>deploy</code> job waits for a human (“production require an approval”)") + img("gh-5-ruleset.png", "The ruleset of <code>main</code>: the required checks, now including <code>promptfoo</code>") + "</div>"
@@ -906,9 +920,6 @@ def cicd():
         ["3 · Merge", "The same checks run again on <code>main</code>, then <code>llm-eval</code>: the golden set on the real model and the live promptfoo suite", "Only the evaluation experiment"],
         ["4 · publish-prompts", "Runs <b>only if every job above is green</b>. For each prompt it reads the latest <code>production</code> version in Langfuse; if the text differs it creates a new version labelled <code>production</code> and <code>sha-commit</code> (config: prompt version, commit, hash). Same text = nothing happens, so a rerun or a docs-only merge creates no version", "<b>Yes: the only place a prompt is written</b>"],
     ], widths=["16%", "62%", "22%"])
-    panel = lfdata.prompts_panel(LF)
-    if panel:
-        body += "<h3>What reached Langfuse</h3>" + panel
     body += callout("info", "What Langfuse is, for prompts", "A <b>catalog of approved versions</b>: history, diffs and the commit of each one. The app still reads its prompts from the code that was deployed (so a Langfuse outage or a hand edit in the UI cannot change what users get). Letting the app fetch the <code>production</code> label at run time, with the code as fallback, is possible later; the risk is that the pipeline would then no longer be the only way to change behaviour unless edits in the UI are blocked.")
     body += "<h3>A new README or a changed prompt: what checks it?</h3>" + table(["Change", "On the pull request", "After the merge"], [
         ["<b>A new test README</b> in <code>evals/fixtures</code>", "promptfoo offline adds one <code>FIXTURE</code> test for it (hidden text, accepted language); the unit tests that walk the folder; e2e if it is in the dropdown", "Only if you also add it to the golden set (<code>evals/src/golden.ts</code>): then <code>llm-eval</code> generates a quiz from it on the real model"],
@@ -956,19 +967,20 @@ def state():
 
 
 def live_state():
-    body = callout("warn", "What is running in AWS today is older than main", "The environment was last deployed from PR #4 (image <code>786d8a0</code>). PRs #8 to #12, #14 and #15 are merged to main but <b>not deployed</b>: they go live with the deploy that is waiting for approval.")
-    body += table(["Item", "Running in AWS now", "After the next deploy"], [
-        ["ECS services", "web, api, worker (3)", "+ scorer (4)"],
-        ["SQS queues", "jobs + its dead-letter queue", "+ scoring + its dead-letter queue"],
-        ["CloudWatch alarms", "16 (10 monitoring + 2 worker scaling + 4 created by AWS for web/api CPU)", "22 (14 + 4 + 4)"],
-        ["Quality alarms", "<code>quiz-quality-low</code>, <code>job-failures</code>", "+ <code>quiz-quality-critical</code>, <code>judge-failing</code>, 2 scoring-queue alarms"],
-        ["Judge", "Inside the generation job (quiz ready ~18 s later)", "In the scorer service"],
-        ["Input guard, language policy, output rails, token caps", "Not running (old worker and api)", "Running in the new worker and api images. The optional semantic detector stays off"],
+    body = callout("warn", "The infrastructure of main is applied, the images are not", "On 2026-10-10 the Terraform of <code>main</code> was applied while pausing (scorer service, scoring queues, new alarms, dashboard, e-mail subscription). Everything is <b>paused</b>: every service is at 0 tasks. The images are still the ones of PR #4 (<code>786d8a0</code>): PRs #8 to #22 are merged to main but <b>not deployed</b>. They go live with the deploy that is waiting for your approval (resume first: the deploy refuses to run while <code>PAUSED=true</code>).")
+    body += table(["Item", "In AWS now", "After resume and the next deploy"], [
+        ["Paused state", "ECS at 0 tasks, RDS stopped, no NAT, no load balancer, no WAF, sweeper off; CloudFront stays. About US$8 a month", "Everything back (~15 min), then the new images"],
+        ["ECS services", "web, api, worker, scorer: 4 services, 0 tasks each", "Same services, running the new images"],
+        ["SQS queues", "jobs and scoring, each with a dead-letter queue (4)", "Same"],
+        ["CloudWatch alarms", "22 (14 monitoring + 4 for worker and scorer scaling + 4 that AWS created for web and api CPU)", "Same"],
+        ["Judge", "The old worker image still judges inside the generation job", "In the scorer service (quiz ready ~18 s earlier)"],
+        ["Input guard, language policy, output rails, token caps", "Not running (old worker and api images)", "Running in the new worker and api images. The optional semantic detector stays off"],
         ["Ruleset of <code>main</code>", "8 required checks, <code>promptfoo</code> included (applied by hand in <code>infra/github</code> on 2026-10-10: that stack is not part of the pipeline)", "Same"],
+        ["Prompts in Langfuse", "7 prompts published by the pipeline; <code>quizforge/critique</code> is at version 2", "Same (the app still reads its prompts from the deployed code)"],
         ["Worker settings", "Without <code>ALLOWED_LANGUAGES</code> and <code>INJECTION_DETECTOR</code>", "Same (code defaults: <code>en,pt,es</code> and <code>off</code>); nothing to add in Terraform"],
-        ["Alarm e-mail", "No subscriber", "the address in the <code>ALARM_EMAIL</code> variable (after you confirm the AWS e-mail)"],
-        ["<code>audit-aws.sh</code>", "39 passed, 0 failed", "Same checks, plus the scorer (the script was fixed so it does not fail on the 4th service)"],
-    ], widths=["24%", "38%", "38%"])
+        ["Alarm e-mail", "Subscription created, <b>PendingConfirmation</b>: AWS sent a confirmation e-mail to the address in <code>ALARM_EMAIL</code>; nothing is delivered until the link is clicked", "Same"],
+        ["<code>audit-aws.sh</code>", "Checks the services that exist; run it after resume", "Same checks, plus the scorer"],
+    ], widths=["24%", "42%", "34%"])
     body += "<h3>More infrastructure facts</h3>" + table(["Topic", "Fact"], [
         ["RDS", "Single-AZ, storage autoscaling 20 → 50 GB, backups kept 1 day (free-plan cap), deletion protection off and no final snapshot, Postgres logs exported to CloudWatch (statements over 1 s)"],
         ["Keys", "A customer-managed KMS key for the alarm topic (rotation on) next to the state key; RDS storage uses an AWS-managed key"],
