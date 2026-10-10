@@ -866,6 +866,9 @@ def cicd():
         ["3 · Merge", "The same checks run again on <code>main</code>, then <code>llm-eval</code>: the golden set on the real model and the live promptfoo suite", "Only the evaluation experiment"],
         ["4 · publish-prompts", "Runs <b>only if every job above is green</b>. For each prompt it reads the latest <code>production</code> version in Langfuse; if the text differs it creates a new version labelled <code>production</code> and <code>sha-commit</code> (config: prompt version, commit, hash). Same text = nothing happens, so a rerun or a docs-only merge creates no version", "<b>Yes: the only place a prompt is written</b>"],
     ], widths=["16%", "62%", "22%"])
+    panel = lfdata.prompts_panel(LF)
+    if panel:
+        body += "<h3>What reached Langfuse</h3>" + panel
     body += callout("info", "What Langfuse is, for prompts", "A <b>catalog of approved versions</b>: history, diffs and the commit of each one. The app still reads its prompts from the code that was deployed (so a Langfuse outage or a hand edit in the UI cannot change what users get). Letting the app fetch the <code>production</code> label at run time, with the code as fallback, is possible later; the risk is that the pipeline would then no longer be the only way to change behaviour unless edits in the UI are blocked.")
     body += "<h3>A new README or a changed prompt: what checks it?</h3>" + table(["Change", "On the pull request", "After the merge"], [
         ["<b>A new test README</b> in <code>evals/fixtures</code>", "promptfoo offline adds one <code>FIXTURE</code> test for it (hidden text, accepted language); the unit tests that walk the folder; e2e if it is in the dropdown", "Only if you also add it to the golden set (<code>evals/src/golden.ts</code>): then <code>llm-eval</code> generates a quiz from it on the real model"],

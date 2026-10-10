@@ -81,3 +81,40 @@ def trace_panel(project_url):
             f'<a href="{esc(url)}" target="_blank" rel="noopener">Open this trace in Langfuse</a>. {calls} LLM calls, ${total_cost:.4f} in total. '
             f'This table is built from the Langfuse API: the trace page shows the same tree.</p>')
     return head + table(["Step (graph node)", "Kind", "Model", "Time", "Tokens", "Cost"], rows, widths=["34%", "10%", "18%", "10%", "14%", "14%"]) + "<h3>Scores on that trace</h3>" + table(["Score name", "Value (0 to 1)"], score_rows, widths=["50%", "50%"])
+
+
+def _get(path):
+    env = _env()
+    if not (env.get("LANGFUSE_PUBLIC_KEY") and env.get("LANGFUSE_SECRET_KEY") and env.get("LANGFUSE_BASE_URL")):
+        return None
+    auth = base64.b64encode(f"{env['LANGFUSE_PUBLIC_KEY']}:{env['LANGFUSE_SECRET_KEY']}".encode()).decode()
+    try:
+        with urllib.request.urlopen(urllib.request.Request(f"{env['LANGFUSE_BASE_URL']}{path}", headers={"Authorization": f"Basic {auth}"}), timeout=30) as r:
+            return json.load(r)
+    except Exception:
+        return None
+
+
+def prompts_panel(project_url):
+    """The prompts that the pipeline published to Langfuse Prompt Management, read from the API (real data, not a screenshot)."""
+    listing = _get("/api/public/v2/prompts?limit=50")
+    if not listing or not listing.get("data"):
+        return ""
+    rows = []
+    for meta in sorted((m for m in listing["data"] if m["name"].startswith("quizforge/")), key=lambda m: m["name"]):
+        name = meta["name"]
+        latest = _get(f"/api/public/v2/prompts/{name.replace('/', '%2F')}?label=production") or {}
+        cfg = latest.get("config") or {}
+        sha = str(cfg.get("gitSha", ""))[:7]
+        rows.append([
+            f"<code>{esc(name)}</code>",
+            str(latest.get("version", max(meta.get("versions", [0])))),
+            ", ".join(f"<code>{esc(l)}</code>" for l in latest.get("labels", meta.get("labels", []))),
+            f"<code>{esc(sha)}</code>" if sha else "",
+            esc(str(cfg.get("promptVersion", ""))),
+            esc((latest.get("prompt") or "")[:70].replace("\n", " ")) + "…",
+        ])
+    if not rows:
+        return ""
+    return (f'<p>Read from the Langfuse API: the prompts that the pipeline published. <a href="{project_url}/prompts" target="_blank" rel="noopener">Open Prompts in Langfuse</a>.</p>'
+            + table(["Prompt", "Version", "Labels", "Commit", "Prompt version", "Starts with"], rows, widths=["22%", "8%", "20%", "10%", "14%", "26%"]))
