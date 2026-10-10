@@ -27,6 +27,7 @@ import { chooseStrategy, type Strategy } from "./router.js";
 import { lintQuestion } from "./lint.js";
 import { pickSections, selectQuestions, sortByDifficulty } from "./select.js";
 import { splitSections } from "./source.js";
+import { quizReplyCheck } from "./output-guard.js";
 import { generateStructured } from "./structured.js";
 
 export type StrategyRequest = "auto" | Strategy;
@@ -152,6 +153,7 @@ export function buildQuizGraph(deps: QuizGraphDeps, checkpointer?: BaseCheckpoin
           system: generationSystem(s.input.promptVariant),
           user: sectionUser({ heading: sec.heading, text: sec.text, n: 2, topic }),
           options: { name: `generate:section:${sec.heading.slice(0, 40)}`, temperature: 0.4 },
+          check: quizReplyCheck(sourceText),
         });
         usage = addUsage(usage, r.usage);
         repairs += r.repairs;
@@ -176,6 +178,7 @@ export function buildQuizGraph(deps: QuizGraphDeps, checkpointer?: BaseCheckpoin
       system: generationSystem(s.input.promptVariant),
       user: singleShotUser({ doc, n, topic }),
       options: { name: "generate:single-shot", temperature: 0.4 },
+      check: quizReplyCheck(sourceText),
     });
     return {
       questions: sortByDifficulty(r.value.questions),
@@ -216,6 +219,7 @@ export function buildQuizGraph(deps: QuizGraphDeps, checkpointer?: BaseCheckpoin
       system: generationSystem(s.input.promptVariant),
       user: writeUser({ doc: s.context, facts: s.facts }),
       options: { name: "generate:write", temperature: 0.4 },
+      check: quizReplyCheck(s.input.sourceText),
     });
     return { questions: sortByDifficulty(r.value.questions), repairs: s.repairs + r.repairs, ...track(r.usage, s), trail: [...s.trail, "generate:plan-write"] };
   };
@@ -266,6 +270,7 @@ export function buildQuizGraph(deps: QuizGraphDeps, checkpointer?: BaseCheckpoin
       system: REVISE_SYSTEM,
       user: reviseUser({ context: s.context, flagged }),
       options: { name: `revise:round-${s.round + 1}`, temperature: 0.3 },
+      check: quizReplyCheck(s.input.sourceText),
     });
     const questions = [...s.questions];
     indexes.forEach((qi, k) => (questions[qi - 1] = r.value.questions[k]!));

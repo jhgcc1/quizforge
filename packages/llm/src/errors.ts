@@ -22,6 +22,14 @@ export class InvalidLlmInputError extends NonRetryableError {
   }
 }
 
+/** What the model returned is not a clean quiz (repeats our prompts, carries script or foreign links, echoes an instruction...). A content failure: the retry regenerates. */
+export class UnsafeOutputError extends Error {
+  constructor(readonly problems: string[]) {
+    super(`unsafe_output: ${problems.join("; ").slice(0, 400)}`);
+    this.name = "UnsafeOutputError";
+  }
+}
+
 /** The model kept returning invalid output after all repair attempts. Retryable at the job level. */
 export class StructuredOutputError extends Error {
   constructor(

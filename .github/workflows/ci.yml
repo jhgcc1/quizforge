@@ -217,7 +217,7 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
         run: |
-          changed=$(git diff --name-only "origin/${BASE_REF}...HEAD" | grep -E '^(packages/llm/src/(prompts|judge|quiz-graph|llm-input|language)\.ts|packages/core/src/(guard|attacks)\.ts|evals/fixtures/|promptfoo/)' || true)
+          changed=$(git diff --name-only "origin/${BASE_REF}...HEAD" | grep -E '^(packages/llm/src/(prompts|judge|quiz-graph|llm-input|language|output-guard|structured|detector)\.ts|packages/core/src/(guard|attacks|injection-rules)\.ts|packages/detector/|evals/fixtures/|promptfoo/)' || true)
           if [ -n "$changed" ]; then
             echo "::notice title=Prompt or guard files changed::The live promptfoo suite (real model) runs on main before the deploy and every night. Files: $(echo $changed | tr '\n' ' ')"
           fi

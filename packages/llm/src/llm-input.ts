@@ -19,7 +19,10 @@ import type { QuizGraphInput } from "./quiz-graph.js";
  */
 
 export const MAX_DOCUMENT_CHARS = 600_000;
-export const MAX_PROMPT_CHARS = 700_000;
+/** About 50,000 tokens (4 characters per token): a single-shot prompt is at most 60,000 characters of document plus the rules. */
+export const MAX_PROMPT_CHARS = 200_000;
+/** Output cap applied to every call that does not set its own: a reply can never run away (the job budget only acts between calls). */
+export const DEFAULT_MAX_OUTPUT_TOKENS = 16_000;
 
 export const QuizInputSchema = z
   .object({
@@ -106,7 +109,7 @@ export function guardLlm(llm: LlmClient): LlmClient {
     },
     async complete(messages: ChatMessage[], opts?: CompleteOptions): Promise<LlmResponse> {
       assertLlmRequest(messages, opts);
-      return llm.complete(messages, opts);
+      return llm.complete(messages, { ...opts, maxTokens: opts?.maxTokens ?? DEFAULT_MAX_OUTPUT_TOKENS });
     },
   };
   return guarded;

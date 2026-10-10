@@ -37,6 +37,8 @@ const Schema = z
     SOURCE_ALLOWED_HOSTS: z.string().default("github.com,raw.githubusercontent.com"),
     /** Languages a document may be written in (subset of en, pt, es). Any other language is rejected. */
     ALLOWED_LANGUAGES: z.string().default("en,pt,es"),
+    /** Optional semantic prompt-injection classifier (English only): off | flag | block. Needs the detector package in the image. */
+    INJECTION_DETECTOR: z.enum(["off", "flag", "block"]).default("off"),
     /** Jobs processed at once by this task (the fleet cap is this x max tasks). */
     WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(4).default(1),
     HEALTH_PORT: z.coerce.number().int().default(8081),

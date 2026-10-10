@@ -1,3 +1,5 @@
+import { MODEL_MARKUP, matchingRules, type RuleCategory } from "./injection-rules";
+
 /**
  * Input guard: pure functions (no I/O, no dependencies, browser-safe) that look at text BEFORE it can reach an LLM.
  *
@@ -21,7 +23,8 @@ export type FindingKind =
   | "obfuscated_instruction"
   | "mixed_script_word"
   | "model_markup"
-  | "injection_phrase";
+  | "injection_phrase"
+  | "semantic_injection";
 
 export type Severity = "sanitize" | "flag" | "block";
 
@@ -29,6 +32,9 @@ export interface Finding {
   kind: FindingKind;
   severity: Severity;
   detail: string;
+  /** For injection_phrase: the keyword rule and its category (for the reports). */
+  rule?: string;
+  category?: RuleCategory;
   /** A short, escaped excerpt for logs: never the whole payload. */
   sample?: string;
 }
@@ -40,48 +46,6 @@ export interface InspectResult {
   /** True when at least one finding has severity `block`. */
   blocked: boolean;
 }
-
-/* ------------------------------------------------------------------ instruction phrases (English, Portuguese, Spanish) */
-
-const P = (s: string): RegExp => new RegExp(s, "i");
-
-/** Phrases that address the model, not the reader. Matched on normalized text (see `normalizeForMatching`). */
-export const INJECTION_PATTERNS: readonly RegExp[] = [
-  // English
-  P(String.raw`\b(ignore|disregard|forget|override|bypass|skip)\b[^.\n]{0,40}\b(previous|prior|above|earlier|all|any|the|your|these|those|system)\b[^.\n]{0,30}\b(instructions?|rules?|prompts?|guidelines?|directions?|constraints?|restrictions?)\b`),
-  P(String.raw`\bforget (everything|all)\b`),
-  P(String.raw`\b(new|updated|real|actual) (instructions?|task|rules?)\s*:`),
-  P(String.raw`\byou are (now|no longer)\b`),
-  P(String.raw`\bfrom now on,? (you|ignore|always|only|respond|answer)\b`),
-  P(String.raw`\b(reveal|show|print|repeat|output|leak|display|tell me)\b[^.\n]{0,40}\b(system|hidden|initial|original|secret)\b[^.\n]{0,20}\b(prompt|instructions?|message)\b`),
-  P(String.raw`\bsystem prompt\b`),
-  P(String.raw`\b(developer|debug|admin|maintenance|god|sudo) mode\b`),
-  P(String.raw`\bjailbreak|\bdo anything now\b|\bDAN mode\b`),
-  P(String.raw`\b(respond|reply|answer|output|write)\b[^.\n]{0,20}\b(only|exactly|just)\b[^.\n]{0,30}\b(with|the word|the following)\b`),
-  P(String.raw`\binstead of (the |a )?(quiz|questions?|json)\b`),
-  P(String.raw`\b(do not|don't|never) (generate|write|create|make) (a |the )?(quiz|questions?)\b`),
-  P(String.raw`\bthe (correct|right) (answer|option) (is|must be|should be) (always )?(the )?(first|last|second|third|fourth|a|b|c|d)\b`),
-  P(String.raw`\bmake (the )?(answer|option)s? [^.\n]{0,20}\b(pwned|hacked)\b`),
-  // Portuguese
-  P(String.raw`\b(ignore|ignora|esque[cç]a|desconsidere|descarte|contorne)\b[^.\n]{0,40}\b(instru[cç][oõ]es|regras|prompts?|diretrizes|restri[cç][oõ]es)\b`),
-  P(String.raw`\bvoc[eê] (agora )?[eé] (um|uma)\b|\ba partir de agora,? (voc[eê]|ignore|responda|aja)\b`),
-  P(String.raw`\b(revele|mostre|imprima|repita)\b[^.\n]{0,40}\b(prompt|instru[cç][oõ]es)\b`),
-  P(String.raw`\bprompt do sistema\b|\bmodo (desenvolvedor|administrador|manuten[cç][aã]o)\b`),
-  // Spanish
-  P(String.raw`\b(ignora|ignore|olvida|descarta|omite|salta)\b[^.\n]{0,40}\b(instrucciones|reglas|indicaciones|restricciones)\b`),
-  P(String.raw`\bahora eres\b|\ba partir de ahora,? (eres|ignora|responde|act[uú]a)\b`),
-  P(String.raw`\b(revela|muestra|imprime|repite)\b[^.\n]{0,40}\b(prompt|instrucciones)\b`),
-  P(String.raw`\bprompt del sistema\b|\bmodo (desarrollador|administrador|mantenimiento)\b`),
-  // French, German, Russian, Chinese, Japanese: an English/Portuguese/Spanish document may still carry one line in another language
-  P(String.raw`\b(ignore[zr]?|oublie[zr]?|ne tiens pas compte)\b[^.\n]{0,40}\b(instructions|consignes|r[eè]gles)\b`),
-  P(String.raw`\b(ignoriere|vergiss|missachte)\b[^.\n]{0,40}\b(anweisungen|regeln|instruktionen)\b`),
-  P(String.raw`(игнорируй|забудь|не учитывай)[^.\n]{0,40}(инструкци|правил)`),
-  P(String.raw`(忽略|无视|忘记|忽視)[^.\n]{0,12}(指令|指示|说明|規則|规则|提示)`),
-  P(String.raw`(以前|これまで|上記)[^.\n]{0,12}(指示|命令|ルール)[^.\n]{0,6}(無視|忘れ)`),
-];
-
-/** Markers that only exist in chat templates: a README has no reason to contain them. */
-const MODEL_MARKUP = /<\|(?:im_start|im_end|endoftext|system|user|assistant)\|>|\[\/?INST\]|<<\/?SYS>>/i;
 
 /* ------------------------------------------------------------------ text normalisation helpers */
 
@@ -120,7 +84,7 @@ function collapseSpaced(s: string): string {
   return s.replace(/\b(?:[a-z][ .\-_*]){2,}[a-z]\b/gi, (m) => m.replace(/[ .\-_*]/g, ""));
 }
 
-const matches = (s: string): boolean => INJECTION_PATTERNS.some((re) => re.test(s));
+const matches = (s: string): boolean => matchingRules(s).length > 0;
 /** On the raw text (so Russian or Chinese patterns match) and on the normalised text (so look-alike letters do not hide it). */
 const hasInjection = (s: string): boolean => matches(s.toLowerCase()) || matches(normalizeForMatching(s));
 
@@ -273,8 +237,13 @@ export function inspectText(input: string, _opts: InspectOptions = {}): InspectR
   }
 
   // 8. plain-text instructions: flagged, not blocked (a security tutorial may quote them; the model is told it is data)
-  const line = text.split("\n").find((l) => hasInjection(l));
-  if (line) add({ kind: "injection_phrase", severity: "flag", detail: "the text contains an instruction aimed at an AI model", sample: excerpt(line.trim()) });
+  for (const l of text.split("\n")) {
+    const hit = matchingRules(l.toLowerCase())[0] ?? matchingRules(normalizeForMatching(l))[0];
+    if (hit) {
+      add({ kind: "injection_phrase", severity: "flag", detail: "the text contains an instruction aimed at an AI model", rule: hit.id, category: hit.category, sample: excerpt(l.trim()) });
+      break;
+    }
+  }
 
   return { text, findings, blocked: findings.some((f) => f.severity === "block") };
 }

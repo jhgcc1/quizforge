@@ -253,4 +253,49 @@ describe("the input guard in the worker (door 1)", () => {
     expect(src!.contentText).not.toContain("<!--");
     expect(src!.contentText).not.toContain("\u200B");
   });
+
+  describe("the optional semantic detector (English only)", () => {
+    const stub = (flagged: boolean, calls: string[] = []) => ({
+      name: "stub",
+      languages: ["en"] as const,
+      detect: async (t: string) => (calls.push(t.slice(0, 10)), { flagged, score: flagged ? 0.97 : 0.02, scanned: 1, total: 1, ms: 3 }),
+    });
+
+    it("flag mode: the quiz is generated, the verdict is logged and counted", async () => {
+      const quiz = await newQuiz({ numQuestions: 5 });
+      metrics.length = 0;
+      const out = await processQuizJob(deps({ detector: stub(true), detectorMode: "flag" }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
+      expect(out.kind).toBe("done");
+      expect(metrics.some((m) => m.InjectionDetected === 1)).toBe(true);
+    });
+
+    it("block mode: the document is rejected before the model, like any other unsafe document", async () => {
+      const quiz = await newQuiz();
+      const { llm, calls } = countingLlm();
+      const out = await processQuizJob(deps({ llm, detector: stub(true), detectorMode: "block" }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
+      expect(out.kind).toBe("failed");
+      expect((await status(quiz.id)).error).toContain("unsafe_document");
+      expect(calls).toEqual([]);
+    });
+
+    it("is skipped for a Portuguese document (the model is English only) and when it is off", async () => {
+      const { SUPPORTED_LANGUAGE_DOCS } = await import("@quizforge/core");
+      const pt = SUPPORTED_LANGUAGE_DOCS.find((d) => d.language === "pt")!.text;
+      const seen: string[] = [];
+      const q1 = await newQuiz({ numQuestions: 5 });
+      expect((await processQuizJob(deps({ detector: stub(true, seen), detectorMode: "block", fetchMarkdown: docFetch(pt) }), { v: 1, quizId: q1.id }, { count: 1, max: 3 })).kind).toBe("done");
+      const q2 = await newQuiz({ numQuestions: 5 });
+      expect((await processQuizJob(deps({ detector: stub(true, seen), detectorMode: "off" }), { v: 1, quizId: q2.id }, { count: 1, max: 3 })).kind).toBe("done");
+      expect(seen).toEqual([]);
+    });
+
+    it("a detector that crashes never takes the job down", async () => {
+      const quiz = await newQuiz({ numQuestions: 5 });
+      metrics.length = 0;
+      const broken = { name: "broken", languages: ["en"] as const, detect: async () => { throw new Error("model not found"); } };
+      const out = await processQuizJob(deps({ detector: broken, detectorMode: "block" }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
+      expect(out.kind).toBe("done");
+      expect(metrics.some((m) => m.DetectorFailed === 1)).toBe(true);
+    });
+  });
 });

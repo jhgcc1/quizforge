@@ -5,6 +5,7 @@ import { quizMetrics, type QuizMetrics } from "./lint.js";
 import { QUALITY_VERSION, scoreQuiz } from "./quality.js";
 import { judgeNote, judgeWithRetry } from "./scoring.js";
 import { guardLlm, parseQuizInput } from "./llm-input.js";
+import { assertQuizOutput } from "./output-guard.js";
 import type { LlmClient } from "./llm.js";
 import { scoreTrace, traced } from "./observability.js";
 import { PROMPT_VERSION } from "./prompts.js";
@@ -78,6 +79,7 @@ export async function generateQuiz(params: GenerateQuizParams): Promise<Generate
         ...(p.checkpointer ? { checkpointer: p.checkpointer } : {}),
         ...(ctx.callbacks.length ? { callbacks: ctx.callbacks } : {}),
       });
+      assertQuizOutput(run.questions, { sourceText: p.input.sourceText }); // last line of defence: only a clean quiz is saved
       const metrics = quizMetrics(run.questions);
       let judge: JudgeResult | undefined;
       let judgeFailed = false;
