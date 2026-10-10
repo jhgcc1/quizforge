@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "promptfoo suites for the input guard, prompt injection and agent purpose (see the architecture report, section "Input security and promptfoo")",
+  "description": "promptfoo suites for the input guard, prompt injection and agent purpose (see the architecture report, section Input security and promptfoo)",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "offline": "promptfoo eval -c guard.yaml --no-cache --no-progress-bar --no-table -o out/offline.json",
