@@ -12,7 +12,7 @@ export const COMPOSITE_WEIGHTS = {
   ref_precision: 0.05, // embeddings: is each question near some reference (low weight: valid questions may be outside a short reference set)
   emb_relevance: 0.1, // embeddings: questions stay on the document
   emb_diversity: 0.1, // embeddings: no near-duplicate / paraphrased questions
-  lint_pass: 0.1, // deterministic: no "all of the above", give-away option lengths, duplicates...
+  lint_pass: 0.1, // deterministic: no "all of the above", give-away option lengths, letter prefixes... (duplicates are rejected by the schema)
   coverage: 0.1, // deterministic: questions come from different sections
 } as const;
 

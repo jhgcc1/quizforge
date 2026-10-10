@@ -20,7 +20,10 @@ export async function fetchLangfuseRuns(runNames: string[], opts: { since: strin
     const res = await fetch(`${base}/api/public/experiments?limit=100&fromStartTime=${encodeURIComponent(opts.since)}`, { headers: { authorization: `Basic ${Buffer.from(`${pk}:${sk}`).toString("base64")}` } });
     if (!res.ok) return undefined;
     const body = (await res.json()) as { data?: { id: string; name: string; datasetId?: string }[] };
-    for (const r of body.data ?? []) if (wanted.has(r.name)) (found[r.name] = r.id), (datasetId ??= r.datasetId ?? null);
+    for (const r of body.data ?? []) if (wanted.has(r.name)) {
+      found[r.name] = r.id;
+      datasetId ??= r.datasetId ?? null;
+    }
     if (Object.keys(found).length < wanted.size) await new Promise((r) => setTimeout(r, 10_000));
   }
   return { datasetId, runs: found };

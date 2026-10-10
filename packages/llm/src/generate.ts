@@ -25,6 +25,7 @@ export interface GenerateQuizParams {
   judgeSamples?: number;
   /** Resume a previous allowance after an SQS redelivery. */
   budgetState?: BudgetState;
+  /** Run the LLM judge inside this call (default true; the evals use it). The production worker passes `score: false` instead. */
   judge?: boolean;
   /**
    * Compute and send the quality scores (default true). The production worker passes false: it only generates and saves the quiz;

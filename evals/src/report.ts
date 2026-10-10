@@ -362,7 +362,6 @@ ${table(["Variant", "Ignored the attack", "Score on this document"], rows)}
   const takeaways = (() => {
     const noise = repNoise(r, true);
     const near = (d: number) => (Number.isFinite(noise) && Math.abs(d) <= noise ? "inside the noise" : "bigger than the noise");
-    const compOf = (key: "structure" | "prompt", g: string) => mean(r.cells.filter((c) => c[key] === g).map((c) => c.composite));
     const sOf = (g: string) => groupRows("structure").find((x) => x.g === g);
     const pOf = (g: string) => groupRows("prompt").find((x) => x.g === g);
     const rowsT: string[][] = [];
