@@ -300,6 +300,46 @@ def validation():
     return sec("validation", "Validating the JSON", body, "Validation happens in the browser, at the BFF and in the API, using the same schemas.")
 
 
+def guardrails():
+    body = callout("ok", "The idea", "No single guardrail is trusted. A request crosses <b>eight layers</b>; each one is cheap, deterministic code, and each one is tested. Anything that fails stops at the first layer that can see it, with a clear message, and never reaches the model or the database. Only the <b>model's own resistance</b> is probabilistic, and that is why it has its own live tests.")
+    body += d.guardrail_layers()
+    body += "<h3>What each guardrail covers</h3>" + table(["Threat", "Example", "Guardrail", "Where it runs", "What happens", "Tested by"], [
+        ["Malformed or hostile request", "Extra fields, <code>__proto__</code>, a string where a number belongs, 4 or 9 questions, a 201-character topic", "Strict zod schemas (shared)", "Browser, BFF, API", "400 and nothing queued", "BFF and API tests, API contract tests (20 cases)"],
+        ["SSRF through the document URL", "<code>file:</code>, <code>localhost</code>, <code>169.254.169.254</code>, credentials in the URL, another host", "https only, host allow-list, public IPs only, redirects re-checked, 512 KB and 10 s limits", "API and worker", "400, or the quiz fails with a clear message", "Unit and integration tests"],
+        ["Stolen, forged or wrong token", "No token, <code>alg=none</code>, another issuer or audience, an ID token", "<code>aws-jwt-verify</code> (signature, issuer, audience, expiry, <code>token_use=access</code>)", "API", "401", "Integration tests"],
+        ["Someone else's data", "Reading another user's quiz or attempt", "Every row is scoped by the Cognito <code>sub</code>", "API, database", "404", "Integration tests"],
+        ["CSRF", "A form on another site posting to the BFF", "Origin check and <code>X-Requested-With</code>, httpOnly SameSite cookies", "BFF", "403", "BFF tests"],
+        ["Cost and abuse", "Hundreds of quizzes, a flood from one IP, a retry loop", "Rate limit 120 requests/min and 10 creations/min per user, quota 10 per 24 h, WAF 1000 per 5 min per IP, Idempotency-Key, job budget", "API, WAF, worker", "429, or the same quiz again", "Integration tests"],
+        ["Hidden or encoded instruction in the document", "Base64, hex, ROT13, invisible Unicode, an instruction in an HTML comment, look-alike letters", "Input guard (decode and look inside)", "Worker, before storing", "<b>Rejected</b>: quiz failed, the model never called", "Unit tests, promptfoo offline (25 cases)"],
+        ["Plain instruction in the document", "“Ignore all previous instructions…”, in 7 languages and 9 places", "49 keyword rules flag it; the document is delimited as data; the prompt says never to obey it", "Worker, model call", "<b>Flagged</b> and counted; the model must resist", "Unit tests, promptfoo live (16 cases on the real model)"],
+        ["Instruction in the topic field", "A topic that asks to reveal the prompt, or carries Base64", "Short-text check: one line, no invisible characters, no instruction, no encoding", "Browser, BFF, API", "400", "Unit tests, promptfoo (9 cases)"],
+        ["A language we do not support", "French, German, Italian, Russian, Chinese, Japanese…", "Language policy (en, pt, es only)", "Worker", "Rejected with a clear message", "Unit tests, promptfoo (12 cases)"],
+        ["Forged document tags", "A README that writes <code>&lt;/document&gt;</code> and then speaks as the system", "Tags are neutralised inside the text", "Prompt building", "The text stays data", "Unit tests, promptfoo"],
+        ["Oversized input or output", "A 600 KB document, a reply that never ends", "512 KB file, 60,000 characters per call, 200,000 per prompt, 16,000 output tokens, 16 calls, 120,000 tokens, 5 minutes", "Worker, <code>guardLlm</code>", "Job fails (permanent) or is cut", "Unit tests"],
+        ["A hijacked or hallucinated reply", "The prompt repeated, a script tag, a link to another site, an echoed attack, a poem instead of questions, an invented quote", "Output rails, quiz schema, the quote must exist in the document, repair rounds", "Worker", "One to two repair rounds, then the job retries from scratch", "Unit tests, promptfoo offline (6 cases), llm-eval"],
+        ["Cheating through the answer key", "Reading which option is correct before submitting", "<code>is_correct</code> is never sent before submit; the score is computed from the database", "API", "Not in any response", "Integration tests, contract tests"],
+        ["Leaks through logs", "Tokens or prompts in CloudWatch", "pino redaction, metadata only in logs, prompts and answers only in Langfuse", "All services", "Never written", "Unit tests, audit script"],
+        ["Hidden credentials", "A key in code, in the state, in a log", "Secrets Manager, no keys in the repository, gitleaks in CI, OIDC instead of AWS keys", "Pipeline, runtime", "The pull request fails", "secrets-scan"],
+    ], widths=["14%", "20%", "22%", "11%", "17%", "16%"])
+    body += "<h3>One request through the guardrails</h3>" + table(["Step", "Where", "What the guardrail does", "Result for a README that hides a Base64 instruction"], [
+        ["1", "Browser form", "Validates the fields with the shared schema", "Passes: a normal URL and topic"],
+        ["2", "BFF and API", "Strict schema, URL allow-list, quota, rate limit, JWT", "Passes: the URL is on github.com; 202 and a queue message with ids only"],
+        ["3", "Worker: download", "Allow-list, public IP, 512 KB", "Passes"],
+        ["4", "Worker: guard", "Decodes the Base64, finds an instruction inside", "<b>Blocked</b>: <code>unsafe_document: an instruction is hidden in base64</code>"],
+        ["5", "Quiz", "Marked failed, nothing stored, metric <code>DocumentRejected</code> (no job-failure alarm)", "The user sees: “This document contains hidden or encoded text, so it was rejected for safety.”"],
+        ["6", "Model", "Never called", "<code>llmCalls = 0</code> (proved by the promptfoo case)"],
+    ], widths=["6%", "16%", "40%", "38%"])
+    body += "<h3>Knobs</h3>" + table(["Setting", "Default", "Effect"], [
+        ["<code>ALLOWED_LANGUAGES</code>", "<code>en,pt,es</code>", "Can only narrow the set"],
+        ["<code>INJECTION_DETECTOR</code>", "<code>off</code>", "<code>flag</code> or <code>block</code> turns on the English classifier (needs an image that contains it)"],
+        ["<code>SOURCE_ALLOWED_HOSTS</code>", "<code>github.com,raw.githubusercontent.com</code>", "Hosts a document may come from"],
+        ["<code>DAILY_QUIZ_QUOTA</code> and the rate limits", "10 per 24 h; 120 and 10 per minute", "API settings"],
+        ["Job budget", "16 calls, 120,000 tokens, 5 minutes", "<code>DEFAULT_LIMITS</code> in <code>budget.ts</code>"],
+    ], widths=["30%", "30%", "40%"])
+    body += callout("warn", "What the guardrails do not cover", "A paraphrased attack that matches no keyword is only stopped by the model's own resistance (and the output rails afterwards). The classifier is English only and off in AWS. A subtly wrong but well-formed question is for the judge and the grounding gate, not for a guardrail. Images and files are not read at all. See \"Input security and promptfoo\" for the details and \"Improvements\".")
+    return sec("guardrails", "Guardrails in execution", body, "What runs on every request, in order, what each layer covers, and where it is tested.")
+
+
 def input_security():
     body = callout("ok", "What this section is", "Five rules, enforced in code and tested in CI: (1) hidden or encoded text in a document is <b>rejected</b> before any model call; (2) only <b>English, Portuguese and Spanish</b> are accepted; (3) the model only ever receives a <b>strictly validated structure</b> (zod, the Node counterpart of Pydantic); (4) what the model returns is checked to be <b>really a quiz in the expected JSON format</b>, with nothing else in it; (5) any change to a prompt, the guard or the test documents passes the <b>promptfoo</b> gate. An optional <b>semantic detector</b> (a classifier model, English only) is built but switched off in production.")
     body += d.input_defense()
@@ -1123,10 +1163,10 @@ def limits():
 
 
 def all_sections():
-    return [overview(), links(), architecture(), communication(), flows(), documents(), validation(), input_security(), agent(), quality(), langfuse(), langfuse_eval(), scoring_arch(), secrets(), data(), security(), resilience(), observability(), evaluation(), cicd(), state(),
+    return [overview(), links(), architecture(), communication(), flows(), documents(), validation(), guardrails(), input_security(), agent(), quality(), langfuse(), langfuse_eval(), scoring_arch(), secrets(), data(), security(), resilience(), observability(), evaluation(), cicd(), state(),
             decisions(), bugs(), costs(), evidence(), runbook(), live_state(), limits(), improvements(), glossary()]
 
 
-NAV = [("summary", "Summary"), ("links", "Links"), ("architecture", "Architecture"), ("comm", "Communication"), ("flows", "Flows"), ("documents", "Documents"), ("validation", "Validation"), ("inputsec", "Input security"), ("agent", "Agent"),
+NAV = [("summary", "Summary"), ("links", "Links"), ("architecture", "Architecture"), ("comm", "Communication"), ("flows", "Flows"), ("documents", "Documents"), ("validation", "Validation"), ("guardrails", "Guardrails"), ("inputsec", "Input security"), ("agent", "Agent"),
        ("quality", "Quality & alerts"), ("langfuse", "Langfuse"), ("lfeval", "Langfuse judge"), ("scoringarch", "Scoring service"), ("secrets", "Secrets"), ("data", "Data"), ("security", "Security"), ("resilience", "Resilience"), ("observability", "Observability"), ("evaluation", "Evaluation"),
        ("cicd", "CI/CD"), ("state", "TF state"), ("decisions", "Decisions"), ("bugs", "Bugs"), ("pause", "Cost & pause"), ("evidence", "Evidence"), ("runbook", "Runbook"), ("live", "Live vs main"), ("limits", "Limits"), ("improve", "Improvements"), ("glossary", "Glossary")]

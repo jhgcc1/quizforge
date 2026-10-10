@@ -765,3 +765,29 @@ def repo_structure():
     b += text(10, 398, "apps import packages; evals, promptfoo and e2e test the same code the services run (they import packages, never the apps); infra is separate and only knows image tags.", "note")
     b += text(10, 418, "One image for the worker, scorer, sweeper and migration task (apps/worker); web and api have their own Dockerfile.", "note")
     return svg(970, 438, b, "Where things live in the repository")
+
+
+def guardrail_layers():
+    """Every guardrail in the order a request meets it, and what each layer stops."""
+    b = ""
+    layers = [
+        ("1 · Edge", "CloudFront · WAF · ALB", "HTTPS only, 1000 requests per 5 min per IP, common and bad-input rule sets, only CloudFront may reach the ALB", "floods, scanners, direct access", "edge"),
+        ("2 · Identity", "Cognito · JWT · cookies", "access token only, signature, issuer, audience, expiry; httpOnly cookies; Origin + X-Requested-With; ownership by sub", "forged or stolen tokens, CSRF, other users' data", "sec"),
+        ("3 · Request", "zod in browser, BFF and API", "strict schemas, no extra keys, size and range limits, one plain line for the topic, URL allow-list and public IPs only", "malformed bodies, SSRF, topic injection", "compute"),
+        ("4 · Abuse", "rate limit · quota · idempotency", "120 requests/min and 10 quizzes/min per user, 10 quizzes per 24 h, Idempotency-Key", "cost abuse, double submits", "compute"),
+        ("5 · Document", "guard · language · sanitize", "hidden or encoded text rejected, invisible characters and comments removed, only en · pt · es, 49 keyword rules, optional classifier", "hidden instructions, foreign languages", "ai"),
+        ("6 · Model call", "guardLlm · budget", "strict message schema, 200k chars, 16k output tokens, document in <document> tags as data, 16 calls · 120k tokens · 5 min", "oversized prompts, runaway cost, forged tags", "ai"),
+        ("7 · Reply", "output rails · schema · grounding", "only the JSON, no prompt leak, no script, no new link, no echoed instruction, really questions, each quote must exist in the document", "hijacked or hallucinated output", "data"),
+        ("8 · Data", "database · logs", "CHECK and UNIQUE constraints, answer key never sent before submit, secrets in Secrets Manager, logs redacted, prompts only in Langfuse", "bad writes, leaks", "mgd"),
+    ]
+    for i, (n, what, how, stops, kind) in enumerate(layers):
+        y = 10 + i * 66
+        b += box(10, y, 190, 54, n, what, kind, small=True)
+        cut = how.rfind(" ", 0, 112) if len(how) > 112 else len(how)
+        b += text(214, y + 22, how[:cut], "note")
+        b += text(214, y + 40, how[cut:].strip(), "note")
+        b += text(900, y + 22, "stops:", "note")
+        b += text(900, y + 40, stops, "t-s")
+        if i:
+            b += arrow(105, y, 105, y - 12)
+    return svg(1280, 550, b, "Guardrails in execution: the layers a request crosses and what each one stops")
