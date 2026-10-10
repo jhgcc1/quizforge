@@ -794,7 +794,42 @@ def evaluation():
 
 
 def cicd():
-    body = d.cicd()
+    body = callout("ok", "The pipeline in one paragraph", "Every change is a pull request. Nine jobs run in parallel (no secrets, nothing deployed); <b>eight of them must be green</b> before GitHub allows the squash merge. After the merge the same jobs run on <code>main</code>, plus <code>llm-eval</code> (the real model, Langfuse and the live promptfoo suite). Only when all of that is green does the <code>deploy</code> job ask a human to approve. Three more things run without a push: the nightly evaluation, the nightly drift check and the manual structure comparison.")
+    body += d.pipeline_overview()
+    body += "<h3>Every job</h3>" + table(["Job", "What it checks", "Runs on", "Secrets / AWS", "Blocks merge", "Blocks deploy"], [
+        ["<b>quality</b>", "Typecheck, ESLint, 443 unit tests, offline evaluation with a fake model", "PR + main", "None", "Yes", "Yes"],
+        ["<b>integration</b>", "71 tests against a real PostgreSQL (repositories, API contract, worker, scorer, sweeper)", "PR + main", "None", "Yes", "Yes"],
+        ["<b>migrations</b>", "Schema and SQL do not drift, migration policy (expand/contract), applies twice on an empty database", "PR + main", "None", "Yes", "Yes"],
+        ["<b>e2e</b>", "Playwright in real Chrome: login, dropdown, generate, answer, reload, submit, score; api, web, worker and scorer run locally", "PR + main", "None", "Yes", "Yes"],
+        ["<b>docker-build</b>", "Builds the web, api and worker images and scans them with Trivy (fixable HIGH and CRITICAL); nothing is pushed", "PR + main", "None", "Yes", "Yes"],
+        ["<b>terraform-validate</b>", "<code>fmt</code>, <code>validate</code> and a Trivy scan of the Terraform code", "PR + main", "None", "Yes", "Yes"],
+        ["<b>secrets-scan</b>", "gitleaks over the full Git history", "PR + main", "None", "Yes", "Yes"],
+        ["<b>promptfoo</b>", "Offline suite, 72 tests: hidden and encoded attacks, languages, topics, bad model replies, prompt rules", "PR + main", "None", "Yes (8th check)", "Yes"],
+        ["<b>terraform-plan</b>", "A read-only <code>plan</code> against the real account, commented on the PR", "PR only", "AWS plan role (OIDC, read-only)", "No (informational)", "No"],
+        ["<b>llm-eval</b>", "Golden set on the real model (grounding, lint, judge, injection, language) logged to Langfuse, then the live promptfoo suite (21 tests)", "main only", "Environment <code>llm-eval</code>: MiniMax and Langfuse keys", "n/a", "Yes"],
+        ["<b>deploy</b>", "Build and push ARM64 images, drift check, migration, <code>terraform apply</code>, smoke test", "main only", "Environment <code>production</code>: human approval, AWS deploy role (OIDC)", "n/a", "This is the deploy"],
+    ], widths=["13%", "42%", "9%", "18%", "9%", "9%"])
+    body += "<h3>What it looks like on GitHub</h3><p>Real pages of the public repository.</p>"
+    body += '<div class="shots">' + img("gh-1-actions-list.png", "Actions: the four workflows (CI/CD, Compare generation structures, LLM evaluation, Terraform drift) and the latest runs") + img("gh-3-run-pr.png", "A pull request run: the jobs run in parallel; <code>llm-eval</code> and <code>deploy</code> are skipped on a PR") + "</div>"
+    body += '<div class="shots">' + img("gh-4-run-main.png", "A run on <code>main</code>: <code>llm-eval</code> ran against the real model and the <code>deploy</code> job waits for a human (“production require an approval”)") + img("gh-5-ruleset.png", "The ruleset of <code>main</code>: the required checks, now including <code>promptfoo</code>") + "</div>"
+    body += '<div class="shots">' + img("gh-6-eval-run.png", "The nightly LLM evaluation (<code>eval.yml</code>): one job, the golden set and the live promptfoo suite on the real model") + "</div>"
+    body += "<h3>When does data go to Langfuse?</h3>" + table(["When", "What is sent", "Where you see it"], [
+        ["Pull request", "<b>Nothing.</b> No job has the Langfuse keys, and the promptfoo provider deletes them from its environment", "–"],
+        ["Merge to <code>main</code> (<code>llm-eval</code>)", "One <b>experiment run</b> on the dataset <code>quizforge-golden</code>: every generated quiz as a trace with its scores", "Langfuse → Datasets → quizforge-golden → Runs"],
+        ["Every night (<code>eval.yml</code>)", "The same experiment, to catch a provider or model change when nobody pushed", "Same page: a new run each night"],
+        ["Manual <code>Compare generation structures</code>", "9 experiments (variant × prompt), each document linked to its trace", "The structure-comparison report links to every run"],
+        ["Production, every quiz", "A trace per generation (graph nodes, model, tokens, cost) and the scores computed by the scorer", "Langfuse → Traces and Scores; CloudWatch gets <code>QuizQuality</code> and the alarms"],
+    ], widths=["26%", "46%", "28%"])
+    body += '<div class="shots">' + img("langfuse-4-datasets.png", "Langfuse datasets: <code>quizforge-golden</code> and its runs") + img("langfuse-5-compare.png", "Comparing runs of the same dataset side by side") + "</div>"
+    body += "<h3>Where promptfoo runs</h3>" + table(["Suite", "Trigger", "Model", "What a red result does"], [
+        ["Offline (72 tests)", "Every PR and every push to <code>main</code> (job <code>promptfoo</code>)", "Deterministic fake: no secrets", "Blocks the merge (required check) and the deploy"],
+        ["Live (21 tests)", "<code>llm-eval</code> on <code>main</code>", "Real MiniMax", "Blocks the deploy"],
+        ["Live (21 tests)", "Nightly <code>eval.yml</code> and on demand", "Real MiniMax", "A red run you see in the morning"],
+    ], widths=["22%", "36%", "20%", "22%"])
+    body += '<div class="shots">' + img("pf-1-offline.png", "promptfoo report of the offline suite: 72 of 72 passed") + img("pf-2-attack.png", "One case opened: a Base64 attack is blocked with <code>llmCalls: 0</code>, so the model was never called") + "</div>"
+    body += callout("info", "Where to look when something is red", "Actions → the run → the failed job; the job summary has a table of the promptfoo groups (BLOCK, REJECT, ACCEPT, REFUSE, OUTPUT, RESIST, PROMPTS) and the failing cases with the reason; the full promptfoo result is an artifact of the run (<code>promptfoo-offline</code>, 30 days). Evaluation reports: <code>eval-report</code> artifact and the Langfuse run.")
+    body += callout("warn", "Known warning", "Every run shows “Node.js 20 is deprecated” annotations: the pinned versions of <code>actions/checkout</code> and friends still target Node 20 and GitHub forces Node 24. It does not fail anything. Bumping the action versions is in the improvements list.")
+    body += "<h3>The same pipeline as a flow</h3>" + d.cicd()
     body += "<h3>Can anything reach production without passing everything?</h3>" + table(["Question", "Answer"], [
         ["Is there a Playwright e2e test in the pipeline?", "Yes: login → generate → answer → reload → submit → score, plus the dropdown and validation tests"],
         ["Does the deploy depend on everything?", "Yes: all 9 jobs (including <code>promptfoo</code> and <code>llm-eval</code>) and a human approval in the <code>production</code> environment"],
@@ -880,6 +915,7 @@ def improvements():
         ["Quality", "Human review of the reference questions; calibrate the judge on hand-labelled quizzes", "The score means what we think it means", "Medium"],
         ["Quality", "Embeddings in production instead of TF-IDF", "Catches paraphrased duplicates", "Medium"],
         ["Observability", "Langfuse alerts, only if a Slack channel exists", "A second alert channel", "Small"],
+        ["Delivery", "Bump the GitHub Actions to versions that run on Node 24 (every run shows a deprecation annotation)", "No warnings; no surprise when Node 20 is removed", "Small"],
         ["Delivery", "Compiled build instead of <code>tsx</code>", "Faster container start", "Small"],
         ["Delivery", "Blue/green deploys", "Rollback without a rolling update", "Medium"],
         ["Product", "Server-sent events instead of polling every 4 s", "Faster and cheaper status updates", "Medium"],
