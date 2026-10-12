@@ -167,6 +167,7 @@ def communication():
         ["CSRF defence", "A write needs the <code>Origin</code> header of our site and <code>X-Requested-With: quizforge</code> (on top of SameSite cookies)"],
         ["web → api", "Adds <code>Authorization: Bearer</code>, forwards <code>Idempotency-Key</code>, <code>Content-Type</code> and <code>x-request-id</code>; returns the status, body and <code>Idempotency-Replayed</code> unchanged"],
         ["Validation on the way", "The form, the BFF and the API all check the same zod schema; the browser also parses every response"],
+        ["History and scores", "<code>GET /v1/quizzes</code> returns each quiz with the user's <b>progress</b> (attempts, the open attempt, last and best score; one extra query for the whole list). <code>GET /v1/quizzes/:id/attempts</code> lists the attempts of one quiz; <code>GET /v1/attempts/:id</code> opens a submitted one with the answer key. The dashboard shows the score next to each quiz, and the quiz page offers “View result” and “Retake”. Everything is filtered by the user's <code>sub</code>"],
         ["Waiting for a quiz", "The browser <b>polls</b> <code>GET /v1/quizzes/:id</code> with backoff (1.5 s up to 5 s). No websocket, no push"],
     ], widths=["26%", "74%"])
     body += "<p><b>A call, as bytes.</b> The creation of a quiz:</p>"

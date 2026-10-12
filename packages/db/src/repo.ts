@@ -57,6 +57,40 @@ export async function listQuizzes(db: Db, ownerSub: string, limit = 50): Promise
   return db.select().from(t.quizzes).where(eq(t.quizzes.ownerSub, ownerSub)).orderBy(desc(t.quizzes.createdAt)).limit(limit);
 }
 
+export interface AttemptSummary {
+  id: string;
+  quizId: string;
+  status: "in_progress" | "submitted";
+  startedAt: Date;
+  submittedAt: Date | null;
+  /** Weighted average in [0, 4]; null until submitted. */
+  finalScore: number | null;
+}
+
+const toAttemptSummary = (a: AttemptRow): AttemptSummary => ({
+  id: a.id,
+  quizId: a.quizId,
+  status: a.status,
+  startedAt: a.startedAt,
+  submittedAt: a.submittedAt,
+  finalScore: a.finalScore === null ? null : Number(a.finalScore),
+});
+
+/** The attempts of one user on one quiz, newest first. */
+export async function listAttemptsForQuiz(db: Db, quizId: string, userSub: string): Promise<AttemptSummary[]> {
+  const rows = await db.select().from(t.attempts).where(and(eq(t.attempts.quizId, quizId), eq(t.attempts.userSub, userSub))).orderBy(desc(t.attempts.startedAt));
+  return rows.map(toAttemptSummary);
+}
+
+/** The attempts of one user on many quizzes in ONE query (for the history list), newest first, grouped by quiz id. */
+export async function listAttemptsByQuiz(db: Db, quizIds: string[], userSub: string): Promise<Map<string, AttemptSummary[]>> {
+  const out = new Map<string, AttemptSummary[]>();
+  if (!quizIds.length) return out;
+  const rows = await db.select().from(t.attempts).where(and(inArray(t.attempts.quizId, quizIds), eq(t.attempts.userSub, userSub))).orderBy(desc(t.attempts.startedAt));
+  for (const r of rows) out.set(r.quizId, [...(out.get(r.quizId) ?? []), toAttemptSummary(r)]);
+  return out;
+}
+
 export async function getOwnedQuiz(db: Db, quizId: string, ownerSub: string): Promise<QuizRow | undefined> {
   const [row] = await db.select().from(t.quizzes).where(and(eq(t.quizzes.id, quizId), eq(t.quizzes.ownerSub, ownerSub)));
   return row;

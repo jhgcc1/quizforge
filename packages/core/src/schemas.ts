@@ -76,7 +76,21 @@ export type PublicQuestion = z.output<typeof PublicQuestionSchema>;
 
 export const QuizEnvelopeSchema = z.object({ quiz: QuizSummarySchema });
 export const QuizWithQuestionsSchema = z.object({ quiz: QuizSummarySchema, questions: z.array(PublicQuestionSchema) });
-export const QuizListSchema = z.object({ quizzes: z.array(QuizSummarySchema) });
+/** What a user did with a quiz: the history list shows it next to each quiz. */
+export const QuizProgressSchema = z.object({
+  attempts: z.number().int(),
+  inProgressAttemptId: z.string().uuid().nullable(),
+  /** The most recent submitted attempt, with its score (0..4). */
+  last: z.object({ attemptId: z.string().uuid(), finalScore: z.number(), percent: z.number(), submittedAt: iso }).nullable(),
+  best: z.number().nullable(),
+});
+export type QuizProgress = z.output<typeof QuizProgressSchema>;
+export const QuizListItemSchema = QuizSummarySchema.extend({ progress: QuizProgressSchema });
+export type QuizListItem = z.output<typeof QuizListItemSchema>;
+export const QuizListSchema = z.object({ quizzes: z.array(QuizListItemSchema) });
+
+export const AttemptListItemSchema = z.object({ id: z.string().uuid(), status: z.enum(["in_progress", "submitted"]), startedAt: iso, submittedAt: iso.nullable(), finalScore: z.number().nullable(), percent: z.number().nullable() });
+export const AttemptListSchema = z.object({ attempts: z.array(AttemptListItemSchema) });
 
 export const SavedAnswerSchema = z.object({ questionId: z.string().uuid(), optionIds: z.array(z.string().uuid()), revision: z.number().int() });
 export type SavedAnswer = z.output<typeof SavedAnswerSchema>;
