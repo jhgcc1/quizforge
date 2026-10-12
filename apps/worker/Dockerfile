@@ -26,3 +26,21 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=30s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.HEALTH_PORT||8081)+'/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 # in-flight jobs get SHUTDOWN_GRACE_MS to finish after SIGTERM (ECS stopTimeout must be larger)
 CMD ["node", "--import", "tsx", "src/main.ts"]
+
+# ---- optional target: the worker plus the ONNX semantic injection detector (about 430 MB heavier, needs ~2 GB of memory).
+#   docker build -f apps/worker/Dockerfile --target runtime-detector -t quizforge-worker:detector .
+# then run it with INJECTION_DETECTOR=flag (record only) or block (reject the document). Production builds never use it.
+FROM build AS detector-build
+RUN --mount=type=cache,target=/pnpm-store pnpm install --frozen-lockfile --filter @quizforge/detector...
+RUN pnpm --filter @quizforge/detector deploy --prod --legacy /detector-out
+
+FROM runtime AS runtime-detector
+USER root
+COPY --from=detector-build --chown=node:node /detector-out /app/node_modules/@quizforge/detector
+# the model (~740 MB) is downloaded on first use; keeping it on a volume at /hf-cache avoids downloading it again
+RUN mkdir -p /hf-cache && chown node:node /hf-cache
+ENV TRANSFORMERS_CACHE_DIR=/hf-cache
+USER node
+
+# keep the production image the DEFAULT target (docker build without --target builds the last stage)
+FROM runtime AS release

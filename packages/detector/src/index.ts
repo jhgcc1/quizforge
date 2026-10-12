@@ -28,7 +28,8 @@ export interface OnnxDetectorOptions extends ChunkOptions {
 }
 
 async function loadClassifier(model: string): Promise<Classify> {
-  const { pipeline } = await import("@huggingface/transformers");
+  const { pipeline, env } = await import("@huggingface/transformers");
+  if (process.env.TRANSFORMERS_CACHE_DIR) env.cacheDir = process.env.TRANSFORMERS_CACHE_DIR; // a volume in containers, so the model is downloaded once
   const pipe = await pipeline("text-classification", model, { dtype: "fp32" });
   return async (texts) => {
     const out: { label: string; score: number }[] = [];
