@@ -6,7 +6,7 @@ Every report is **one HTML file** with its charts inside (no server, no build st
 |---|---|---|---|
 | 1 | **Architecture and decisions** | [architecture/quizforge-architecture.html](architecture/quizforge-architecture.html) | Everything: AWS, pipeline, protocols, the scoring service, input security and promptfoo, Langfuse, limits, improvements, glossary |
 | 2 | **Structure comparison** | [eval/structure-comparison.html](eval/structure-comparison.html) (raw numbers: [structure-comparison.json](eval/structure-comparison.json)) | Which generation structure and prompt works best: 9 variants × 5 documents, with Langfuse run links |
-| 3 | **Security benchmark** (planned) | `docs/security/` | The guard and the model against public prompt-injection datasets, with false positives. Not built yet |
+| 3 | **Security benchmark** | [security/benchmark.html](security/benchmark.html) (raw: [benchmark.json](security/benchmark.json)) | The input guard and the optional classifier against 500 samples of a public prompt-injection dataset (deepset/prompt-injections, Apache-2.0): detection and false positives, with the examples that passed. Run: `pnpm --filter @quizforge/detector benchmark -- --detector`, then `python3 scripts/security-report.py` |
 
 ## What is left out of the committed architecture report
 
