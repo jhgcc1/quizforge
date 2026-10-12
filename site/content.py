@@ -499,6 +499,13 @@ def agent():
         ["Language", "Only English, Portuguese and Spanish documents are accepted (<code>franc-min</code> on the prose); the quiz must be in the document's language. See \"Input security\""],
         ["Prompt injection", "Hidden or encoded text is rejected before any model call; plain instructions are flagged and delimited as data; every model call is re-validated (<code>guardLlm</code>); output must fit the schema. See \"Input security\""],
     ], widths=["22%", "78%"])
+    body += "<h3>The strategy options of the API</h3>" + table(["<code>strategy</code>", "What it does", "When it fits"], [
+        ["<code>auto</code> (default)", "The router below chooses between the two strategies, with no model call. The choice and its reason are saved with the quiz (<code>strategyUsed</code>) and shown on the Langfuse trace", "Almost always"],
+        ["<code>single-shot</code>", "The whole document goes to the model in <b>one call</b>, which returns the questions", "Short documents: cheapest and fastest, the model sees everything together"],
+        ["<code>section-map-reduce</code>", "The document is split by headings. <b>Map</b>: candidate questions per section (5 sections, 2 candidates each, 3 calls at a time). <b>Reduce</b>: the final set is picked from the candidates", "Long, structured documents: the questions cover the whole document, not only the start"],
+        ["<code>critique</code> (true or false, separate)", "An extra “generate, review, revise” stage (up to 2 rounds) on top of <i>either</i> strategy", "Better quality, one more model call per round"],
+    ], widths=["22%", "50%", "28%"])
+    body += callout("info", "Not to be confused with", "The “structures” compared below (<code>one-shot</code>, <code>critique-loop</code>, <code>plan-then-write</code>) are graph shapes tested in the experiment, not options of the API. <code>critique-loop</code> is the one in production.")
     body += "<h3>Router and settings</h3>" + table(["Setting", "Value"], [
         ["Router: short document", "Up to 4,500 tokens, or fewer than 4 sections of 40+ tokens → <b>single-shot</b> (1 prompt)"],
         ["Router: long document", "Otherwise <b>section-map-reduce</b>: samples 5 sections, 2 candidates each, 3 calls at a time"],
