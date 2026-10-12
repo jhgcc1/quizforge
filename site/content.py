@@ -33,6 +33,7 @@ def overview():
         ["Store questions, answers and the final score in a database", "PostgreSQL: 9 tables, every answer saved at the click", "Data model"],
         ["REST API and web UI", "Fastify (OpenAPI at <code>/docs</code>) and Next.js with a login by Amazon Cognito", "Architecture"],
         ["Production-ready, not a PoC", "Terraform on AWS, autoscaling, retries and a dead-letter queue, alarms, CI/CD with gates, pause and resume", "Architecture · CI/CD · Cost"],
+        ["Safe with untrusted input (not asked, but a README is text written by someone else)", "11 checks on every request: deterministic rules first, one optional ML classifier that only flags, output rails on the reply; promptfoo proves them before every deploy", "Guardrails · promptfoo"],
         ["LLM observability and several generation strategies (nice to have)", "Langfuse traces, costs and scores; <code>single-shot</code> and <code>section-map-reduce</code> chosen by a router, plus critique and revise", "Quality · Agent and score"],
     ], widths=["40%", "46%", "14%"])
     return sec("summary", "What it is", body)
