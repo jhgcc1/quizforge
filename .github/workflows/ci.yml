@@ -264,6 +264,56 @@ jobs:
         if: always()
         with: { name: eval-report, path: "evals/report.json\npromptfoo/out/live.json", retention-days: 30 }
 
+  # ---------------------------------------------------------------- LLM quality gate on the pull request (real model, no Langfuse)
+  # The same golden-set evaluation and live promptfoo suite as `llm-eval`, BEFORE the merge, when the change can alter what the model
+  # sees or returns (prompts, LLM code, guard, attack corpus, fixtures, evals, promptfoo). A pull request that makes the quizzes worse
+  # cannot be merged. Differences from the main job, on purpose:
+  #   * it only gets MINIMAX_API_KEY (environment `llm-eval-pr`): NO Langfuse keys, so a pull request never writes to Langfuse
+  #     (Langfuse only receives data from main, nightly and production);
+  #   * pull requests from forks never get secrets (this job is skipped for them);
+  #   * when no relevant file changed it finishes green in seconds without calling the model (costs nothing).
+  llm-eval-pr:
+    name: llm-eval-pr
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: llm-eval-pr
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Did this change touch what the model sees or returns?
+        id: scope
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          changed=$(git diff --name-only "origin/${BASE_REF}...HEAD" | grep -E '^(packages/llm/|packages/core/src/|packages/detector/|evals/|promptfoo/|prompts/)' || true)
+          if [ -n "$changed" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; echo "::notice title=Real-model evaluation will run::$(echo $changed | tr '\n' ' ')"
+          else echo "run=false" >> "$GITHUB_OUTPUT"; echo "No prompt, LLM, guard or eval file changed: the real-model evaluation is not needed."; fi
+      - if: steps.scope.outputs.run == 'true'
+        uses: pnpm/action-setup@v4
+      - if: steps.scope.outputs.run == 'true'
+        uses: actions/setup-node@v4
+        with: { node-version: "${{ env.NODE_VERSION }}", cache: pnpm }
+      - if: steps.scope.outputs.run == 'true'
+        run: pnpm install --frozen-lockfile
+      - name: Golden-set evaluation (real model; fails if quality drops below the thresholds)
+        if: steps.scope.outputs.run == 'true'
+        env:
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+        run: pnpm --filter @quizforge/evals exec tsx src/run.ts | tee eval.txt
+      - name: Summary
+        if: always() && steps.scope.outputs.run == 'true'
+        run: |
+          { echo '### LLM evaluation on the pull request (golden set)'; echo '```'; cat eval.txt 2>/dev/null || true; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: promptfoo live suite (prompt injection and agent purpose, real model)
+        if: steps.scope.outputs.run == 'true'
+        env:
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+        run: scripts/promptfoo.sh live
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.scope.outputs.run == 'true'
+        with: { name: eval-report-pr, path: "evals/report.json\npromptfoo/out/live.json", retention-days: 30 }
+
   # ---------------------------------------------------------------- prompts to Langfuse (main only, after every gate)
   # A prompt reaches Langfuse Prompt Management ONLY from here: after the pull request checks passed (and blocked the merge if not),
   # and after the same checks, the real-model evaluation and the live promptfoo suite passed again on main. A prompt whose text
