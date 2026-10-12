@@ -1,5 +1,5 @@
 import { SQSClient, SendMessageCommand } from "@aws-sdk/client-sqs";
-import { createDb, failQuiz, findStaleQuizzes, findUnscoredJobs, resolveDatabaseUrl, type Db } from "@quizforge/db";
+import { createDb, deleteOldCheckpointThreads, failQuiz, findStaleQuizzes, findUnscoredJobs, resolveDatabaseUrl, type Db } from "@quizforge/db";
 import type { ScoreJobMessage } from "@quizforge/core";
 import { createLogger, emitMetrics, type Logger } from "./log.js";
 
@@ -11,6 +11,8 @@ import { createLogger, emitMetrics, type Logger } from "./log.js";
  *    so the user sees an error instead of a spinner.
  *  - `ready` but never scored (the scoring message was lost, or the scorer died): send the scoring job again. Bounded by the
  *    job's scoring_attempts, so a quiz that cannot be judged is not re-queued forever.
+ * It also applies the retention of the LangGraph checkpoints: threads whose last checkpoint is older than `checkpointMaxAgeMs` are
+ * deleted (the worker deletes its own thread when the quiz is saved; this catches the ones a dead worker or a failure left behind).
  */
 export interface SweepDeps {
   db: Db;
@@ -24,9 +26,11 @@ export interface SweepDeps {
   /** A finished quiz with no score after this long is queued for scoring again. */
   rescoreAfterMs?: number;
   maxScoringAttempts?: number;
+  /** Checkpoint threads older than this are deleted. Default 24 h. */
+  checkpointMaxAgeMs?: number;
 }
 
-export async function sweepOnce(d: SweepDeps): Promise<{ requeued: number; failed: number; rescored: number }> {
+export async function sweepOnce(d: SweepDeps): Promise<{ requeued: number; failed: number; rescored: number; checkpointsDeleted: number }> {
   const now = d.now?.() ?? Date.now();
   const requeueAfter = d.requeueAfterMs ?? 3 * 60_000;
   const failAfter = d.failAfterMs ?? 20 * 60_000;
@@ -62,7 +66,14 @@ export async function sweepOnce(d: SweepDeps): Promise<{ requeued: number; faile
       }
     }
   }
-  return { requeued, failed, rescored };
+  let checkpointsDeleted = 0;
+  try {
+    checkpointsDeleted = await deleteOldCheckpointThreads(d.db, new Date(now - (d.checkpointMaxAgeMs ?? 24 * 3_600_000)));
+    if (checkpointsDeleted) d.log.info({ checkpointsDeleted }, "deleted expired checkpoint threads");
+  } catch (err) {
+    d.log.error({ err }, "checkpoint retention failed");
+  }
+  return { requeued, failed, rescored, checkpointsDeleted };
 }
 
 /** Entry point for the scheduled ECS task: one sweep, then exit. */
@@ -81,7 +92,7 @@ export async function main(): Promise<void> {
       publish: async (quizId) => void (await sqs.send(new SendMessageCommand({ QueueUrl: queueUrl, MessageBody: JSON.stringify({ v: 1, quizId, requestId: "sweeper" }) }))),
     });
     log.info(res, "sweep finished");
-    emitMetrics({ SweeperRequeued: { value: res.requeued, unit: "Count" }, SweeperFailed: { value: res.failed, unit: "Count" }, SweeperRescored: { value: res.rescored, unit: "Count" } });
+    emitMetrics({ SweeperRequeued: { value: res.requeued, unit: "Count" }, SweeperFailed: { value: res.failed, unit: "Count" }, SweeperRescored: { value: res.rescored, unit: "Count" }, CheckpointsDeleted: { value: res.checkpointsDeleted, unit: "Count" } });
   } finally {
     await pool.end();
   }

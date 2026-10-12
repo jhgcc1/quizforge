@@ -146,6 +146,8 @@ export async function processQuizJob(
       evals: [], // scores come later, from the scorer service
     });
     await saveJobBudget(d.db, job.id, result.budget);
+    // The quiz is saved: the checkpoints have done their job (resuming an interrupted run), so they go now instead of piling up.
+    await d.checkpointer?.deleteThread(threadId).catch((e: unknown) => log.warn({ err: e }, "could not delete checkpoint thread"));
 
     // The quiz is READY now. Scoring is a separate job: the user does not wait for the judge.
     if (d.publishScore) {

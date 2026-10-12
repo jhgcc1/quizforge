@@ -2,6 +2,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
+import { emptyCheckpoint } from "@langchain/langgraph";
 import { claimQuiz, completeQuiz, createDb, createQuizIdempotent, eq, migrate, saveScores, schema, upsertSource } from "@quizforge/db";
 import { createLogger } from "./log.js";
 import { sweepOnce } from "./sweeper.js";
@@ -47,7 +49,7 @@ describe("sweepOnce", () => {
     const published: string[] = [];
     const res = await sweepOnce({ db: ctx.db, log: createLogger("error"), publish: async (id) => void published.push(id) });
 
-    expect(res).toEqual({ requeued: 1, failed: 1, rescored: 0 });
+    expect(res).toEqual({ requeued: 1, failed: 1, rescored: 0, checkpointsDeleted: 0 });
     expect(published).toEqual([lost.id]);
     expect((await status(stuck.id)).status).toBe("failed");
     expect((await status(stuck.id)).error).toMatch(/timed out/);
@@ -110,5 +112,38 @@ describe("sweepOnce: quizzes that were never scored", () => {
     await finishedQuiz(10);
     const res = await sweepOnce({ db: ctx.db, log: createLogger("error"), publish: async () => undefined });
     expect(res.rescored).toBe(0);
+  });
+});
+
+describe("checkpoint retention (real PostgresSaver, schema langgraph)", () => {
+  it("does nothing, without error, when the langgraph schema does not exist yet", async () => {
+    const res = await sweepOnce({ db: ctx.db, publish: async () => undefined, log: createLogger("error") });
+    expect(res.checkpointsDeleted).toBe(0);
+  });
+
+  it("deletes the threads whose last checkpoint is older than 24 h (all three tables) and keeps them before that", async () => {
+    const saver = PostgresSaver.fromConnString(url.toString(), { schema: "langgraph" });
+    try {
+      await saver.setup();
+      const put = (thread: string) =>
+        saver.put({ configurable: { thread_id: thread, checkpoint_ns: "" } }, emptyCheckpoint(), { source: "input", step: 0, parents: {} }, {});
+      await put("quiz-old-job-1");
+      await put("quiz-old-job-2");
+      const q = (t: string) => ctx.pool.query(`select count(*)::int as n from langgraph.${t}`).then((r) => r.rows[0].n as number);
+      expect(await q("checkpoints")).toBe(2);
+
+      // 1 h later nothing is expired; 25 h later both are
+      const soon = await sweepOnce({ db: ctx.db, publish: async () => undefined, log: createLogger("error"), now: () => Date.now() + 3_600_000 });
+      expect(soon.checkpointsDeleted).toBe(0);
+      expect(await q("checkpoints")).toBe(2);
+
+      const later = await sweepOnce({ db: ctx.db, publish: async () => undefined, log: createLogger("error"), now: () => Date.now() + 25 * 3_600_000 });
+      expect(later.checkpointsDeleted).toBe(2);
+      expect(await q("checkpoints")).toBe(0);
+      expect(await q("checkpoint_writes")).toBe(0);
+      expect(await q("checkpoint_blobs")).toBe(0);
+    } finally {
+      await saver.end();
+    }
   });
 });

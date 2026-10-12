@@ -593,3 +593,21 @@ export async function findUnscoredJobs(db: Db, finishedBefore: Date, maxAttempts
     )
     .limit(100);
 }
+
+/**
+ * Retention for the LangGraph checkpoints (schema `langgraph`, owned by PostgresSaver). A checkpoint only exists to resume an
+ * interrupted job, so the worker deletes its thread when the quiz is saved; this removes the threads that were left behind
+ * (a worker that died, a quiz that failed) once their LAST checkpoint is older than `olderThan`. Returns how many threads went.
+ * Does nothing when the schema does not exist yet (no worker has started).
+ */
+export async function deleteOldCheckpointThreads(db: Db, olderThan: Date): Promise<number> {
+  const exists = await db.execute(sql`select to_regclass('langgraph.checkpoints') as t`);
+  if (!exists.rows[0]?.t) return 0;
+  const res = await db.execute(sql`
+    with old as (
+      select thread_id from langgraph.checkpoints group by thread_id having max((checkpoint->>'ts')::timestamptz) < ${olderThan.toISOString()}::timestamptz
+    ), w as (delete from langgraph.checkpoint_writes where thread_id in (select thread_id from old)),
+       b as (delete from langgraph.checkpoint_blobs where thread_id in (select thread_id from old))
+    delete from langgraph.checkpoints where thread_id in (select thread_id from old) returning thread_id`);
+  return new Set(res.rows.map((r) => (r as { thread_id: string }).thread_id)).size;
+}
