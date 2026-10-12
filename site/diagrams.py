@@ -139,10 +139,10 @@ def agent_graph():
     b += text(915, 172, "ok", "alabel", "middle")
     b += arrow(1005, 212, 1005, 330)
     b += arrow(930, 361, 740, 361)
-    b += text(20, 330, "State is saved in Postgres after every node (LangGraph checkpointer):", "note")
-    b += text(20, 348, "if the worker dies, the SQS redelivery resumes from the last node.", "note")
+    b += text(20, 330, "State is saved in Postgres after every node (LangGraph checkpointer),", "note")
+    b += text(20, 348, "so if the worker dies the SQS redelivery resumes from the last node.", "note")
     b += text(20, 372, "Budget per job: 16 calls · 120k tokens · 5 min (survives redelivery).", "note")
-    b += text(20, 396, "A CONTENT failure deletes the checkpoint: the retry regenerates from scratch.", "note")
+    b += text(20, 396, "The checkpoint is deleted when the quiz is saved (or after 24 h); a CONTENT failure deletes it too: the retry regenerates.", "note")
     b += text(20, 420, "The judge is not a node any more: the quiz is saved as ready first, then judged in the scorer service.", "note")
     return svg(1100, 450, b, "The agent (LangGraph): generation, fixed checks and review. The judge runs later, in the scorer")
 
@@ -285,7 +285,7 @@ def cicd():
     b = ""
     b += group(10, 10, 1160, 230, "Pull request (never deploys)", "grp")
     gates = [("quality", "typecheck · lint · tests · eval"), ("integration", "real Postgres"), ("migrations", "drift · policy · applies twice"), ("e2e", "Playwright + Chrome"),
-             ("docker-build", "build + Trivy"), ("terraform-validate", "fmt · validate · Trivy"), ("secrets-scan", "gitleaks"), ("promptfoo", "guard + prompt rules, 81 tests"), ("terraform-plan", "plan on the PR (informational)")]
+             ("docker-build", "build + Trivy"), ("terraform-validate", "fmt · validate · Trivy"), ("secrets-scan", "gitleaks"), ("promptfoo", "guard + prompt rules, 81 tests"), ("terraform-plan", "plan on the PR (informational)"), ("llm-eval-pr", "real model, only if prompts/LLM code changed")]
     for i, (n, s) in enumerate(gates):
         x = 30 + (i % 5) * 226; y = 48 + (i // 5) * 88
         b += box(x, y, 206, 66, n, s, "ci", small=True)
@@ -302,9 +302,9 @@ def cicd():
         if i: b += arrow(x - 20, 458, x, 458)
     b += arrow(645, 384, 645, 408, "")
     b += path("M645 408 L 130 408 L 130 428", "", 0, 0)
-    b += text(750, 345, "deploy: needs all 9 jobs · push to main only", "note")
+    b += text(750, 345, "deploy: needs every gate · push to main only", "note")
     b += text(750, 365, "AWS deploy role: only environment `production` (main only)", "note")
-    return svg(1180, 520, b, "CI/CD: what runs at each stage and what blocks the deploy")
+    return svg(1180, 520, b, "CI/CD: what runs at each stage and what blocks the merge and the deploy")
 
 
 def state_diagram():

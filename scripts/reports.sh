@@ -8,7 +8,7 @@ cd "$(dirname "$0")/.."
 
 pnpm --filter @quizforge/evals report            # docs/eval/structure-comparison.html, from the committed JSON
 if [ -f .local/links.json ]; then
-  (cd site && python3 build.py --public)         # docs/architecture/quizforge-architecture.html
+  (cd site && python3 build.py --public && python3 build.py --full --public)   # docs/architecture/quizforge-architecture.html (short) and -full.html
 else
   echo "skipped the architecture report: .local/links.json is missing (it holds the AWS account's resource ids)"
 fi
