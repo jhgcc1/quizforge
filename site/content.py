@@ -819,7 +819,7 @@ def security():
         ["TLS to the database", "<code>audit-aws.sh</code>: <code>rds.force_ssl=1</code>; clients use verify-full"],
         ["No AWS keys in GitHub", "OIDC; AWS trusts the deploy role only for the <code>production</code> environment, and GitHub lets only <code>main</code> use that environment"],
         ["No secrets in Git", "gitleaks in CI; values set with <code>set-secrets.sh</code>"],
-        ["Everything above, live", "<code>scripts/audit-aws.sh</code>: 39 read-only checks (it now also covers the scorer once that service exists)"],
+        ["Everything above, live", "<code>scripts/audit-aws.sh</code>: 40 read-only checks (it now also covers the scorer once that service exists)"],
     ], widths=["38%", "62%"])
     return sec("security", "Network and security", body)
 
