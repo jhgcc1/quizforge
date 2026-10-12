@@ -237,12 +237,11 @@ Authorization: Bearer <key>
     ], widths=["32%", "44%", "24%"])
     body += '<div class="shots">' + img("langfuse-2-trace.png", "A real trace: the tree of graph nodes and LLM calls") + img("langfuse-3-scores.png", "The scores that arrived by REST, with the judge comment") + "</div>"
 
-    body += "<h3>The LLM evaluation (CI)</h3>" + d.comm_eval()
+    body += "<h3>The LLM evaluation (CI)</h3><p class=note>Only the runs that call a model. The end-to-end test (<code>e2e</code>) uses a fake model and local services only; see the CI/CD section.</p>" + d.comm_eval()
     body += table(["Run", "Talks to", "Needs", "Result"], [
-        ["llm-eval", "MiniMax, Langfuse (HTTPS)", "Keys of the GitHub environment <code>llm-eval</code>", "Exit code: red blocks the deploy; experiments in Langfuse"],
-        ["e2e", "Only localhost (and GitHub, to fetch one README)", "Docker for Postgres and ElasticMQ; a fake LLM", "A green or red check"],
+        ["llm-eval-pr (pull request, when relevant)", "MiniMax only (HTTPS)", "Key of the GitHub environment <code>llm-eval-pr</code>", "Exit code: red blocks the merge; nothing in Langfuse"],
+        ["llm-eval (main and nightly)", "MiniMax, Langfuse (HTTPS)", "Keys of the GitHub environment <code>llm-eval</code>", "Exit code: red blocks the deploy; experiments in Langfuse"],
         ["compare (manual)", "MiniMax, Langfuse, Hugging Face (once)", "The same keys; the model is cached", "HTML report + 18 runs in Langfuse"],
-        ["terraform plan / deploy", "AWS (STS with GitHub OIDC)", "No stored keys: short-lived credentials", "Plan comment; the deploy after approval"],
     ], widths=["20%", "30%", "28%", "22%"])
 
     body += "<h3>Plain HTTP hops, and why they are acceptable</h3>" + table(["Hop", "Plain HTTP because", "What protects it"], [
