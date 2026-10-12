@@ -26,8 +26,8 @@ def img(name, cap):
 
 
 def overview():
-    cards = [("13", "sample documents in the dropdown"), ("3", "layers that validate each request"), ("1", "quality method for production and evals"),
-             ("18", "alarms (3 about quality)"), ("9", "CI gates before any deploy"), ("39", "live AWS security checks")]
+    cards = [("13", "sample documents in the dropdown"), ("8", "guardrail layers on every request"), ("1", "quality method for production and evals"),
+             ("18", "alarms (3 about quality)"), ("9", "CI gates before any deploy"), ("40", "live AWS security checks")]
     c = "".join(f'<div class="card"><div class="num">{n}</div><div>{t}</div></div>' for n, t in cards)
     body = f'<div class="cards">{c}</div>'
     body += d.life_of_quiz()
