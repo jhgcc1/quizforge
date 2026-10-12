@@ -335,7 +335,16 @@ def guardrails():
         ["<code>DAILY_QUIZ_QUOTA</code> and the rate limits", "10 per 24 h; 120 and 10 per minute", "API settings"],
         ["Job budget", "16 calls, 120,000 tokens, 5 minutes", "<code>DEFAULT_LIMITS</code> in <code>budget.ts</code>"],
     ], widths=["30%", "30%", "40%"])
-    body += callout("warn", "What the guardrails do not cover", "A paraphrased attack that matches no keyword is only stopped by the model's own resistance (and the output rails afterwards). The classifier is English only and off in AWS. A subtly wrong but well-formed question is for the judge and the grounding gate, not for a guardrail. Images and files are not read at all. See \"Input security and promptfoo\" for the details and \"Improvements\".")
+    body += callout("warn", "What the content guardrails do not cover", "This warning is about <b>one family only</b>: the guards that read the <i>text of the document</i> (the input guard, the 49 keyword rules, the optional classifier). A paraphrased attack that matches no keyword gets past them, and is then met only by the model's own resistance and the output rails. The classifier is English only and off in AWS. Images and files are not read at all. A subtly wrong but well-formed question is for the judge and the grounding gate, not for a guardrail. The other layers (edge, login, schemas, abuse limits, budget, output rails, data) are not affected by this gap.")
+    body += "<h3>Even if an attack gets past the content guards, the damage is small</h3>" + table(["Why", "How"], [
+        ["The agent has <b>no tools</b>", "The model only returns text. It cannot call a URL, run code, read the database or send an e-mail, so an injected instruction has nothing to act with"],
+        ["The reply must be a quiz", "Output rails and a strict schema: JSON only, 4 options, no script, no new link, no prompt echo. A hijacked reply is rejected and repaired or the job fails"],
+        ["Every question must quote the document", "The quote has to exist literally in the text, so invented content does not survive"],
+        ["The document is data, never instructions", "It is delimited, forged tags are neutralised, and the prompt says never to obey it"],
+        ["The result belongs to the author", "A quiz is private to its owner (the Cognito <code>sub</code>); a poisoned README can only produce a bad quiz for the person who submitted it"],
+        ["Cost is capped", "16 calls, 120,000 tokens, 5 minutes, a daily quota and a WAF rate limit"],
+    ], widths=["30%", "70%"])
+    body += "<p>These are our own checks, written in TypeScript. The Python library called <i>LLM Guard</i> is not used.</p>"
     return sec("guardrails", "Guardrails in execution", body, "What runs on every request, in order, what each layer covers, and where it is tested.")
 
 
