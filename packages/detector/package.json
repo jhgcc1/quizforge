@@ -10,7 +10,8 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "try": "tsx src/try.ts",
-    "corpus": "tsx src/corpus.ts"
+    "corpus": "tsx src/corpus.ts",
+    "benchmark": "tsx src/benchmark.ts"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.3.1",
