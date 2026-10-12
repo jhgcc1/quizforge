@@ -48,6 +48,27 @@ const newQuiz = async (over: Record<string, unknown> = {}) =>
   (await createQuizIdempotent(ctx.db, { ownerSub: "owner", sourceUrl: "https://github.com/o/r/blob/main/README.md", numQuestions: 6, strategy: "single-shot", critique: true, idempotencyKey: randomUUID(), requestHash: "h", ...over })).quiz;
 const status = async (id: string) => (await ctx.db.select().from(schema.quizzes).where(eq(schema.quizzes.id, id)))[0]!;
 
+describe("checkpoints are not kept after a success", () => {
+  it("deletes the checkpoint thread of the job once the quiz is saved", async () => {
+    const cp = new MemorySaver();
+    const spy = vi.spyOn(cp, "deleteThread");
+    const quiz = await newQuiz();
+    const out = await processQuizJob(deps({ checkpointer: cp }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
+    expect(out.kind).toBe("done");
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy.mock.calls[0]![0]).toContain(quiz.id);
+    expect((await status(quiz.id)).status).toBe("ready");
+  });
+
+  it("a failing delete never fails the job", async () => {
+    const cp = new MemorySaver();
+    vi.spyOn(cp, "deleteThread").mockRejectedValue(new Error("db hiccup"));
+    const quiz = await newQuiz();
+    const out = await processQuizJob(deps({ checkpointer: cp }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
+    expect(out.kind).toBe("done");
+  });
+});
+
 describe("content failures vs infrastructure failures", () => {
   it("a QualityGateError deletes the checkpoint thread (retry regenerates); a flaky fetch keeps it (retry resumes)", async () => {
     const cp = new MemorySaver();
