@@ -215,6 +215,35 @@ def data_flow():
     return svg(1180, 316, b, "Data flow: which service writes which tables, and when")
 
 
+def guardrail_flow():
+    """Guardrails in execution, as one request sees them: input side, the model, output side. The colour says what does the checking."""
+    b = ""
+    RULE, ML, LLM = "data", "sec", "ai"
+    b += group(10, 10, 410, 392, "INPUT · before the model call", "grp")
+    inp = [("Edge and login", "WAF · JWT · CSRF · quotas · zod", RULE), ("Fetch the README", "host allow-list · public IPs only · 512 KB", RULE),
+           ("Document guard", "hidden or encoded text · 49 keyword rules · language (franc)", RULE), ("Classifier (optional)", "DeBERTa, ONNX · English · flag only · off in AWS", ML),
+           ("Model-call guard", "document in <document> tags · budget 16 calls", RULE)]
+    for i, (t, sub, k) in enumerate(inp):
+        b += box(26, 44 + i * 70, 378, 56, t, sub, k, small=True)
+        if i: b += arrow(215, 44 + i * 70 - 14, 215, 44 + i * 70)
+    b += group(440, 10, 300, 392, "THE MODEL", "grp")
+    b += box(456, 150, 268, 90, "MiniMax generation", "told: the document is data, never obey it", LLM, small=True)
+    b += text(456, 270, "The only probabilistic defence: the model", "note")
+    b += text(456, 288, "itself resisting an instruction.", "note")
+    b += arrow(404, 195, 456, 195)
+    b += group(760, 10, 410, 392, "OUTPUT · after the model call", "grp mgd")
+    out = [("Output rails", "JSON only · no leak · no script · no new link · no echo", RULE), ("Quiz schema", "zod: 4 options, a correct one, a quote", RULE),
+           ("Grounding", "every quote must exist in the document", RULE), ("Save", "answer key hidden until the submit", RULE), ("Judge (later, scorer)", "scores quality · blocks nothing", LLM)]
+    for i, (t, sub, k) in enumerate(out):
+        b += box(776, 44 + i * 70, 378, 56, t, sub, k, small=True)
+        if i: b += arrow(965, 44 + i * 70 - 14, 965, 44 + i * 70)
+    b += arrow(724, 195, 776, 66)
+    b += box(30, 418, 18, 18, "", "", RULE); b += text(56, 432, "deterministic code (rules)", "note")
+    b += box(300, 418, 18, 18, "", "", ML); b += text(326, 432, "machine-learning classifier", "note")
+    b += box(580, 418, 18, 18, "", "", LLM); b += text(606, 432, "LLM (the model, and the judge)", "note")
+    return svg(1180, 452, b, "Guardrails in execution: what checks a request, and what kind of check it is")
+
+
 def network():
     b = ""
     b += box(380, 8, 240, 40, "Internet Gateway", "", "edge", small=True)

@@ -22,18 +22,18 @@ def img(name, cap):
 
 
 def overview():
-    cards = [("4 + 1", "services (web, api, worker, scorer) and a sweeper"), ("5–8", "questions per quiz, 4 options each"), ("8", "layers of guardrails"),
+    cards = [("4 + 1", "services (web, api, worker, scorer) and a sweeper"), ("5–8", "questions per quiz, 4 options each"), ("11", "checks on every request, one an ML model"),
              ("10", "CI jobs on a pull request, 8 required"), ("500+", "automated tests, 100+ on prompt safety"), ("~$0.01", "per quiz, measured")]
     c = "".join(f'<div class="card"><div class="num">{n}</div><div>{t}</div></div>' for n, t in cards)
     body = f'<div class="cards">{c}</div>'
     body += "<p>QuizForge is an AI agent that reads a Markdown README (a URL), writes a 5–8 question multiple-choice quiz, lets a user take it in a web app and computes a weighted score. It runs on AWS, is built with Terraform and deployed by GitHub Actions. Every quiz is traced and scored in Langfuse.</p>"
     body += "<h3>The assignment, and where each part lives</h3>" + table(["Requirement", "Where it is", "Section"], [
         ["Generate a quiz of 5–8 questions with 4 options from a README at a configurable URL", "<code>POST /v1/quizzes {sourceUrl}</code>; an agent (LangGraph) in the <b>worker</b> service", "Agent"],
-        ["Run the quiz, correct it, compute the final weighted score (+10% weight per question)", "Web UI (Next.js) and API; the score is plain code: <code>Σ(1.1^(i−1) · score_i) / Σ(1.1^(i−1))</code>", "Score"],
+        ["Run the quiz, correct it, compute the final weighted score (+10% weight per question)", "Web UI (Next.js) and API; the score is plain code: <code>Σ(1.1^(i−1) · score_i) / Σ(1.1^(i−1))</code>", "Agent and score"],
         ["Store questions, answers and the final score in a database", "PostgreSQL: 9 tables, every answer saved at the click", "Data model"],
         ["REST API and web UI", "Fastify (OpenAPI at <code>/docs</code>) and Next.js with a login by Amazon Cognito", "Architecture"],
         ["Production-ready, not a PoC", "Terraform on AWS, autoscaling, retries and a dead-letter queue, alarms, CI/CD with gates, pause and resume", "Architecture · CI/CD · Cost"],
-        ["LLM observability and several generation strategies (nice to have)", "Langfuse traces, costs and scores; <code>single-shot</code> and <code>section-map-reduce</code> chosen by a router, plus critique and revise", "Quality · Agent"],
+        ["LLM observability and several generation strategies (nice to have)", "Langfuse traces, costs and scores; <code>single-shot</code> and <code>section-map-reduce</code> chosen by a router, plus critique and revise", "Quality · Agent and score"],
     ], widths=["40%", "46%", "14%"])
     return sec("summary", "What it is", body)
 
@@ -100,17 +100,13 @@ def agent():
         ["Resume after a crash", "LangGraph checkpoints in Postgres: a restarted worker continues without repeating paid calls. They are deleted when the quiz is saved, and after 24 h at the latest"],
         ["Models", "Generator MiniMax-M2.7, judge MiniMax-M3 (a different model, to reduce self-preference); both through one OpenAI-compatible client"],
     ], widths=["24%", "76%"])
-    return sec("agent", "The agent", body)
-
-
-def score():
-    body = table(["Level", "Formula", "Where it is stored"], [
-        ["One question", "<code>4 × max(0, (hits − misses) / K)</code>, K = number of correct options (a single-answer question is 4 or 0)", "<code>answers.score</code>"],
+    body += "<h3>The score (no AI)</h3>" + table(["Level", "Formula", "Stored in"], [
+        ["One question", "<code>4 × max(0, (hits − misses) / K)</code>, K = number of correct options (single answer: 4 or 0)", "<code>answers.score</code>"],
         ["Weight of a question", "<code>1.1^(position − 1)</code>: each later question weighs 10% more", "<code>answers.weight</code>"],
         ["Final score (0 to 4)", "<code>Σ(weight × score) / Σ(weight)</code>; percentage = score / 4", "<code>attempts.final_score</code>"],
-    ], widths=["22%", "52%", "26%"])
-    body += callout("ok", "No AI in the score", "The score is computed by the server from the stored answer key and selections (<code>packages/core/src/scoring.ts</code>), with table and property-based tests. The LLM judge grades the <b>quality of the quiz</b>, never the user's answers.")
-    return sec("score", "Score", body)
+    ], widths=["22%", "54%", "24%"])
+    body += "<p>Computed by the server from the stored answer key and selections (<code>packages/core/src/scoring.ts</code>), never from a number sent by the browser. The LLM judge grades the <b>quality of the quiz</b>, not the user's answers.</p>"
+    return sec("agent", "The agent and the score", body)
 
 
 def quality():
@@ -119,22 +115,35 @@ def quality():
         ["Every quiz is scored", "One function: fixed checks (grounding, formatting, diversity, coverage) plus an LLM judge (median of 3), run by the scorer service. Same function in production and in the evals", "After each quiz"],
         ["Langfuse", "Used for traces (each step, tokens, cost), the quality scores of each quiz, and experiments on the golden set. Details in the full report", "Production, main, nightly"],
         ["Golden set", "5 documents (including Portuguese and a prompt-injection one) with minimum thresholds, for example grounded = 1 and mean judge ≥ 0.70. A red result blocks the deploy", "On a pull request that touches prompts or LLM code, on main, every night"],
-        ["promptfoo", "81 offline tests (attack corpus, language, bad model replies) on every PR; 21 live tests against the real model", "PR · main · nightly"],
         ["Alarms", "Low average quality, high daily cost, dead-letter queue, 5xx, CPU: e-mail through SNS", "Always"],
     ], widths=["20%", "56%", "24%"])
-    return sec("quality", "Quality and observability", body)
+    return sec("quality", "Quality and Langfuse", body)
 
 
-def security():
-    body = d.guardrail_layers()
+def guardrails():
+    body = d.guardrail_flow()
+    body += table(["", "Deterministic rules (code)", "A model"], [
+        ["<b>Input</b> (README and request)", "WAF, JWT, CSRF, strict schemas, quotas · host allow-list and public IPs only · hidden or encoded text, 49 keyword rules, language policy (en, pt, es; statistical, no model call) · the model-call guard", "<b>One ML model, optional:</b> a DeBERTa classifier (<code>protectai/deberta-v3-base-prompt-injection-v2</code>, ONNX, English only) that <b>flags</b> a document, never blocks. Off in AWS, on in the local stack"],
+        ["<b>The model call</b>", "The document is sent as data inside <code>&lt;document&gt;</code> tags; budget of 16 calls", "<b>The generation LLM itself</b> is told never to obey the document. This is the only probabilistic defence"],
+        ["<b>Output</b> (the reply)", "Output rails (JSON only, no prompt leak, no script, no new link, no echoed attack), the zod schema, the literal-quote grounding, the answer key hidden until the submit", "<b>None.</b> No model checks the reply for injection. The LLM judge scores quality after the quiz is saved and blocks nothing"],
+    ], widths=["16%", "46%", "38%"])
+    body += callout("ok", "Rules first, models second", "Every rule is cheap, deterministic and tested, and a threat is stopped by the first layer that can see it. A model is used only where a rule cannot decide (a paraphrased injection), and only to <b>flag</b>. Measured honestly on a public dataset of 500 samples: the guard caught 28% of the English injections, the classifier 39%, both 47%, with no false positives in the English subset. So the model resisting, and the output rails, matter.")
+    return sec("guardrails", "Guardrails in execution", body, "What happens to every request, in order, and what kind of check each step is.")
+
+
+def promptfoo():
+    body = table(["Suite", "Runs", "Model", "Tests"], [
+        ["<b>Offline</b>", "Every pull request", "A fake model with fixed answers: free and instant", "81: the whole attack corpus, language policy, bad topics, bad model replies, prompt safety rules"],
+        ["<b>Live</b>", "A pull request that touches prompts or LLM code, every merge to main, every night", "The real MiniMax model, as the thing being tested", "21: does the real model follow an instruction hidden in a document, write something that is not a quiz, or leave its purpose?"],
+    ], widths=["12%", "30%", "28%", "30%"])
     body += table(["Question", "Answer"], [
-        ["Can a user read another user's quiz?", "No. The identity is the <code>sub</code> of a verified Cognito token (signature, issuer, expiry, client); the API reads nothing else. Every query filters by it, and a foreign id answers 404. A test tries it"],
-        ["Can someone flood the site?", "Layers: WAF (1000 per 5 min per IP), 120 requests a minute per user, 10 quiz creations a minute, 10 quizzes a day, a queue that limits model calls. Not covered: a distributed attack from many IPs"],
-        ["Can the README URL point anywhere?", "No. Only <code>https</code> to <code>github.com</code> and <code>raw.githubusercontent.com</code>; the name is resolved and private addresses are blocked; redirects are re-checked; 10 s and 512 KB limits"],
-        ["What if the README contains a prompt injection?", "It is treated as data: hidden or encoded text is rejected, only English, Portuguese and Spanish are accepted, the document is delimited in the prompt, and the reply must be only the quiz JSON with a literal quote. Output rails check it. A public benchmark of 500 samples measured the first layer honestly (modest recall, no false positives)"],
-        ["What about CORS and CSRF?", "No CORS: the browser only talks to its own origin and the BFF holds the cookie; the BFF blocks cross-site requests"],
-    ], widths=["30%", "70%"])
-    return sec("security", "Security and guardrails", body, "Eight layers, from the edge to the data. A threat is stopped by the first layer that can see it.")
+        ["What is it?", "A test runner for prompts. It runs the <b>real pipeline</b> (guard, prompts, output rails) against one attack corpus (<code>packages/core/src/attacks.ts</code>, shared with the unit tests)"],
+        ["Is it a guardrail?", "No. It protects no user: it <b>proves</b>, before each deploy, that the guardrails above still work. A pull request that breaks one cannot merge"],
+        ["Where is a model used?", "Only as the system under test in the live suite. <b>Every assertion is plain code</b> (blocked, rejected language, accepted quiz, injected marker absent, on purpose); no model judges another model"],
+        ["Does it work?", "Checked by mutation: removing a rule from a prompt, or switching off the Base64 detector, turns the suite red"],
+    ], widths=["22%", "78%"])
+    body += '<div class="shots">' + img("demo-1-fail-run.png", "A pull request with a hidden prompt injection: promptfoo and quality fail, the merge is blocked") + img("demo-5-ok-pr-run.png", "A pull request that passes: every gate is green") + "</div>"
+    return sec("promptfoo", "promptfoo: proving the guardrails", body, "The tests behind the guardrails.")
 
 
 def cicd():
@@ -144,7 +153,6 @@ def cicd():
         ["Merge to main", "The same checks, then the real-model evaluation, then <b>publish-prompts</b> (the only way a prompt reaches Langfuse)", "The deploy"],
         ["Deploy", "Build ARM64 images tagged with the git sha → drift check → <b>migration before the new code</b> → Terraform apply with a rolling update and automatic rollback → smoke test", "A human approval in the <code>production</code> environment; the AWS role is assumed by OIDC, no stored keys"],
     ], widths=["16%", "54%", "30%"])
-    body += '<div class="shots">' + img("demo-1-fail-run.png", "A pull request with a hidden prompt injection: promptfoo and quality fail, the merge is blocked") + img("demo-5-ok-pr-run.png", "A pull request that passes: every gate is green") + "</div>"
     return sec("cicd", "CI/CD", body)
 
 
@@ -159,31 +167,18 @@ def cost():
     return sec("cost", "Cost and standby", body)
 
 
-def decisions():
-    body = table(["Decision", "Instead of", "Why"], [
-        ["Four separate services and a queue", "One server calling the model in the request", "A slow, paid, failing step is isolated; the API stays fast; concurrency is capped"],
-        ["The judge runs <b>after</b> the quiz is ready (scorer)", "Judging before saving", "The user waits ~30 s less, and a judge failure never loses a quiz"],
-        ["Score in plain code", "An LLM grading answers", "Exact, free, testable; the model only grades quiz quality"],
-        ["PostgreSQL for data <b>and</b> checkpoints", "Redis for checkpoints", "No extra service (about US$12 a month); the same effect with a delete on success and a 24 h sweep. Redis is a listed future step"],
-        ["Prompts in Git, pushed to Langfuse only by the pipeline", "Editing prompts in the Langfuse UI", "A prompt cannot reach Langfuse without passing the gates"],
-        ["Real-model evaluation on PRs that need it", "On every PR, or only after the merge", "Quality blocks the merge, and a PR without prompt or LLM changes costs nothing"],
-        ["CloudFront address, no domain", "A domain and certificate", "No domain available"],
-    ], widths=["32%", "24%", "44%"])
-    return sec("decisions", "Main decisions", body)
-
-
-def limits():
-    body = table(["Limit or risk", "What would fix it"], [
-        ["No custom domain: TLS 1.0 and up on the CloudFront address, plain HTTP between CloudFront and the load balancer inside AWS", "A domain with an ACM certificate"],
-        ["One NAT gateway and a single-zone database", "Flags exist for multi-zone (about +$50 a month)"],
-        ["A distributed flood (many IPs) is only limited by autoscaling", "Shield Advanced, or country and reputation rules in the WAF"],
-        ["The guard catches explicit patterns (28% of the English public dataset, no false positives); the rest relies on the model and the other layers", "A multilingual classifier, more keyword languages, red-team generated attacks"],
-        ["The README host list allows any public GitHub repository", "Restrict to the catalog or to a list of owners"],
-        ["Only 5 golden documents, so small differences are noise", "More documents and repeated runs"],
-        ["The MiniMax and Langfuse keys appeared in chat and must be rotated; the alarm e-mail needs its AWS confirmation", "Rotate, then confirm the subscription"],
-        ["Checkpoints could move to Redis or Valkey with a native TTL", "Only if their write load shows up in the database metrics"],
-    ], widths=["62%", "38%"])
-    return sec("limits", "Limits and next steps", body)
+def tradeoffs():
+    body = table(["Topic", "What we chose", "What would change it"], [
+        ["Agent checkpoints", "In Postgres, deleted when the quiz is saved and after 24 h at the latest: no extra service", "Redis or Valkey with a native TTL (about US$12 a month), only if the checkpoint writes show up in the database metrics"],
+        ["Address and TLS", "The CloudFront address, TLS 1.0 and up, plain HTTP between CloudFront and the load balancer inside AWS", "A domain with an ACM certificate"],
+        ["Availability", "One NAT gateway and a single-zone database", "Flags exist for multi-zone, about +$50 a month"],
+        ["A distributed flood", "Limited by the WAF per IP and by autoscaling", "Shield Advanced, or country and reputation rules"],
+        ["README sources", "Any public GitHub repository (host allow-list)", "Restrict to the catalog or to a list of owners"],
+        ["Guard coverage", "Explicit patterns; the rest relies on the model and the output rails", "A multilingual classifier, more keyword languages, red-team generated attacks"],
+        ["Evaluation size", "5 golden documents: small differences are noise", "More documents and repeated runs"],
+        ["Keys", "The MiniMax and Langfuse keys appeared in chat; the alarm e-mail needs its confirmation", "Rotate the keys, confirm the subscription"],
+    ], widths=["20%", "46%", "34%"])
+    return sec("tradeoffs", "Trade-offs and next steps", body, "What was decided on purpose, and what would change it.")
 
 
 def links():
@@ -201,17 +196,17 @@ def links():
         ["1", "What it is", "The assignment and where each requirement lives"],
         ["2", "Architecture", "Why four services and a queue: the model is slow, costly and fails"],
         ["2", "One quiz, end to end · Data model", "The two flows, and the tables that hold questions, answers and the score"],
-        ["2", "The agent · Score", "Router, literal quotes, critique, a budget; the score is plain code"],
-        ["1", "Quality · Security", "Every quiz is scored; eight layers; no user can read another's data"],
-        ["1", "CI/CD · Cost", "Gates block merge and deploy; paused for US$8 a month, switched on in 9 minutes"],
-        ["1", "Decisions · Limits", "Trade-offs and what would come next"],
+        ["2", "The agent and the score", "Router, literal quotes, critique, a budget; the score is plain code"],
+        ["2", "Guardrails · promptfoo", "Rules first, one ML model only to flag; promptfoo proves the guardrails before every deploy"],
+        ["1", "Quality and Langfuse · CI/CD", "Every quiz is scored; gates block merge and deploy"],
+        ["1", "Cost · Trade-offs", "Paused for US$8 a month, on in 9 minutes; what was decided and what would change it"],
     ], widths=["10%", "34%", "56%"])
     return sec("links", "Links and the presentation path", body)
 
 
 def all_sections():
-    return [overview(), architecture(), flow(), data(), agent(), score(), quality(), security(), cicd(), cost(), decisions(), limits(), links()]
+    return [overview(), architecture(), flow(), data(), agent(), guardrails(), promptfoo(), quality(), cicd(), cost(), tradeoffs(), links()]
 
 
-NAV = [("summary", "What it is"), ("architecture", "Architecture"), ("flow", "End to end"), ("data", "Data model"), ("agent", "Agent"), ("score", "Score"), ("quality", "Quality"), ("security", "Security"),
-       ("cicd", "CI/CD"), ("cost", "Cost"), ("decisions", "Decisions"), ("limits", "Limits"), ("links", "Links")]
+NAV = [("summary", "What it is"), ("architecture", "Architecture"), ("flow", "End to end"), ("data", "Data model"), ("agent", "Agent and score"), ("guardrails", "Guardrails"), ("promptfoo", "promptfoo"),
+       ("quality", "Quality"), ("cicd", "CI/CD"), ("cost", "Cost"), ("tradeoffs", "Trade-offs"), ("links", "Links")]
