@@ -194,6 +194,27 @@ def er():
     return svg(1260, 580, b, "Data model (PostgreSQL) and its invariants")
 
 
+def data_flow():
+    b = ""
+    steps = [
+        ("1 · Create", "API", "compute", ["quizzes", "(status queued)"]),
+        ("2 · Generate", "worker", "ai", ["sources", "generation_jobs", "questions + options", "quizzes → ready"]),
+        ("3 · Judge", "scorer", "ai", ["eval_scores", "generation_jobs", "(scored_at, cost)"]),
+        ("4 · Answer", "API", "compute", ["attempts", "answers", "answer_selections"]),
+        ("5 · Submit", "API", "compute", ["answers.score, weight", "attempts.final_score", "attempts.status"]),
+    ]
+    for i, (n, who, k, tables) in enumerate(steps):
+        x = 20 + i * 232
+        b += box(x, 40, 206, 66, n, who, k, small=True)
+        if i: b += arrow(x - 26, 73, x, 73)
+        b += group(x, 130, 206, 30 + len(tables) * 22, "writes", "grp sub")
+        for j, t in enumerate(tables):
+            b += text(x + 14, 168 + j * 22, "• " + t, "note")
+    b += text(20, 270, "Reads: the browser polls the quiz until it is ready (3 tables, no answer key); the history reads quizzes + attempts; the result reads everything of one submitted attempt.", "note")
+    b += text(20, 292, "Each arrow is one database transaction: a step either writes all of its tables or none.", "note")
+    return svg(1180, 316, b, "Data flow: which service writes which tables, and when")
+
+
 def network():
     b = ""
     b += box(380, 8, 240, 40, "Internet Gateway", "", "edge", small=True)

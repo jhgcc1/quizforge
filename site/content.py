@@ -778,17 +778,67 @@ def secrets():
 
 
 def data():
-    body = d.er()
+    body = callout("ok", "The requirement and where it lives", "“Store questions, answers and the final score in a database.” <b>Questions</b> are in <code>questions</code> and <code>options</code>; the <b>answers</b> of a user are in <code>answers</code> and <code>answer_selections</code>; the <b>final score</b> is <code>attempts.final_score</code> (and the score of each question is <code>answers.score</code>). Everything is PostgreSQL 16 (RDS), 9 tables in the main schema plus the agent checkpoints in a separate schema. The definition is in <code>packages/db/src/schema.ts</code>; the SQL migrations are in <code>packages/db/migrations</code>.")
+    body += d.er()
+    body += "<h3>The tables and how they relate</h3>" + table(["Table", "One row is…", "Key columns", "Relations", "Written by"], [
+        ["<code>sources</code>", "A README as downloaded, stored once per content", "<code>content_sha256</code> UNIQUE, <code>content_text</code>, <code>url</code>", "1 : N <code>quizzes</code> (a quiz points to its source)", "worker"],
+        ["<code>quizzes</code>", "One request to generate a quiz", "<code>owner_sub</code>, <code>status</code> (queued, generating, ready, failed), <code>strategy_requested/used</code>, <code>num_questions</code> (the real count), <code>idempotency_key</code>", "N : 1 <code>sources</code>; 1 : N <code>generation_jobs</code>, <code>questions</code>, <code>attempts</code> (all deleted with the quiz)", "API (creates), worker (ready or failed), sweeper (failed)"],
+        ["<code>generation_jobs</code>", "One generation run of a quiz (a quiz can be retried)", "tokens, <code>cost_usd</code>, <code>langfuse_trace_id</code>, <code>budget_state</code>, <code>scored_at</code>", "N : 1 <code>quizzes</code>", "worker, scorer"],
+        ["<code>questions</code>", "One question of a quiz", "<code>position</code> 1–8, <code>type</code> (single, multiple), <code>explanation</code>, <code>source_quote</code>, <code>difficulty</code>", "N : 1 <code>quizzes</code>; 1 : 4 <code>options</code>", "worker (all questions of a quiz in one transaction)"],
+        ["<code>options</code>", "One of the 4 choices of a question", "<code>position</code> 1–4, <code>text</code>, <code>is_correct</code>", "N : 1 <code>questions</code>", "worker"],
+        ["<code>attempts</code>", "One go at a quiz by one user", "<code>user_sub</code>, <code>status</code> (in_progress, submitted), <code>final_score</code> 0–4, <code>scoring_version</code>", "N : 1 <code>quizzes</code>; 1 : N <code>answers</code>", "API"],
+        ["<code>answers</code>", "The answer to one question inside an attempt", "<code>revision</code>, <code>score</code> 0–4, <code>weight</code>", "N : 1 <code>attempts</code>; N : 1 <code>questions</code>; 1 : N <code>answer_selections</code>", "API (saves), API at submit (score and weight)"],
+        ["<code>answer_selections</code>", "One option chosen in an answer", "composite key (<code>answer_id</code>, <code>option_id</code>)", "N : 1 <code>answers</code>; N : 1 <code>options</code> (a real foreign key)", "API"],
+        ["<code>eval_scores</code>", "One quality score of a quiz (judge, checks)", "<code>target_type</code>, <code>target_id</code>, <code>evaluator</code>, <code>value</code>, <code>reasoning</code>", "points to a quiz by id (no foreign key, see below)", "scorer"],
+        ["schema <code>langgraph</code>", "A checkpoint of the agent between two steps", "managed by LangGraph (<code>PostgresSaver</code>)", "none with the tables above (thread id = quiz and job)", "worker; deleted when the quiz is saved, and after 24 h at the latest"],
+    ], widths=["14%", "20%", "28%", "24%", "14%"])
+    body += "<h3>The data flow</h3>" + d.data_flow()
+    body += table(["Moment", "What is written", "How it stays correct"], [
+        ["The user asks for a quiz", "A <code>quizzes</code> row, status <code>queued</code>", "<code>UNIQUE (owner_sub, idempotency_key)</code> + a hash of the body: the same request twice gives the same quiz"],
+        ["The worker generates", "<code>sources</code> (once per content), a <code>generation_jobs</code> row, then all <code>questions</code> and <code>options</code> and <code>quizzes.status = ready</code> <b>in one transaction</b>", "The user never sees half a quiz. A redelivered message does not repeat it (the claim is an <code>UPDATE … WHERE status = 'queued'</code>)"],
+        ["The scorer judges (after ready)", "<code>eval_scores</code> rows and <code>generation_jobs.scored_at</code>", "A lease and a row lock: two scorers never write the scores twice"],
+        ["The user answers", "An <code>attempts</code> row on the first answer, then an <code>answers</code> row and its <code>answer_selections</code> for each question, <b>at the moment of the click</b>", "Upsert by (attempt, question) guarded by <code>revision</code>; reloading the page loses nothing"],
+        ["The user submits", "For each question <code>answers.score</code> and <code>answers.weight</code> (an unanswered question gets 0), then <code>attempts.final_score</code>, <code>scoring_version</code>, status <code>submitted</code>", "One transaction with <code>SELECT … FOR UPDATE</code>: a second submit returns the saved result, never scores twice. After this the answers are locked"],
+        ["The user comes back", "Nothing is written", "The history is read from <code>quizzes</code> and <code>attempts</code> (last and best score are computed, not stored twice); only rows of the user's own <code>sub</code>"],
+    ], widths=["22%", "42%", "36%"])
+    body += "<h3>How the score is stored</h3>" + table(["Level", "Where", "Formula"], [
+        ["One question", "<code>answers.score</code> (0 to 4)", "<code>4 × max(0, (hits − misses) / K)</code>, K = number of correct options. A single-answer question is 4 or 0"],
+        ["The weight of a question", "<code>answers.weight</code>", "<code>1.1^(position − 1)</code>: later questions weigh 10% more each"],
+        ["The final score", "<code>attempts.final_score</code> (0 to 4) and the percentage = score / 4", "<code>Σ(weight × score) / Σ(weight)</code>"],
+        ["Which rule was used", "<code>attempts.scoring_version</code>", "If the formula changes, old attempts keep the version they were scored with"],
+    ], widths=["24%", "34%", "42%"])
+    body += "<p>The score is computed by the server from what is stored (the answer key and the selections), never from a number sent by the browser. The code is <code>packages/core/src/scoring.ts</code> and <code>submitAttempt</code> in <code>packages/db/src/repo.ts</code>.</p>"
+    body += "<h3>Why it is modelled this way</h3>" + table(["Decision", "Why", "Trade-off"], [
+        ["Options in their own table, with <code>is_correct</code> on the option", "A question has 4 options and 1 or more correct ones; the answer key is a column, so a multi-answer question needs no special structure. The API never sends <code>is_correct</code> before the attempt is submitted", "A join to read a question; the key lives with the data, so it must never be selected for the browser"],
+        ["<code>answer_selections</code> instead of an array column", "A real foreign key to the chosen option: the database refuses an option that does not exist, and a score query is a plain join", "One more table and row per choice"],
+        ["A score for each answer <b>and</b> a final score on the attempt", "The user can see why they got the score, and the breakdown is kept even if the formula changes later", "A little redundancy, written in the same transaction"],
+        ["<code>generation_jobs</code> apart from <code>quizzes</code>", "A quiz can be generated more than once; cost, tokens, trace id and retry budget belong to the run, not to the quiz", "One more table"],
+        ["No <code>users</code> table", "The identity provider (Cognito) is the source of truth; the table keeps only its <code>sub</code> as <code>owner_sub</code> and <code>user_sub</code>, and every query filters by it", "No profile data here; a deleted Cognito user leaves orphan rows (they stay private)"],
+        ["<code>sources</code> deduplicated by content hash", "The same README is stored once however many users ask for it (public text, not user data)", "The worker still downloads it on every job"],
+        ["<code>eval_scores</code> with <code>target_type</code> and <code>target_id</code> and no foreign key", "One table for the scores of a quiz, a question or an attempt, so a new evaluator needs no migration", "The database does not check that the target exists; the scorer only writes quizzes it just read"],
+        ["Cascade from the quiz down to the attempts", "Deleting a quiz removes its questions, options, jobs, attempts and answers. The answers point to a question <b>without</b> cascade, so a question cannot disappear under an answer", "Deletion is only done by hand today (no delete endpoint)"],
+        ["The agent checkpoints in a separate schema, with a retention", "They are working memory of a run, not product data. Deleted when the quiz is saved, and any thread older than 24 h by the sweeper", "See Decisions: why not Redis"],
+    ], widths=["28%", "44%", "28%"])
     body += "<h3>Rules enforced by the database</h3>" + table(["Rule", "How"], [
         ["The same request twice gives the same quiz", "<code>UNIQUE (owner_sub, idempotency_key)</code> + body hash (different body → 422)"],
         ["One active attempt per user and quiz", "Partial unique index <code>WHERE status = 'in_progress'</code>"],
         ["A late retry cannot overwrite a newer answer", "Monotonic <code>revision</code>: <code>UPDATE … WHERE revision &lt; $n</code>"],
         ["Submitting twice does not score twice", "<code>SELECT … FOR UPDATE</code>; the second call returns the saved result"],
         ["5–8 questions, 4 options, at least 1 correct", "<code>CHECK</code>s on the number of questions (5–8) and the positions (questions 1–8, options 1–4) + <code>UNIQUE(position)</code>; \"exactly 4 options\" and \"at least 1 correct\" are checked by the zod schema before insert"],
+        ["A score is between 0 and 4", "<code>CHECK</code> on <code>attempts.final_score</code> and <code>answers.score</code>"],
         ["The chosen option exists and belongs to the question", "Foreign key to <code>options</code>; that the option belongs to the question is checked by the API (422 <code>invalid_answer</code>)"],
         ["The same document text is stored once", "<code>sources.content_sha256 UNIQUE</code> (the worker still downloads the README on every job)"],
+        ["Another user's data is invisible", "Every query filters by <code>owner_sub</code> or <code>user_sub</code>; another user's id answers 404"],
     ], widths=["40%", "60%"])
-    return sec("data", "Data model", body)
+    body += "<h3>Files</h3>" + table(["File", "What it holds"], [
+        ["<code>packages/db/src/schema.ts</code>", "The tables, enums, keys and checks (Drizzle)"],
+        ["<code>packages/db/migrations/</code>", "The versioned SQL migrations (run as a one-off task before each deploy; expand and contract)"],
+        ["<code>packages/db/src/repo.ts</code>", "Every query: create, claim, complete, save answer, submit, score, history, retention"],
+        ["<code>packages/core/src/scoring.ts</code>", "The score formulas (pure functions, with table and property tests)"],
+        ["<code>packages/core/src/schemas.ts</code>", "The shared zod schemas of what goes in and out of the API"],
+        ["<code>packages/db/src/schema.int.test.ts</code>", "Tests of the constraints against a real PostgreSQL"],
+    ], widths=["40%", "60%"])
+    return sec("data", "Data model", body, "How the questions, the answers and the final score are stored: the tables, how they relate, what is written at each step, and why.")
 
 
 def security():
