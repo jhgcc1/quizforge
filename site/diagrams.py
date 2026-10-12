@@ -785,6 +785,36 @@ def repo_structure():
     return svg(970, 438, b, "Where things live in the repository")
 
 
+def guardrail_zones():
+    """The same guardrails, by WHEN they run: in the pipeline, or in a user's request (before and after the model call)."""
+    b = ""
+    b += group(10, 10, 380, 470, "CI/CD · before deploy, never in a request", "grp ext")
+    ci = [("promptfoo offline · 81 tests", "every PR: real pipeline, fake model"), ("promptfoo live · 21 tests", "real model: PR (if relevant), main, nightly"),
+          ("Golden set · real model", "quality gates: grounded, lint, judge, diversity…"), ("Unit tests", "guard, 49 rules, schemas, output rails, scoring"),
+          ("Attack corpus", "one source for vitest and promptfoo"), ("Prompt lock + PROMPT_VERSION", "a prompt cannot change by accident"),
+          ("Benchmark · 500 public samples", "run by hand: detection and false positives")]
+    for i, (t, sub) in enumerate(ci):
+        b += box(26, 44 + i * 60, 348, 50, t, sub, "ci", small=True)
+    b += text(26, 470, "They prove the guardrails work. They do not run for a user.", "note")
+    b += group(410, 10, 440, 470, "AT RUN · BEFORE the generation call", "grp")
+    pre = [("1 · Edge, login, request, limits", "WAF · JWT · CSRF · zod · quota · rate limit", "edge"), ("2 · Fetch the document", "URL allow-list · public IPs only · 512 KB", "compute"),
+           ("3 · Input guard", "hidden or encoded text · 49 rules · language en/pt/es", "ai"), ("4 · Classifier (optional)", "ONNX model · English · flag only · OFF in AWS", "ai"),
+           ("5 · Model-call guard", "guardLlm · <document> tags · budget 16 calls", "ai")]
+    for i, (t, sub, k) in enumerate(pre):
+        b += box(426, 44 + i * 80, 408, 62, t, sub, k, small=True)
+        if i: b += arrow(630, 44 + i * 80 - 18, 630, 44 + i * 80)
+    b += text(426, 470, "Fail here: the model is never called (llmCalls = 0).", "note")
+    b += group(870, 10, 400, 470, "AT RUN · AFTER the generation call", "grp mgd")
+    post = [("MiniMax · the generation call", "the only probabilistic step", "ext"), ("6 · Output rails", "JSON only · no prompt leak · no script · no new link", "data"),
+            ("7 · Quiz schema + repair", "zod: 4 options, ≥1 correct, a quote", "data"), ("8 · Grounding", "every quote must exist in the document", "data"),
+            ("9 · Save, answer key hidden", "ready · is_correct never sent before submit", "mgd"), ("10 · Judge (scorer, later)", "scores the saved quiz; blocks nothing", "ai")]
+    for i, (t, sub, k) in enumerate(post):
+        b += box(886, 44 + i * 70, 368, 56, t, sub, k, small=True)
+        if i: b += arrow(1070, 44 + i * 70 - 14, 1070, 44 + i * 70)
+    b += arrow(834, 364, 886, 72, "", dash=True)
+    return svg(1280, 490, b, "Guardrails by moment: the pipeline proves them, the request runs them (before and after the model)")
+
+
 def guardrail_layers():
     """Every guardrail in the order a request meets it, and what each layer stops."""
     b = ""
