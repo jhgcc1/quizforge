@@ -711,7 +711,7 @@ def promptfoo_flow():
     b += text(790, 86, "· plain instructions arrive sanitized, in tags", "note")
     b += text(790, 104, "· the prompts keep their safety rules", "note")
     b += text(790, 140, "Live proves the MODEL does not obey:", "note")
-    b += text(790, 160, "· plain instructions in 7 languages, 9 places", "note")
+    b += text(790, 160, "· plain instruction written in 7 languages, hidden in 9 places", "note")
     b += text(790, 178, "· requests for a poem, a joke, physics, prices", "note")
     b += text(790, 196, "· a clean document still gives a normal quiz", "note")
     b += text(10, 300, "The attack corpus is ONE file (packages/core/src/attacks.ts): vitest and promptfoo test the same attacks.", "note")
