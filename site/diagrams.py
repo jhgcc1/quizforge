@@ -143,7 +143,7 @@ def agent_graph():
     b += text(20, 348, "so if the worker dies the SQS redelivery resumes from the last node.", "note")
     b += text(20, 372, "Budget per job: 16 calls · 120k tokens · 5 min (survives redelivery).", "note")
     b += text(20, 396, "The checkpoint is deleted when the quiz is saved (or after 24 h); a CONTENT failure deletes it too: the retry regenerates.", "note")
-    b += text(20, 420, "The judge is not a node any more: the quiz is saved as ready first, then judged in the scorer service.", "note")
+    b += text(20, 420, "The judge is not a node of the graph: the quiz is saved as ready first, then judged in the scorer service.", "note")
     return svg(1100, 450, b, "The agent (LangGraph): generation, fixed checks and review. The judge runs later, in the scorer")
 
 
@@ -480,7 +480,7 @@ def judge_time_chart():
     graph = [10.9, 38.8, 27.9, 35.2, 13.1, 33.0, 28.4, 61.1, 26.9, 14.5, 16.7, 23.1, 10.4]
     judge = [18.6, 17.9, 18.1, 18.3, 13.1, 22.4, 15.1, 15.7, 21.0, 32.7, 32.3, 14.8, 27.5]
     return bar_chart(980, 300, {"generation (the graph)": graph, "judge + scoring": judge},
-                     "Seconds per generation, 13 real traces: the judge adds 13–33 s before the quiz is ready", ymax=90, labels=[str(i + 1) for i in range(13)])
+                     "Seconds per generation, 13 real traces: the judge and scoring take 13–33 s on top of the graph", ymax=90, labels=[str(i + 1) for i in range(13)])
 
 
 def scoring_flows():
@@ -493,11 +493,7 @@ def scoring_flows():
             if i: out += arrow(x - 14, y + 56, x, y + 56)
             x += w + 14
         return out
-    b += text(20, 22, "BEFORE: everything in one worker, one message", "t")
-    b += box(20, 52, 150, 56, "Queue", "generation", "data", small=True)
-    b += arrow(170, 80, 200, 80)
-    b += row(34, "worker: the quiz is ready only after the judge", [(130, "fetch + graph", "~27 s", "ai"), (250, "judge ×3 + scoring", "~18 s (13–33)", "sec"), (140, "save: ready", "", "data"), (142, "delete message", "", "mgd")], gw=760)
-    b += text(20, 160, "NOW (implemented): generation and scoring are separate jobs", "t")
+    b += '<g transform="translate(0,-150)">'
     b += box(20, 188, 150, 56, "Queue", "generation", "data", small=True)
     b += arrow(170, 216, 200, 216)
     b += row(170, "worker (generation)", [(130, "fetch + graph", "~27 s", "ai"), (170, "graph checks", "keep grounded ones", "compute"), (130, "save: READY", "", "data"), (132, "send score job", "", "mgd")])
@@ -508,9 +504,10 @@ def scoring_flows():
     b += text(430, 276, "score job", "note", "middle")
     b += box(870, 188, 290, 56, "Langfuse · Postgres · CloudWatch", "scores written by the scorer", "ext", small=True)
     b += path("M806 344 C 840 344, 850 230, 940 246", "", 0, 0, dash=True)
-    b += box(870, 310, 290, 56, "sweeper (already exists)", "re-queues ready quizzes with no score", "compute", small=True)
+    b += box(870, 310, 290, 56, "sweeper", "re-queues ready quizzes with no score", "compute", small=True)
     b += text(1015, 384, "…into the scoring queue", "note", "middle")
-    return svg(1180, 400, b, "Before vs now: the user gets the quiz about 18 s earlier, and scoring has its own queue and service")
+    b += "</g>"
+    return svg(1180, 262, b, "Generation and scoring: two jobs, two queues, two services; the quiz is ready before it is scored")
 
 
 def narrow(x1, y1, x2, y2, n, dash=False, both=False):
