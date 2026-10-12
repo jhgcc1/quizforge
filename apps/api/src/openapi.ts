@@ -26,7 +26,7 @@ export const openApiDocument = {
         requestBody: { content: { "application/json": { schema: { $ref: "#/components/schemas/CreateQuiz" } } } },
         responses: { "202": json("QuizEnvelope", "Accepted"), "200": json("QuizEnvelope", "Replay"), "400": err("Validation / source URL"), "401": err("Unauthenticated"), "422": err("Key reused with a different body"), "429": err("Quota or rate limit"), "503": err("Queue unavailable; retry with the same key") },
       },
-      get: { summary: "List my quizzes", responses: { "200": { description: "OK" }, "401": err("Unauthenticated") } },
+      get: { summary: "List my quizzes, each with my progress (attempts, the open attempt, the last and best score)", responses: { "200": { description: "OK" }, "401": err("Unauthenticated") } },
     },
     "/v1/catalog": {
       get: { summary: "Sample documents offered in the UI dropdown (real READMEs and test documents)", responses: { "200": json("Catalog"), "401": err("Unauthenticated") } },
@@ -35,6 +35,7 @@ export const openApiDocument = {
       get: { summary: "Get a quiz (questions appear when ready; the answer key never does)", parameters: [uuidParam("id")], responses: { "200": json("QuizWithQuestions"), "404": err("Not found") } },
     },
     "/v1/quizzes/{id}/attempts": {
+      get: { summary: "My attempts on this quiz, newest first, with the score of each submitted one", parameters: [uuidParam("id")], responses: { "200": { description: "OK" }, "404": err("Not found") } },
       post: { summary: "Start (or resume) an attempt", parameters: [uuidParam("id"), idem], responses: { "201": { description: "Created" }, "200": { description: "Existing attempt returned" }, "409": err("Quiz not ready") } },
     },
     "/v1/attempts/{id}": { get: { summary: "Attempt progress, or the full result once submitted", parameters: [uuidParam("id")], responses: { "200": { description: "OK" }, "404": err("Not found") } } },

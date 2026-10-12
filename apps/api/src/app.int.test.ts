@@ -11,7 +11,7 @@ import { loadConfig } from "./config.js";
 import { MemoryQuizQueue } from "./queue.js";
 import { openApiDocument } from "./openapi.js";
 import {
-  AttemptResultSchema, AttemptWithAnswersSchema, CatalogResponseSchema, CreateQuizBodySchema, ErrorBodySchema, QuizEnvelopeSchema, QuizListSchema,
+  AttemptListSchema, AttemptResultSchema, AttemptWithAnswersSchema, CatalogResponseSchema, CreateQuizBodySchema, ErrorBodySchema, QuizEnvelopeSchema, QuizListSchema,
   QuizWithQuestionsSchema, SAMPLE_CATALOG, SaveAnswerResponseSchema, SubmitResponseSchema,
 } from "@quizforge/core";
 import type { ZodTypeAny } from "zod";
@@ -214,6 +214,10 @@ describe("full quiz flow", () => {
     await put(3, 0, 1); // right
     // q5 left blank
 
+    // history list: the open attempt shows, no score yet
+    const listed = (await call(sub, "GET", "/v1/quizzes")).body.quizzes.find((x: { id: string }) => x.id === quizId);
+    expect(listed.progress).toEqual({ attempts: 1, inProgressAttemptId: attemptId, last: null, best: null });
+
     const progress = await call(sub, "GET", `/v1/attempts/${attemptId}`);
     expect(progress.body.answers).toHaveLength(4);
     shape(AttemptWithAnswersSchema, progress.body);
@@ -237,6 +241,28 @@ describe("full quiz flow", () => {
     const final = await call(sub, "GET", `/v1/attempts/${attemptId}`);
     shape(AttemptResultSchema, final.body.result);
     expect(final.body.result.finalScore).toBe(r.finalScore);
+
+    // history after the submit: last and best score on the list, and the attempts of the quiz
+    const done = (await call(sub, "GET", "/v1/quizzes")).body.quizzes.find((x: { id: string }) => x.id === quizId);
+    expect(done.progress.attempts).toBe(1);
+    expect(done.progress.inProgressAttemptId).toBeNull();
+    expect(done.progress.last.attemptId).toBe(attemptId);
+    expect(done.progress.last.finalScore).toBeCloseTo(r.finalScore, 6);
+    expect(done.progress.last.percent).toBeCloseTo((r.finalScore / 4) * 100, 4);
+    expect(done.progress.best).toBeCloseTo(r.finalScore, 6);
+    const attemptsList = await call(sub, "GET", `/v1/quizzes/${quizId}/attempts`);
+    shape(AttemptListSchema, attemptsList.body);
+    expect(attemptsList.body.attempts.map((a: { id: string }) => a.id)).toEqual([attemptId]);
+    expect(JSON.stringify(attemptsList.body)).not.toMatch(/isCorrect|explanation|sourceQuote/);
+
+    // retake: a new attempt, the old score stays, the best is kept
+    const retake = await call(sub, "POST", `/v1/quizzes/${quizId}/attempts`, {}, { "idempotency-key": randomUUID() });
+    expect(retake.status).toBe(201);
+    const again2 = (await call(sub, "GET", "/v1/quizzes")).body.quizzes.find((x: { id: string }) => x.id === quizId);
+    expect(again2.progress.attempts).toBe(2);
+    expect(again2.progress.inProgressAttemptId).toBe(retake.body.attempt.id);
+    expect(again2.progress.last.attemptId).toBe(attemptId);
+    expect((await call(sub, "GET", `/v1/quizzes/${quizId}/attempts`)).body.attempts).toHaveLength(2);
   });
 
   it("users cannot see or touch each other's quizzes and attempts (404, not 403)", async () => {
@@ -252,6 +278,7 @@ describe("full quiz flow", () => {
     expect((await call("intruder", "GET", `/v1/attempts/${attemptId}`)).status).toBe(404);
     expect((await call("intruder", "PUT", `/v1/attempts/${attemptId}/answers/${q.id}`, { optionIds: [q.options[0].id], revision: 1 })).status).toBe(404);
     expect((await call("intruder", "POST", `/v1/attempts/${attemptId}/submit`)).status).toBe(404);
+    expect((await call("intruder", "GET", `/v1/quizzes/${quizId}/attempts`)).status).toBe(404);
     expect((await call("intruder", "GET", "/v1/quizzes")).body.quizzes).toEqual([]);
     expect((await call("owner", "GET", "/v1/quizzes/not-a-uuid")).status).toBe(404);
   });

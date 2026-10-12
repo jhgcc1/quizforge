@@ -46,7 +46,9 @@ curl -X POST $URL/v1/quizzes -H "Authorization: Bearer $TOKEN" -H "Idempotency-K
      -d '{"sourceUrl":"https://github.com/pipecat-ai/pipecat/blob/main/README.md","numQuestions":6}'
 #   → 202 {quiz:{id,status:"queued"}}   (repeat with the same key → 200, same quiz)
 GET  /v1/catalog                              # the sample documents shown in the UI dropdown
+GET  /v1/quizzes                              # my history: each quiz with my progress (attempts, open attempt, last and best score)
 GET  /v1/quizzes/{id}                         # poll until status = ready
+GET  /v1/quizzes/{id}/attempts                # my attempts on this quiz, newest first, with the score of each submitted one
 POST /v1/quizzes/{id}/attempts                # start (or resume) an attempt
 PUT  /v1/attempts/{id}/answers/{questionId}   # saved immediately; {optionIds, revision}
 POST /v1/attempts/{id}/submit                 # scores from what is stored; safe to repeat

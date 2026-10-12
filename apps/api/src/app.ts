@@ -20,9 +20,12 @@ import {
   getOrCreateAttempt,
   getOwnedQuiz,
   getPublicQuestions,
+  listAttemptsByQuiz,
+  listAttemptsForQuiz,
   listQuizzes,
   saveAnswer,
   submitAttempt,
+  type AttemptSummary,
   type Db,
   type QuizRow,
 } from "@quizforge/db";
@@ -51,6 +54,20 @@ declare module "fastify" {
 }
 
 const uuid = z.string().uuid();
+
+const percent = (score: number): number => (score / 4) * 100;
+
+/** What the user did with a quiz, from its attempts (newest first): count, the open one, the last submitted score, the best score. */
+function progress(attempts: AttemptSummary[]) {
+  const submitted = attempts.filter((a) => a.status === "submitted" && a.finalScore !== null);
+  const last = submitted.sort((a, b) => (b.submittedAt?.getTime() ?? 0) - (a.submittedAt?.getTime() ?? 0))[0];
+  return {
+    attempts: attempts.length,
+    inProgressAttemptId: attempts.find((a) => a.status === "in_progress")?.id ?? null,
+    last: last ? { attemptId: last.id, finalScore: last.finalScore!, percent: percent(last.finalScore!), submittedAt: last.submittedAt!.toISOString() } : null,
+    best: submitted.length ? Math.max(...submitted.map((a) => a.finalScore!)) : null,
+  };
+}
 
 function summary(q: QuizRow) {
   return {
@@ -219,7 +236,20 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
     v1.get("/catalog", async () => ({ items: SAMPLE_CATALOG }));
 
-    v1.get("/quizzes", async (req) => ({ quizzes: (await listQuizzes(db, req.user!.sub)).map(summary) }));
+    v1.get("/quizzes", async (req) => {
+      const sub = req.user!.sub;
+      const rows = await listQuizzes(db, sub);
+      const attempts = await listAttemptsByQuiz(db, rows.map((q) => q.id), sub); // one query for the whole list
+      return { quizzes: rows.map((q) => ({ ...summary(q), progress: progress(attempts.get(q.id) ?? []) })) };
+    });
+
+    v1.get<{ Params: { id: string } }>("/quizzes/:id/attempts", async (req, reply) => {
+      const sub = req.user!.sub;
+      if (!uuid.safeParse(req.params.id).success) return fail(reply, 404, "not_found", "Quiz not found");
+      if (!(await getOwnedQuiz(db, req.params.id, sub))) return fail(reply, 404, "not_found", "Quiz not found");
+      const attempts = await listAttemptsForQuiz(db, req.params.id, sub);
+      return { attempts: attempts.map((a) => ({ id: a.id, status: a.status, startedAt: a.startedAt.toISOString(), submittedAt: a.submittedAt?.toISOString() ?? null, finalScore: a.finalScore, percent: a.finalScore === null ? null : percent(a.finalScore) })) };
+    });
 
     v1.get<{ Params: { id: string } }>("/quizzes/:id", async (req, reply) => {
       if (!uuid.safeParse(req.params.id).success) return fail(reply, 404, "not_found", "Quiz not found");
