@@ -43,7 +43,7 @@ test("create -> generate -> answer (with reload) -> submit -> weighted score", a
   await page.getByRole("radio").first().check();
   await expect(page.getByText("Saved ✓")).toBeVisible();
   await page.reload();
-  await page.getByRole("button", { name: "Start quiz" }).click();
+  await page.getByRole("button", { name: "Continue quiz" }).click(); // an attempt is open: the button says so once the history is loaded
   await expect(page.getByText("1/5 answered")).toBeVisible();
   await expect(page.getByText("Question 2 of 5")).toBeVisible(); // resumes at the first unanswered question
   await page.getByRole("button", { name: "Previous" }).click();
@@ -65,6 +65,15 @@ test("create -> generate -> answer (with reload) -> submit -> weighted score", a
   expect(value).toBeLessThanOrEqual(4);
   await expect(page.getByTestId("final-percent")).toContainText("%");
   await expect(page.getByText("From the document:").first()).toBeVisible(); // answer key + explanation revealed after submit
+
+  // history: the dashboard shows the score next to the quiz, and the quiz page lists the result and offers a retake
+  await page.goto("/app");
+  await expect(page.getByText(/\d\.\d\d \/ 4/).first()).toBeVisible();
+  await page.goto(quizUrl);
+  await expect(page.getByRole("heading", { name: "Your results" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Retake quiz" })).toBeVisible();
+  await page.getByRole("button", { name: "View result" }).first().click();
+  await expect(page.getByTestId("final-score")).toBeVisible();
 
   // a second user can't open Alice's quiz
   const other = await context.browser()!.newContext({ baseURL: "http://localhost:13000" });
