@@ -5,7 +5,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-import content  # noqa: E402
+FULL = "--full" in sys.argv
+if FULL:
+    import content_full as content  # noqa: E402  (the long reference report)
+else:
+    import content  # noqa: E402  (the short report for the presentation)
 
 HERE = Path(__file__).parent
 
@@ -109,10 +113,10 @@ def main():
     assert_no_secrets(html)
     if PUBLIC:
         html = redact(html)
-        out = HERE.parent / "docs" / "architecture" / "quizforge-architecture.html"
+        out = HERE.parent / "docs" / "architecture" / ("quizforge-architecture-full.html" if FULL else "quizforge-architecture.html")
         out.parent.mkdir(parents=True, exist_ok=True)
     else:
-        out = HERE / "quizforge-architecture.html"
+        out = HERE / ("quizforge-architecture-full.html" if FULL else "quizforge-architecture.html")
     out.write_text(html, encoding="utf-8")
     print(f"{out} {out.stat().st_size / 1e6:.2f} MB, {html.count('<svg')} diagrams, {html.count('<table')} tables, {html.count('data:image/png')} images")
 
