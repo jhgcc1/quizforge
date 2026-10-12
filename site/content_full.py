@@ -574,102 +574,26 @@ def quality():
 
 
 def langfuse():
-    P = LF
-    shots = [
-        ("langfuse-1-traces.png", "Traces", "One row per generated quiz. Filter by tag <code>compare</code> for the experiments, or by session (= the quiz id)."),
-        ("langfuse-2-trace.png", "One trace", "The tree of steps (graph nodes and LLM calls) with tokens, cost and time, and the <b>Scores</b> tab with every quality score."),
-        ("langfuse-3-scores.png", "Scores", "All scores by name. Filter <code>quality_overall</code> to see quality over time."),
-        ("langfuse-4-datasets.png", "Datasets and experiments", "<code>quizforge-golden</code>: the documents and the reference questions. Each run is one structure + prompt."),
-        ("langfuse-5-compare.png", "Compare runs", "Tick several runs and press Compare to see them side by side, metric by metric."),
-        ("langfuse-6-models.png", "Model prices", "The MiniMax prices registered, which is why every trace shows a cost."),
-        ("langfuse-7-dashboards.png", "Dashboards", "Charts of scores, cost and latency over time."),
-    ]
-    present = [x for x in shots if (HERE / "img" / x[0]).exists()]
-    body = table(["I want to see…", "Open", "What is there"], [
-        ["One generated quiz, step by step", link(P + "/traces", "Traces"), "Tree of graph nodes and LLM calls, tokens, cost, time, and its scores"],
-        ["All the quality scores", link(P + "/scores", "Scores"), "<code>quality_overall</code>, <code>judge_*</code>, <code>lint_pass</code>, <code>grounded</code>… (same names in production and evals)"],
-        ["Quality of the quizzes of one user or one quiz", link(P + "/sessions", "Sessions") + " · " + link(P + "/users", "Users"), "Session = the quiz id; user = a hash of the Cognito sub"],
-        ["The test documents and their reference questions", link(P + "/datasets", "Datasets"), "<code>quizforge-golden</code> (5 documents)"],
-        ["Which structure or prompt is best", link(P + "/datasets", "Datasets") + " → Runs → Compare", "18 runs: 9 variants × 2 repetitions"],
-        ["What a call costs", link(P + "/settings/models", "Models"), "MiniMax prices; cost appears on every trace"],
-        ["Score definitions (name, range)", link(P + "/settings/scores", "Score configs"), "Empty today: scores are free-form"],
-        ["Charts over time", link(P + "/dashboards", "Dashboards"), "Scores, cost, latency"],
-    ], widths=["32%", "26%", "42%"])
-    body += "<h3>What the app sends to Langfuse</h3>" + table(["Item", "Sent by", "Content"], [
-        ["Trace", "worker (<code>generateQuiz</code>); the scorer writes its own trace, <code>quiz-scoring</code>, in the same session (the judge calls are generations inside it); the judge scores are attached to the generation trace", "One per generated quiz: name <code>quiz-generation</code>, session = quiz id, user = hash of the Cognito sub, tags, prompt + quality versions, structure, judge model"],
-        ["Spans and LLM calls", "LangChain callback", "One span per graph node (route, generate, check, critique, revise, finalize) and one generation per LLM call with model, tokens and cost"],
-        ["Scores", "scorer (every score: fixed checks, judge, <code>quality_overall</code>) + evals; the worker sends only <code>critique_rounds</code>", "The shared <code>scoreQuiz()</code> metrics; a comment on <code>judge_overall</code> records judge model, samples and spread"],
-        ["Dataset, runs", "evals", "<code>quizforge-golden</code> and one run per variant, with its own scores and <code>composite</code>"],
-    ], widths=["16%", "24%", "60%"])
-    panel = lfdata.trace_panel(P)
-    if panel:
-        body += "<h3>Anatomy of a real trace</h3>" + panel
-    if present:
-        body += "<h3>Screenshots</h3><div class=shots>" + "".join(img(f, f"{t}: {c}") for f, t, c in present) + "</div>"
-    else:
-        body += callout("info", "Screenshots", "No screenshots yet: the Langfuse web app needs a login.")
-    body += callout("info", "Alerts: Langfuse and CloudWatch", "Langfuse has an <b>Alerts</b> menu: on the free plan you get 2 score alerts (daily average, sent to Slack, a webhook or GitHub Actions, <b>not e-mail</b>). <code>quality_overall</code> is also sent to CloudWatch as <code>QuizQuality</code>, together with judge failures, cost and latency, which has 14 alarms, a 5-minute window, a single-quiz alarm and e-mail. <b>Decision: no Langfuse alerts.</b> They would only repeat the CloudWatch quality alarms, on a channel we do not use (Slack or webhook). Langfuse is for looking at traces, scores and experiments.")
-    return sec("langfuse", "Where things are in Langfuse", body, "Open any link below; they go straight to the right page of the project (US region).")
-
-
-def langfuse_eval():
-    P = LF
-    shots = [
-        ("langfuse-8-llm-connection.png", "LLM connection", "The <code>minimax</code> connection: OpenAI adapter, base URL <code>https://api.minimax.io/v1</code>, custom model <code>MiniMax-M3</code>. The key is shown masked."),
-        ("langfuse-9-evaluators.png", "Evaluators", "The pilot evaluator <code>pilot_quiz_judge</code> and its status (blocked). It was deleted after the pilot."),
-        ("langfuse-10-evaluator-detail.png", "The evaluator", "The judge prompt, the variables, the output type and the model (the pilot, now deleted)."),
-        ("langfuse-11-alerts.png", "Alerts", "Where Langfuse score alerts are created (2 on the free plan, Slack / webhook / GitHub Actions)."),
-        ("langfuse-12-score-configs.png", "Score configs", "Empty today: our scores are free-form numbers."),
-    ]
-    present = [x for x in shots if (HERE / "img" / x[0]).exists()]
-    body = "<p>Langfuse can score traces by itself with an <b>LLM-as-a-judge evaluator</b>: you give it a model and a prompt, and it grades what arrives. We tried it with our judge, as a pilot, to take the LLM out of the worker.</p>"
-    body += d.langfuse_eval_flow()
-    body += "<h3>What exists in Langfuse now</h3>" + table(["Item", "State", "Where"], [
-        ["LLM connection <code>minimax</code>", "<b>Works</b>: adapter openai, URL <code>https://api.minimax.io/v1</code>, model <code>MiniMax-M3</code>", link(P + "/settings/llm-connections", "Settings → LLM Connections")],
-        ["Evaluator <code>pilot_quiz_judge</code>", "<b>Deleted</b> after the pilot (it was paused: <code>EVAL_MODEL_CONFIG_INVALID</code>)", link(P + "/evals", "Evaluators")],
-        ["Evaluation rule", "Not created (it only makes sense with an active evaluator)", "–"],
-        ["Alerts", "<b>None, on purpose</b>: CloudWatch alarms + e-mail cover the same cases", link(P + "/alerts", "Alerts")],
-        ["Score configs", "Empty", link(P + "/settings/scores", "Settings → Scores Configs")],
-    ], widths=["28%", "46%", "26%"])
-    body += "<h3>Why the evaluator was paused</h3>" + d.minimax_structured()
-    body += table(["MiniMax model", "Structured output (<code>json_schema</code>)", "Result"], [
-        ["MiniMax-M3", "Ignored; the answer starts with <code>&lt;think&gt;</code>", "Not JSON"],
-        ["M2.7 · M2.5 · M2.1 · M2 · M1", "Same", "Not JSON"],
-        ["MiniMax-Text-01", "Valid JSON, but with the wrong shape (wrapped in an <code>evaluation</code> key)", "Valid JSON, wrong structure"],
-        ["MiniMax-M3 with a <i>tool call</i>", "Returns valid JSON arguments", "Works, but Langfuse does not ask for it"],
-    ], widths=["30%", "48%", "22%"])
-    body += callout("warn", "The blocker", "Langfuse needs the model to return structured output. MiniMax's reasoning models always write <code>&lt;think&gt;</code> first, so Langfuse cannot read the answer and pauses the evaluator. Our own code removes <code>&lt;think&gt;</code> and asks the model to repair its JSON; Langfuse has no such step.")
-    body += "<h3>Options</h3>" + table(["Option", "What changes", "Cost / risk"], [
-        ["<b>A. Judge stays in the code</b> (<b>chosen</b>)", "Keep scoring in our code; use Langfuse to look at traces, scores and experiments", "Nothing new; keeps the median of 3 and <code>quality_overall</code>"],
-        ["B. Another model in Langfuse (OpenAI / Anthropic)", "Judge runs in Langfuse with real structured output", "Another key; the judge changes, so recalibrate and change the CI too"],
-        ["C. MiniMax-Text-01", "Only model that returned JSON", "Wrong shape, older and weaker judge; may still fail"],
-    ], widths=["32%", "38%", "30%"])
-    body += callout("ok", "Decision", "Option A: the judge stays in our code (now the scorer service), and Langfuse is used only to <b>observe</b> (no alerts: CloudWatch sends them). The pilot evaluator was deleted. The <code>minimax</code> connection is still stored in Langfuse; it is not needed for this, so deleting it removes a copy of the key from an external service.")
-    body += "<h3>Why there are no Langfuse alerts</h3>" + table(["Situation", "CloudWatch (in use)", "Langfuse (not used)"], [
-        ["Average quality low", "<code>quiz-quality-low</code>, average below 0.6, 1 hour, e-mail", "Would be the same rule, daily, Slack or webhook only"],
-        ["One terrible quiz", "<code>quiz-quality-critical</code>, any quiz below 0.4, 5 minutes", "Not possible (averages only)"],
-        ["Judge down", "<code>judge-failing</code>, 3 failures in 15 minutes", "Not possible"],
-        ["Where the message goes", "E-mail (<code>ALARM_EMAIL</code>)", "Slack, webhook or GitHub Actions: no e-mail on any plan we use"],
-    ], widths=["24%", "40%", "36%"])
-    body += "<p>If a Slack channel appears later, two Langfuse alerts (<code>quality_overall</code> below 0.6, <code>judge_overall</code> below 0.7, daily) can be created on the Alerts page in a minute. Langfuse has no API for it.</p>"
-    body += "<h3>What lives where</h3>" + table(["Part", "Where", "Why"], [
-        ["Fixed checks, TF-IDF similarity, language", "<b>Scorer service</b> (grounding and lint also run inside the generation graph, because they decide which questions are kept)", "Free and instant; computed in one place, with the judge"],
-        ["LLM judge", "<b>Scorer service</b> (own queue)", "MiniMax cannot be a Langfuse evaluator; the median of 3 also needs our code"],
-        ["<code>quality_overall</code>", "Scorer service", "Langfuse cannot combine scores of different origins"],
-        ["All alarms and e-mail", "CloudWatch", "5-minute window, single-quiz alarm, e-mail"],
-    ], widths=["34%", "22%", "44%"])
-    if present:
-        body += "<h3>Screenshots</h3><div class=shots>" + "".join(img(f, f"{t}: {c}") for f, t, c in present) + "</div>"
-    else:
-        body += callout("info", "Screenshots", "Not captured yet.")
-    return sec("lfeval", "Evaluating inside Langfuse: what we tried", body, "A pilot, run on the real project. Result: the judge cannot move to Langfuse with MiniMax; everything else can.")
+    body = table(["Used for", "What it gives", "Where the data comes from"], [
+        ["<b>Traces</b>", "Every quiz generation, step by step (graph nodes and model calls), with tokens and cost", "Production, the CI evaluation on main, the nightly run"],
+        ["<b>Scores</b>", "The quality scores of each quiz, attached to its trace (one fixed id per trace and name)", "The scorer service"],
+        ["<b>Datasets and experiments</b>", "The golden set and the structure comparison, so runs can be compared side by side", "Main, nightly, manual"],
+        ["<b>Prompt catalog</b>", "The approved version of each prompt, with the commit that produced it", "Only the pipeline (<code>publish-prompts</code>, after every gate). The app reads its prompts from the deployed code"],
+    ], widths=["22%", "50%", "28%"])
+    body += table(["Good to know", ""], [
+        ["Pull requests never write to Langfuse", "The PR evaluation job has the model key only, no Langfuse keys"],
+        ["The judge is not in Langfuse", "MiniMax writes <code>&lt;think&gt;</code> before the JSON, so Langfuse's own evaluator cannot read it. The judge runs in our scorer service"],
+        ["Alerts are not in Langfuse", "The free plan has no e-mail alerts; the alarms are in CloudWatch"],
+    ], widths=["34%", "66%"])
+    body += '<div class="shots">' + img("langfuse-2-trace.png", "A real trace: the graph steps and the model calls, with tokens and cost") + "</div>"
+    return sec("langfuse", "Langfuse", body, "The AI observability tool of the project (Langfuse Cloud, free plan).")
 
 
 def scoring_arch():
     body = callout("ok", "In one sentence", "The judge runs in its own <b>queue and ECS service</b> (the scorer). The quiz is ready as soon as it is generated, and a slow or failing judge never holds up generation. Covered by unit tests, integration tests with a real database, and an end-to-end test in Chrome that proves the quiz is ready first and the scorer scores it afterwards.")
     body += callout("info", "Why the worker saves no scores", "Computing every score in one place (the scorer) gives one code path and one Langfuse write. The fixed checks cost milliseconds, so keeping them in the worker saved nothing. The trade: if the scorer is down, a ready quiz has no scores until it comes back (the sweeper re-queues unscored quizzes). Langfuse scores use a fixed id per trace and name, so a redelivered score job updates them instead of adding copies.")
     body += "<h3>Why it exists</h3>" + table(["Fact", "Consequence"], [
-        ["Our only LLM provider is MiniMax; Langfuse's judge needs structured JSON and MiniMax writes <code>&lt;think&gt;</code> first", "The judge cannot run in Langfuse (see \"Evaluating inside Langfuse\"), so it runs in our code"],
+        ["Our only LLM provider is MiniMax; Langfuse's judge needs structured JSON and MiniMax writes <code>&lt;think&gt;</code> first", "The judge cannot run in Langfuse (see \"Langfuse\"), so it runs in our code"],
         ["The judge takes a median of 18 s (13–33 s), 40% of the time of a whole generation (measured, see below)", "It is kept out of the generation job: the user does not wait for it, and it does not use worker slots or the job budget"],
         ["<code>POST /quizzes</code> does not wait for generation or scoring", "It returns <code>202</code> as soon as the row is saved and queued"],
     ], widths=["52%", "48%"])
@@ -1160,7 +1084,7 @@ def bugs():
         ["Alarms notified nobody", "The SNS topic had no subscriber", "E-mail comes from the <code>ALARM_EMAIL</code> variable; a note in the runbook"],
         ["A single terrible quiz went unnoticed", "Only an hourly average alarm existed", "New alarm on the minimum of any 5 minutes"],
         ["Resume failed once", "AWS had no <code>db.t4g.micro</code> capacity in that zone (InsufficientDBInstanceCapacity)", "Retry start until it works; it succeeded a few minutes later"],
-        ["Langfuse evaluator paused (EVAL_MODEL_CONFIG_INVALID)", "MiniMax reasoning models answer with <code>&lt;think&gt;</code> and ignore <code>response_format</code>", "Keep the judge in the code; options B and C in the Langfuse section"],
+        ["Langfuse evaluator paused (EVAL_MODEL_CONFIG_INVALID)", "MiniMax reasoning models answer with <code>&lt;think&gt;</code> and ignore <code>response_format</code>", "Keep the judge in the code (the scorer service)"],
         ["Two scorers could judge the same quiz and double the scores", "The claim did not exclude a concurrent scorer; found by CI on <code>main</code> (it passed on my machine by timing)", "A lease on the job so one scorer judges, released on failure so the retry works, plus a row lock when saving; the race test repeats 5 rounds"],
         ["The CI quality gate failed by chance", "One flagged question in five (lint 0.80) failed an item; the mean judge was fine", "Per-item floor 0.6 and a dataset bar, mean lint 0.9 (the same remedy as for the judge)"],
         ["A waiting deploy blocked later pipelines", "The CI group does not cancel runs, and an unapproved deploy waits until GitHub times it out (30 days)", "Approve or reject (cancel) the old run"],
@@ -1296,10 +1220,10 @@ def limits():
 
 
 def all_sections():
-    return [overview(), links(), architecture(), communication(), flows(), documents(), validation(), guardrails(), input_security(), agent(), quality(), langfuse(), langfuse_eval(), scoring_arch(), secrets(), data(), security(), resilience(), observability(), evaluation(), cicd(), state(),
+    return [overview(), links(), architecture(), communication(), flows(), documents(), validation(), guardrails(), input_security(), agent(), quality(), langfuse(), scoring_arch(), secrets(), data(), security(), resilience(), observability(), evaluation(), cicd(), state(),
             decisions(), bugs(), costs(), evidence(), runbook(), live_state(), limits(), improvements(), glossary(), presentation()]
 
 
 NAV = [("summary", "Summary"), ("links", "Links"), ("architecture", "Architecture"), ("comm", "Communication"), ("flows", "Flows"), ("documents", "Documents"), ("validation", "Validation"), ("guardrails", "Guardrails"), ("inputsec", "Input security"), ("agent", "Agent"),
-       ("quality", "Quality & alerts"), ("langfuse", "Langfuse"), ("lfeval", "Langfuse judge"), ("scoringarch", "Scoring service"), ("secrets", "Secrets"), ("data", "Data"), ("security", "Security"), ("resilience", "Resilience"), ("observability", "Observability"), ("evaluation", "Evaluation"),
+       ("quality", "Quality & alerts"), ("langfuse", "Langfuse"), ("scoringarch", "Scoring service"), ("secrets", "Secrets"), ("data", "Data"), ("security", "Security"), ("resilience", "Resilience"), ("observability", "Observability"), ("evaluation", "Evaluation"),
        ("cicd", "CI/CD"), ("state", "TF state"), ("decisions", "Decisions"), ("bugs", "Bugs"), ("pause", "Cost & pause"), ("evidence", "Evidence"), ("runbook", "Runbook"), ("live", "Live vs main"), ("limits", "Limits"), ("improve", "Improvements"), ("glossary", "Glossary"), ("standby", "Standby")]
