@@ -117,12 +117,11 @@ def quality():
     body = d.quality_pipeline()
     body += table(["What", "How", "When"], [
         ["Every quiz is scored", "One function: fixed checks (grounding, formatting, diversity, coverage) plus an LLM judge (median of 3), run by the scorer service. Same function in production and in the evals", "After each quiz"],
-        ["Langfuse", "A trace per quiz with every step, tokens and cost; the scores are attached to the trace. Datasets and experiments compare prompts and strategies", "Production, main, nightly"],
+        ["Langfuse", "Used for traces (each step, tokens, cost), the quality scores of each quiz, and experiments on the golden set. Details in the full report", "Production, main, nightly"],
         ["Golden set", "5 documents (including Portuguese and a prompt-injection one) with minimum thresholds, for example grounded = 1 and mean judge ≥ 0.70. A red result blocks the deploy", "On a pull request that touches prompts or LLM code, on main, every night"],
         ["promptfoo", "81 offline tests (attack corpus, language, bad model replies) on every PR; 21 live tests against the real model", "PR · main · nightly"],
         ["Alarms", "Low average quality, high daily cost, dead-letter queue, 5xx, CPU: e-mail through SNS", "Always"],
     ], widths=["20%", "56%", "24%"])
-    body += '<div class="shots">' + img("langfuse-2-trace.png", "A real trace in Langfuse: the graph steps and the model calls") + img("langfuse-3-scores.png", "The scores of that quiz, with the judge's comment") + "</div>"
     return sec("quality", "Quality and observability", body)
 
 
