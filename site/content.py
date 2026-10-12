@@ -440,14 +440,14 @@ def input_security():
     body += "<h3>promptfoo in the pipeline</h3>" + d.promptfoo_flow()
     body += table(["Suite", "Runs", "Model", "Tests", "What a failure means"], [
         ["<b>Offline</b> (<code>promptfoo/guard.yaml</code>)", "Every PR and every push to main. Job <code>promptfoo</code>, a required check", "None (deterministic fake): no secrets, about 1 minute", "81", "A hidden or encoded instruction, a foreign language or a bad topic reached the model, or a prompt lost a safety rule"],
-        ["<b>Live</b> (<code>promptfoo/live.yaml</code>)", "Main before the deploy (inside <code>llm-eval</code>), nightly, on demand", "MiniMax, secret in the <code>llm-eval</code> environment; about 20 generations, about $0.2", "21", "The model followed an instruction in a document, wrote something that is not a quiz, or left its purpose"],
+        ["<b>Live</b> (<code>promptfoo/live.yaml</code>)", "On a pull request that touches prompts, LLM code, the guard or the evals (<code>llm-eval-pr</code>), on main before the deploy (<code>llm-eval</code>), nightly, on demand", "MiniMax, secret in the <code>llm-eval-pr</code> and <code>llm-eval</code> environments; about 20 generations, about $0.2", "21", "The model followed an instruction in a document, wrote something that is not a quiz, or left its purpose"],
     ], widths=["22%", "26%", "22%", "8%", "22%"])
     body += table(["Part", "File", "What it does"], [
         ["Provider", "<code>promptfoo/provider.ts</code>", "Runs the REAL pipeline for each case (guard, strict input, real prompts, the guarded client, output checks) and returns what happened, including how many model calls were made"],
         ["Assertions", "<code>promptfoo/assertions.js</code>", "<code>blocked</code>, <code>rejectedLanguage</code>, <code>rejectedInput</code>, <code>acceptedQuiz</code>, <code>resisted</code>, <code>refusedOrOnPurpose</code>, <code>onPurpose</code>, <code>sanitizedPrompt</code>, <code>rejectedOutput</code>, <code>promptRules</code>"],
         ["Test generator", "<code>promptfoo/tests.ts</code>", "Builds every case from the attack corpus in <code>@quizforge/core</code>, so vitest and promptfoo test the same attacks"],
         ["Runner", "<code>scripts/promptfoo.sh</code>", "Pins the promptfoo version (0.124.1, needs Node 22.22+), disables telemetry and sharing, writes a table to the job summary, exits 100 on any failure"],
-        ["Wiring", "<code>.github/workflows/ci.yml</code>, <code>eval.yml</code>", "<code>promptfoo</code> is a dependency of <code>deploy</code>; the live run is a step of <code>llm-eval</code> and of the nightly workflow"],
+        ["Wiring", "<code>.github/workflows/ci.yml</code>, <code>eval.yml</code>", "<code>promptfoo</code> is a dependency of <code>deploy</code>; the live run is a step of <code>llm-eval-pr</code> (pull requests), <code>llm-eval</code> (main) and the nightly workflow"],
     ], widths=["16%", "30%", "54%"])
     body += code("""
 # no model, no secrets (needs Node 22.22+)
@@ -464,7 +464,7 @@ pnpm exec vitest run packages/core/src/guard.test.ts packages/llm/src/llm-input.
         ["Heuristics, not a proof", "The guard blocks the techniques in the corpus and close variants. A new encoding, a payload split over several places, or a paraphrase that matches no phrase is only caught by the model's own resistance. Defense in depth: delimiters, no tools or secrets for the model, strict output schema, the quote must exist in the document"],
         ["Instruction phrases", "Full lists for English, Portuguese and Spanish; only the main phrases for French, German, Russian, Chinese and Japanese. A document in an unsupported language is rejected anyway, but one foreign line in an accepted document is only flagged"],
         ["Language detection is statistical", "Very short or mixed texts can be misjudged. Very close languages are treated as the supported one when they nearly tie"],
-        ["The live suite does not run on pull requests", "It needs the model key, and the <code>llm-eval</code> environment is limited to main so that a pull request can never read the key. A prompt change therefore gets the offline gate on the PR and the live gate before the deploy"],
+        ["The live suite runs on a pull request only when needed", "Job <code>llm-eval-pr</code>, environment <code>llm-eval-pr</code> (the model key only, no Langfuse keys): it runs when the change touches <code>packages/llm</code>, <code>packages/core/src</code>, <code>packages/detector</code>, <code>evals</code>, <code>promptfoo</code> or <code>prompts</code>, otherwise it finishes green in seconds. Pull requests from forks never get the key"],
         ["Small live sample", "21 cases, one run each: it finds a model that obeys easily, not one that obeys sometimes. The nightly run repeats it"],
         ["Images and files", "Only text is checked; the app does not read images"],
         ["The semantic detector is English only and off in AWS", "It cannot judge Portuguese or Spanish, it missed prompt-leak and task-swap sentences (the keywords catch them), and it flags the real Pipecat README. See the table above"],
@@ -710,7 +710,7 @@ def secrets():
         ["Real secret values in Git history", "<b>None</b>", "Searched all commits and tracked files for the actual MiniMax and Langfuse values: 0 and 0"],
         ["Key-shaped strings in tracked files", "<b>None</b>", "Only <code>.env.example</code> has the empty prefix <code>sk-lf-</code>"],
         ["Secrets in the published HTML files", "<b>None</b>", "Neither <code>docs/eval/</code> nor the architecture page contain the values"],
-        ["GitHub repository secrets", "<b>0</b>", "Only 3 environment secrets, in <code>llm-eval</code>; the <code>production</code> environment has none (the deploy uses OIDC)"],
+        ["GitHub repository secrets", "<b>0</b>", "3 environment secrets in <code>llm-eval</code> and 1 (the MiniMax key) in <code>llm-eval-pr</code>; the <code>production</code> environment has none (the deploy uses OIDC)"],
         ["Workflow risks", "<b>None found</b>", "No <code>pull_request_target</code>, no secret echoed, no <code>set -x</code>; default permission is read-only; <code>id-token</code> only on the plan job, the deploy job and the nightly drift workflow (which also has <code>issues: write</code> to open the drift issue)"],
         ["Secrets in containers", "<b>Safe</b>", "Passed as ECS <code>secrets</code> (from Secrets Manager), not as plain environment variables"],
         ["Secrets in PR plan comments", "<b>None</b>", "PRs #6, #7 and #8: Terraform masks sensitive values; 0 matches"],
@@ -720,7 +720,7 @@ def secrets():
     ], widths=["34%", "16%", "50%"])
     body += callout("warn", "The one real nuance", "Earlier I wrote that the plan role cannot read secrets. That is true for Secrets Manager, but the role can read the Terraform state, and the state holds 2 secrets. Who can use it: any workflow run on a branch or PR of this repository (forks never get it). Only people with write access can do that, so the risk is low. To lower it: restrict the plan role to <code>pull_request</code> and <code>main</code>, or accept it.")
     body += "<h3>Where each value lives</h3>" + table(["Name", "Secret?", "Used by", "Lives in", "How it gets there"], [
-        ["MINIMAX_API_KEY", "yes", "CI evals", "GitHub environment secret <code>llm-eval</code>", "GitHub injects it into the job, masked in logs"],
+        ["MINIMAX_API_KEY", "yes", "CI evals", "GitHub environment secrets <code>llm-eval</code> and <code>llm-eval-pr</code>", "GitHub injects it into the job, masked in logs"],
         ["LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY", "yes", "CI evals", "GitHub environment secret <code>llm-eval</code>", "same"],
         ["AWS access keys", "none exist", "CI plan / deploy", "not stored anywhere", "OIDC: each job assumes a role and gets short-lived credentials"],
         ["AWS_DEPLOY_ROLE_ARN, AWS_PLAN_ROLE_ARN, AWS_REGION, TF_STATE_BUCKET", "no", "CI", "GitHub repository variables", "plain values"],
@@ -852,7 +852,7 @@ def evaluation():
 
 
 def cicd():
-    body = callout("ok", "The pipeline in one paragraph", "Every change is a pull request. Nine jobs run in parallel (no secrets, nothing deployed); <b>eight of them must be green</b> before GitHub allows the squash merge. After the merge the same jobs run on <code>main</code>, plus <code>llm-eval</code> (the real model, Langfuse and the live promptfoo suite). When all of that is green, <code>publish-prompts</code> sends the prompts that changed to Langfuse, and the <code>deploy</code> job asks a human to approve. Three more things run without a push: the nightly evaluation, the nightly drift check and the manual structure comparison.")
+    body = callout("ok", "The pipeline in one paragraph", "Every change is a pull request. Nine jobs run in parallel (no secrets, nothing deployed); <b>nine of them must be green</b> before GitHub allows the squash merge (one of them, <code>llm-eval-pr</code>, calls the real model when the change touches prompts or LLM code). After the merge the same jobs run on <code>main</code>, plus <code>llm-eval</code> (the real model, Langfuse and the live promptfoo suite). When all of that is green, <code>publish-prompts</code> sends the prompts that changed to Langfuse, and the <code>deploy</code> job asks a human to approve. Three more things run without a push: the nightly evaluation, the nightly drift check and the manual structure comparison.")
     body += d.pipeline_overview()
     body += "<h3>Every job</h3>" + table(["Job", "What it checks", "Runs on", "Secrets / AWS", "Blocks merge", "Blocks deploy"], [
         ["<b>quality</b>", "Typecheck, ESLint, 443 unit tests, offline evaluation with a fake model", "PR + main", "None", "Yes", "Yes"],
@@ -865,6 +865,7 @@ def cicd():
         ["<b>promptfoo</b>", "Offline suite, 81 tests: hidden and encoded attacks, languages, topics, bad model replies, prompt rules", "PR + main", "None", "Yes (8th check)", "Yes"],
         ["<b>terraform-plan</b>", "A read-only <code>plan</code> against the real account, commented on the PR", "PR only", "AWS plan role (OIDC, read-only)", "No (informational)", "No"],
         ["<b>publish-prompts</b>", "Pushes the prompts that changed to Langfuse Prompt Management (new version, label <code>production</code> + <code>sha-commit</code>); nothing if no text changed", "main only, after <b>every</b> gate", "Environment <code>llm-eval</code>: Langfuse keys", "n/a", "No (it does not gate the deploy: it needs the gates)"],
+        ["<b>llm-eval-pr</b>", "The same golden set and live promptfoo suite on the real model, only when the change touches prompts, LLM code, the guard or the evals (otherwise green in seconds). Nothing goes to Langfuse", "pull requests of this repository (not forks)", "Environment <code>llm-eval-pr</code>: the MiniMax key only", "n/a", "Yes (required check)"],
         ["<b>llm-eval</b>", "Golden set on the real model (grounding, lint, judge, injection, language) logged to Langfuse, then the live promptfoo suite (21 tests)", "main only", "Environment <code>llm-eval</code>: MiniMax and Langfuse keys", "n/a", "Yes"],
         ["<b>deploy</b>", "Build and push ARM64 images, drift check, migration, <code>terraform apply</code>, smoke test", "main only", "Environment <code>production</code>: human approval, AWS deploy role (OIDC)", "n/a", "This is the deploy"],
     ], widths=["13%", "42%", "9%", "18%", "9%", "9%"])
@@ -911,7 +912,7 @@ def cicd():
     body += '<div class="shots">' + img("langfuse-4-datasets.png", "Langfuse datasets: <code>quizforge-golden</code> and its runs") + img("langfuse-5-compare.png", "Comparing runs of the same dataset side by side") + "</div>"
     body += "<h3>Where promptfoo runs</h3>" + table(["Suite", "Trigger", "Model", "What a red result does"], [
         ["Offline (81 tests)", "Every PR and every push to <code>main</code> (job <code>promptfoo</code>)", "Deterministic fake: no secrets", "Blocks the merge (required check) and the deploy"],
-        ["Live (21 tests)", "<code>llm-eval</code> on <code>main</code>", "Real MiniMax", "Blocks the deploy"],
+        ["Live (21 tests)", "<code>llm-eval-pr</code> on the pull request (when relevant), <code>llm-eval</code> on <code>main</code>", "Real MiniMax", "Blocks the merge, then the deploy"],
         ["Live (21 tests)", "Nightly <code>eval.yml</code> and on demand", "Real MiniMax", "A red run you see in the morning"],
     ], widths=["22%", "36%", "20%", "22%"])
     body += "<h3>Prompts: from Git to Langfuse, only through the pipeline</h3>" + table(["Step", "What happens", "Langfuse touched?"], [
@@ -927,7 +928,7 @@ def cicd():
         ["<b>A changed guard or keyword rule</b>", "The rule examples and the corpus tests, and promptfoo offline (<code>BLOCK</code>, <code>REFUSE</code>, <code>RESIST</code>)", "Nightly live run"],
         ["<b>A document typed or linked by a user</b> at run time", "Not CI: the guard and the language check decide before the model is called", "Metrics <code>DocumentRejected</code> and <code>InjectionFlagged</code>"],
     ], widths=["24%", "46%", "30%"])
-    body += callout("warn", "The gap", "The real model is not called on a pull request (it needs the key, and the <code>llm-eval</code> environment only accepts <code>main</code>). So a prompt change or a new README is checked <b>without</b> the model on the PR and <b>with</b> the model before the deploy. Running the live suite on PRs would need a restricted environment that a PR can use without being able to read the key elsewhere.")
+    body += callout("info", "The real model on the pull request", "Since PR #25 the golden set and the live promptfoo suite also run <b>before the merge</b> (job <code>llm-eval-pr</code>) when the change touches prompts, LLM code, the guard, the evals or the fixtures. It uses its own environment with <b>only the MiniMax key</b>: no Langfuse keys, so a pull request never writes to Langfuse. Forks never get secrets. The risk that remains: someone with write access to the repository could change the workflow to print the key; use a spending-capped key there.")
     body += '<div class="shots">' + img("pf-1-offline.png", "promptfoo report of the offline suite: 81 of 81 passed") + img("pf-2-attack.png", "One case opened: a Base64 attack is blocked with <code>llmCalls: 0</code>, so the model was never called") + "</div>"
     body += callout("info", "Where to look when something is red", "Actions → the run → the failed job; the job summary has a table of the promptfoo groups (BLOCK, REJECT, ACCEPT, REFUSE, OUTPUT, RESIST, PROMPTS) and the failing cases with the reason; the full promptfoo result is an artifact of the run (<code>promptfoo-offline</code>, 30 days). Evaluation reports: <code>eval-report</code> artifact and the Langfuse run.")
     body += callout("warn", "Known warning", "Every run shows “Node.js 20 is deprecated” annotations: the pinned versions of <code>actions/checkout</code> and friends still target Node 20 and GitHub forces Node 24. It does not fail anything. Bumping the action versions is in the improvements list.")
@@ -936,7 +937,7 @@ def cicd():
         ["Is there a Playwright e2e test in the pipeline?", "Yes: login → generate → answer → reload → submit → score, plus the dropdown and validation tests"],
         ["Does the deploy depend on everything?", "Yes: all 9 jobs (including <code>promptfoo</code> and <code>llm-eval</code>) and a human approval in the <code>production</code> environment"],
         ["What triggers a deploy?", "<b>A push to <code>main</code></b>, that is a merged PR. A PR never deploys: the job shows “skipped”."],
-        ["Can a check be skipped?", "No: the ruleset needs a PR, the 8 required checks (quality, integration, migrations, e2e, docker-build, terraform-validate, secrets-scan, promptfoo), linear history, resolved threads, no bypass. <code>terraform-plan</code> runs on PRs but is informational; <code>llm-eval</code> runs on main and blocks the deploy"],
+        ["Can a check be skipped?", "No: the ruleset needs a PR, the 9 required checks (quality, integration, migrations, e2e, docker-build, terraform-validate, secrets-scan, promptfoo, llm-eval-pr), linear history, resolved threads, no bypass. <code>terraform-plan</code> runs on PRs but is informational; <code>llm-eval</code> runs again on main and blocks the deploy"],
         ["Proof", "A red <code>llm-eval</code> left <code>deploy</code> skipped in a real run"],
         ["Deploy while paused?", "Refused: with <code>PAUSED=true</code> the job fails early"],
         ["Other workflows", "<code>eval</code> and <code>drift</code> run nightly; <code>Compare generation structures</code> is manual"],
@@ -1008,7 +1009,7 @@ def live_state():
 def improvements():
     body = table(["Area", "Improvement", "Benefit", "Effort"], [
         ["Security", "Custom domain + ACM certificate", "TLS 1.2+, no plain HTTP hop inside AWS", "Medium (needs a domain)"],
-        ["Security", "A small classifier model for injection, promptfoo red-team generated attacks, and the live promptfoo suite on pull requests through a restricted environment", "Catches paraphrased attacks that match no phrase; a PR cannot merge a prompt the model obeys", "Medium"],
+        ["Security", "A small classifier model for injection, promptfoo red-team generated attacks, and, already done, the live promptfoo suite on pull requests through a restricted environment (<code>llm-eval-pr</code>)", "Catches paraphrased attacks that match no phrase; a PR cannot merge a prompt the model obeys", "Medium"],
         ["Security", "Alarm when <code>DocumentRejected</code> or <code>InjectionFlagged</code> spikes", "Shows someone probing the app", "Small"],
         ["Security", "Restrict the plan role to pull requests and main; rotate the Cognito client secret", "Fewer ways to reach 2 secrets in the state", "Small"],
         ["Reliability", "Multi-AZ database, one NAT per zone", "A zone outage no longer stops the app", "Config flags, about +$50 a month"],

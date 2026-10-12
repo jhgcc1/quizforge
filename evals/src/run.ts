@@ -5,6 +5,9 @@
  * The golden set lives in code (golden.ts) AND is mirrored to a Langfuse Dataset, so every run is an Experiment you can
  * compare in the UI (per item, per metric, across prompt/model versions).
  * The agent under test is the production one (generateQuiz); the judge is a DIFFERENT model (MINIMAX_JUDGE_MODEL, default MiniMax-M3).
+
+ * Where it runs: offline on every PR (`quality`), real model on a PR that touches prompts/LLM code/guard/evals (`llm-eval-pr`: no Langfuse keys, so
+ * the run is not traced), real model + Langfuse on main (`llm-eval`) and nightly (`eval.yml`).
  * Exit code 1 when any gated metric is below its threshold, so CI can block a prompt/model change that makes quizzes worse.
  */
 import { readFileSync, writeFileSync } from "node:fs";
