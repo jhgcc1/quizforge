@@ -26,8 +26,8 @@ def img(name, cap):
 
 
 def overview():
-    cards = [("13", "sample documents in the dropdown"), ("3", "layers that validate each request"), ("1", "quality method for production and evals"),
-             ("18", "alarms (3 about quality)"), ("9", "CI gates before any deploy"), ("39", "live AWS security checks")]
+    cards = [("13", "sample documents in the dropdown"), ("8", "guardrail layers on every request"), ("1", "quality method for production and evals"),
+             ("18", "alarms (3 about quality)"), ("9", "CI gates before any deploy"), ("40", "live AWS security checks")]
     c = "".join(f'<div class="card"><div class="num">{n}</div><div>{t}</div></div>' for n, t in cards)
     body = f'<div class="cards">{c}</div>'
     body += d.life_of_quiz()
@@ -302,6 +302,17 @@ def validation():
 
 def guardrails():
     body = callout("ok", "The idea", "No single guardrail is trusted. A request crosses <b>eight layers</b>; each one is cheap, deterministic code, and each one is tested. Anything that fails stops at the first layer that can see it, with a clear message, and never reaches the model or the database. Only the <b>model's own resistance</b> is probabilistic, and that is why it has its own live tests.")
+    body += "<h3>Who does what: the pipeline, or the request</h3>" + callout("info", "Two different jobs", "<b>CI/CD (promptfoo, tests, evals)</b> never protects a user: it <i>proves</i>, before each deploy, that the guardrails still work and that a prompt change did not make the model obey an attack. <b>The runtime guardrails</b> are the code that runs on every request, <b>before</b> the model call (input) and <b>after</b> it (output).") + d.guardrail_zones()
+    body += table(["Protection", "In CI/CD (before deploy)", "At run, BEFORE the model call", "At run, AFTER the model call"], [
+        ["Hidden or encoded text, 49 keyword rules, language policy", "Unit tests and promptfoo offline check every case (attack corpus)", "<b>Input guard</b> in the worker: reject, flag or sanitize", "—"],
+        ["Semantic classifier (ONNX model <code>deberta-v3-base-prompt-injection-v2</code>)", "Scored offline over the attack corpus and the 500-sample benchmark (<code>corpus</code> and <code>benchmark</code> scripts)", "<b>On the fly</b> on each document if <code>INJECTION_DETECTOR</code> is <code>flag</code> or <code>block</code>: <b>off by default and not in the AWS images</b> (740 MB), English only", "—"],
+        ["The model resisting an instruction inside the document", "promptfoo <b>live</b> (21 tests) and the golden set on the real model", "The prompt says the document is data; <code>&lt;document&gt;</code> tags; forged tags neutralised", "Output rails catch what slipped through"],
+        ["The reply is really a quiz", "promptfoo offline feeds bad replies and checks they are rejected", "—", "<b>Output rails</b>, <b>zod schema</b> with repair, <b>grounding</b> of every quote"],
+        ["Quiz quality (grounded, lint, diversity, relevance, coverage)", "<b>Golden set</b> gates (thresholds), on PR, main and nightly", "—", "Grounding gate and fixed lint on every quiz; the <b>judge</b> scores it later (scorer), blocks nothing"],
+        ["Prompts do not change by accident", "<code>prompts.lock.json</code> + <code>PROMPT_VERSION</code> test; published to Langfuse only from main", "The app reads the prompts from the deployed code", "—"],
+        ["Login, CSRF, SSRF, quotas, WAF", "Unit and integration tests, Terraform checks", "Edge, identity, request and abuse layers on every request", "—"],
+    ], widths=["24%", "26%", "26%", "24%"])
+    body += callout("warn", "The classifier, plainly", "Yes, the ONNX file is a <b>machine-learning model</b> that decides if a text looks like a prompt injection. When it is turned on it runs <b>at run time, on each document, before the generation call</b> (the first load is slow, about a minute; after that, tens of milliseconds). It only <b>flags</b> (never blocks) because it gave a false positive with score 0.995 on a legitimate README. See \"The model behind the ONNX guardrail\" in Input security for the model, its cost and how to replace it. Today it is off in AWS, and the protection in production comes from the deterministic guard, the model's own resistance and the output rails.")
     body += d.guardrail_layers()
     body += "<h3>What each guardrail covers</h3>" + table(["Threat", "Example", "Guardrail", "Where it runs", "What happens", "Tested by"], [
         ["Malformed or hostile request", "Extra fields, <code>__proto__</code>, a string where a number belongs, 4 or 9 questions, a 201-character topic", "Strict zod schemas (shared)", "Browser, BFF, API", "400 and nothing queued", "BFF and API tests, API contract tests (20 cases)"],
@@ -331,7 +342,7 @@ def guardrails():
     ], widths=["6%", "16%", "40%", "38%"])
     body += "<h3>Knobs</h3>" + table(["Setting", "Default", "Effect"], [
         ["<code>ALLOWED_LANGUAGES</code>", "<code>en,pt,es</code>", "Can only narrow the set"],
-        ["<code>INJECTION_DETECTOR</code>", "<code>off</code>", "<code>flag</code> or <code>block</code> turns on the English classifier (needs an image that contains it)"],
+        ["<code>INJECTION_DETECTOR</code>", "<code>off</code>", "<code>flag</code> or <code>block</code> turns on the English classifier (needs an image that contains it). In AWS it stays <code>off</code>; the local docker-compose stack builds the worker with the detector and sets <code>flag</code> by default"],
         ["<code>SOURCE_ALLOWED_HOSTS</code>", "<code>github.com,raw.githubusercontent.com</code>", "Hosts a document may come from"],
         ["<code>DAILY_QUIZ_QUOTA</code> and the rate limits", "10 per 24 h; 120 and 10 per minute", "API settings"],
         ["Job budget", "16 calls, 120,000 tokens, 5 minutes", "<code>DEFAULT_LIMITS</code> in <code>budget.ts</code>"],
@@ -430,6 +441,14 @@ def input_security():
         ["Topic", "2–200 characters, one line", "Shared zod schema"],
         ["Question fields", "Prompt 400, option 300, explanation 600, quote 500 characters", "Quiz schema"],
     ], widths=["32%", "34%", "34%"])
+    body += "<h3>The model behind the ONNX guardrail</h3>" + table(["Question", "Answer"], [
+        ["Which model?", "<code>protectai/deberta-v3-base-prompt-injection-v2</code>: a DeBERTa-v3 classifier fine-tuned to tell a prompt injection from a normal text. Apache 2.0. Run in Node through ONNX (<code>transformers.js</code>), code in <code>packages/detector</code>"],
+        ["Which calls pass through it?", "<b>Every document</b>, once the guardrail is switched on (<code>INJECTION_DETECTOR=flag</code> or <code>block</code>): the worker runs it on the document text before the generation call. Long documents are cut in windows of up to 512 tokens. <b>Today it is switched off in AWS</b>, and the service images do not contain it"],
+        ["Where does it sit?", "Input side only. Nothing in the reply goes through a model: the output rails are code"],
+        ["Which languages?", "<b>English only</b>. The detector declares its languages (<code>languages</code>), and a document in another language is skipped, not judged. Pt and es documents are protected by the keyword rules, the input guard and the output rails"],
+        ["Why this one?", "<b>Cost and simplicity</b>: free, no API key, no price per call, no GPU (it runs on the CPU of the worker task), public licence. The price is size (about 740 MB, so it is kept out of the images) and a slow first load (about a minute)"],
+        ["Can it be replaced by a bigger or multilingual model?", "Yes, by design. The service only knows an interface (<code>InjectionDetector</code>: a name, the languages it understands, and <code>detect(text)</code>) and loads the implementation from the module named in <code>INJECTION_DETECTOR_MODULE</code>. A larger or multilingual classifier (for example Llama Prompt Guard 2, check its licence) is a new module plus an image target with more memory and CPU. Measure it first on the 500-sample benchmark, false positives included"],
+    ], widths=["24%", "76%"])
     body += "<h3>Semantic detector (optional, English only)</h3>" + callout("info", "What it is", "A classifier model, <code>protectai/deberta-v3-base-prompt-injection-v2</code> (the one behind the prompt-injection scanner of LLM Guard): Apache 2.0, public, run in Node through ONNX with no API key and no per-call cost. It is in <code>packages/detector</code>, <b>off by default</b> in production (<code>INJECTION_DETECTOR=off|flag|block</code>), and its heavy dependencies are kept out of the service images.") + table(["Test with the real model", "Result"], [
         ["Plain instruction in English, Portuguese, Spanish, French, German, Russian, Chinese", "Score 1.00 for all seven"],
         ["Instruction in a heading, table cell, image alt text, link title, JSON chat message, code fence", "Score 1.00 (the first version dropped code and link titles and missed three of these; fixed)"],
@@ -852,7 +871,7 @@ def security():
         ["TLS to the database", "<code>audit-aws.sh</code>: <code>rds.force_ssl=1</code>; clients use verify-full"],
         ["No AWS keys in GitHub", "OIDC; AWS trusts the deploy role only for the <code>production</code> environment, and GitHub lets only <code>main</code> use that environment"],
         ["No secrets in Git", "gitleaks in CI; values set with <code>set-secrets.sh</code>"],
-        ["Everything above, live", "<code>scripts/audit-aws.sh</code>: 39 read-only checks (it now also covers the scorer once that service exists)"],
+        ["Everything above, live", "<code>scripts/audit-aws.sh</code>: 40 read-only checks (it now also covers the scorer once that service exists)"],
     ], widths=["38%", "62%"])
     return sec("security", "Network and security", body)
 
