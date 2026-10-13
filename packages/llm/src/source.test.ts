@@ -111,6 +111,54 @@ describe("fetchMarkdown", () => {
     const empty = async () => md("  \n ");
     await expect(fetchMarkdown("https://raw.githubusercontent.com/o/r/main/R.md", {}, deps(empty))).rejects.toMatchObject({ code: "empty" });
   });
+
+  it("turns a network error into fetch_failed", async () => {
+    const down = async (): Promise<Response> => {
+      throw new Error("ECONNRESET");
+    };
+    await expect(fetchMarkdown("https://raw.githubusercontent.com/o/r/main/R.md", {}, deps(down))).rejects.toMatchObject({ code: "fetch_failed", message: expect.stringContaining("ECONNRESET") });
+  });
+
+  it("blocks a host with no DNS answer at all", async () => {
+    const f = vi.fn();
+    await expect(fetchMarkdown("https://raw.githubusercontent.com/o/r/main/R.md", {}, deps(f, async () => []))).rejects.toMatchObject({ code: "blocked_address" });
+    expect(f).not.toHaveBeenCalled();
+  });
+
+  it("treats a body-less response as empty", async () => {
+    const nobody = async () => new Response(null, { status: 200, headers: { "content-type": "text/plain" } });
+    await expect(fetchMarkdown("https://raw.githubusercontent.com/o/r/main/R.md", {}, deps(nobody))).rejects.toMatchObject({ code: "empty" });
+  });
+});
+
+describe("validation corners", () => {
+  it("rejects a string that is not a URL at all", () => {
+    expect(() => assertAllowedUrl("not a url", ["github.com"])).toThrowError(expect.objectContaining({ code: "invalid_url" }));
+  });
+  it("treats something that is not an IP address as unsafe", () => {
+    expect(isPrivateAddress("not-an-ip")).toBe(true);
+  });
+});
+
+describe("the default network dependencies", () => {
+  it("resolve the host through DNS and fetch through the global fetch", async () => {
+    vi.resetModules();
+    const lookup = vi.fn(async () => [{ address: "140.82.112.3", family: 4 }]);
+    vi.doMock("node:dns/promises", () => ({ lookup }));
+    const fetchSpy = vi.fn(async () => md("# from the default deps"));
+    vi.stubGlobal("fetch", fetchSpy);
+    try {
+      const fresh = await import("./source.js");
+      const r = await fresh.fetchMarkdown("https://raw.githubusercontent.com/o/r/main/R.md");
+      expect(r.text).toBe("# from the default deps");
+      expect(lookup).toHaveBeenCalledWith("raw.githubusercontent.com", { all: true });
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+      vi.doUnmock("node:dns/promises");
+      vi.resetModules();
+    }
+  });
 });
 
 describe("splitSections", () => {

@@ -320,3 +320,12 @@ describe("the input guard in the worker (door 1)", () => {
     });
   });
 });
+
+describe("non-Error failures", () => {
+  it("a thrown string is recorded as its text and retried like any other transient failure", async () => {
+    const quiz = await newQuiz();
+    const throwsString = (async () => { throw "plain string failure"; }) as never;
+    const out = await processQuizJob(deps({ generateQuiz: throwsString }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
+    expect(out).toEqual({ kind: "retry", error: "plain string failure" });
+  });
+});

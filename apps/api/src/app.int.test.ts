@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { SignJWT } from "jose";
 import type { FastifyInstance } from "fastify";
-import { claimQuiz, completeQuiz, createDb, migrate, upsertSource } from "@quizforge/db";
+import { claimQuiz, completeQuiz, createDb, failQuiz, migrate, upsertSource } from "@quizforge/db";
 import { buildApp } from "./app.js";
 import { LOCAL_AUDIENCE, LOCAL_ISSUER, localVerifier, signLocalToken } from "./auth.js";
 import { loadConfig } from "./config.js";
@@ -381,5 +381,110 @@ describe("request validation at the API (nothing invalid reaches the queue, so n
     expect((await call("u-validate2", "PUT", path, { optionIds: [qs[0].options[0].id], revision: 1, isCorrect: true })).status).toBe(400);
     expect((await call("u-validate2", "PUT", path, { optionIds: "all", revision: 1 })).status).toBe(400);
     expect((await call("u-validate2", "PUT", path, { optionIds: [], revision: 1 })).status).toBe(400);
+  });
+});
+
+describe("failure paths", () => {
+  const cfgFor = () => loadConfig({ NODE_ENV: "test", DATABASE_URL: dbUrl.toString(), AUTH_MODE: "local", LOCAL_JWT_SECRET: SECRET, QUEUE_MODE: "memory", LOG_LEVEL: "fatal" });
+
+  it("/readyz answers 503 (and says nothing about the cause) when the readiness probe fails", async () => {
+    const broken = await buildApp({ config: cfgFor(), db: ctx.db, queue, verifier: localVerifier(SECRET), ping: async () => { throw new Error("password authentication failed for user quizforge"); } });
+    const res = await broken.inject({ method: "GET", url: "/readyz" });
+    expect(res.statusCode).toBe(503);
+    expect(res.json().error.code).toBe("not_ready");
+    expect(res.body).not.toMatch(/password|quizforge/);
+    await broken.close();
+    const ok = await buildApp({ config: cfgFor(), db: ctx.db, queue, verifier: localVerifier(SECRET), ping: async () => {} });
+    expect((await ok.inject({ method: "GET", url: "/readyz" })).json()).toEqual({ status: "ready" });
+    await ok.close();
+  });
+
+  it("an unexpected exception becomes a generic 500 with the shared error shape and no internal detail", async () => {
+    const broken = await buildApp({ config: cfgFor(), db: {} as never, queue, verifier: localVerifier(SECRET) });
+    const res = await broken.inject({ method: "GET", url: "/v1/quizzes", headers: { authorization: `Bearer ${await token("u-500")}` } });
+    expect(res.statusCode).toBe(500);
+    shape(ErrorBodySchema, res.json());
+    expect(res.json().error).toMatchObject({ code: "internal", message: "Internal error" });
+    expect(res.body).not.toMatch(/TypeError|undefined|select/);
+    await broken.close();
+  });
+
+  it("an unexpected (non-SourceError) failure while validating the source URL is not mistaken for a 400", async () => {
+    const broken = await buildApp({ config: { ...cfgFor(), allowedHosts: null as never }, db: ctx.db, queue, verifier: localVerifier(SECRET) });
+    const res = await broken.inject({
+      method: "POST", url: "/v1/quizzes", payload: JSON.stringify({}),
+      headers: { authorization: `Bearer ${await token("u-url-500")}`, "content-type": "application/json", "idempotency-key": randomUUID() },
+    });
+    expect(res.statusCode).toBe(500);
+    expect(res.json().error.code).toBe("internal");
+    await broken.close();
+  });
+
+  it("replaying a still-queued quiz whose re-publish fails answers 503 with retry-after, and succeeds once the queue is back", async () => {
+    const key = randomUUID();
+    expect((await create("u-replay-down", key)).status).toBe(202);
+    queue.failNext = true;
+    const down = await create("u-replay-down", key);
+    expect(down.status).toBe(503);
+    expect(down.headers["retry-after"]).toBe("2");
+    expect(down.body.error.code).toBe("queue_unavailable");
+    expect((await create("u-replay-down", key)).status).toBe(200);
+  });
+
+  it("an attempt Idempotency-Key reused for ANOTHER quiz is a 422, not a silent replay of the first attempt", async () => {
+    const a = (await create("u-key-reuse", randomUUID())).body.quiz.id as string;
+    const b = (await create("u-key-reuse", randomUUID())).body.quiz.id as string;
+    await finishQuiz(a);
+    await finishQuiz(b);
+    const key = randomUUID();
+    expect((await call("u-key-reuse", "POST", `/v1/quizzes/${a}/attempts`, {}, { "idempotency-key": key })).status).toBe(201);
+    const reuse = await call("u-key-reuse", "POST", `/v1/quizzes/${b}/attempts`, {}, { "idempotency-key": key });
+    expect(reuse.status).toBe(422);
+    expect(reuse.body.error.code).toBe("idempotency_key_reuse");
+  });
+});
+
+describe("edge cases", () => {
+  it("every route that takes an id answers 404 (never 500) for something that is not a UUID", async () => {
+    const bad = "not-a-uuid";
+    const k = { "idempotency-key": randomUUID() };
+    expect((await call("u-edge", "GET", `/v1/quizzes/${bad}/attempts`)).status).toBe(404);
+    expect((await call("u-edge", "POST", `/v1/quizzes/${bad}/attempts`, {}, k)).status).toBe(404);
+    expect((await call("u-edge", "GET", `/v1/attempts/${bad}`)).status).toBe(404);
+    expect((await call("u-edge", "PUT", `/v1/attempts/${bad}/answers/${bad}`, { optionIds: [randomUUID()], revision: 1 })).status).toBe(404);
+    expect((await call("u-edge", "POST", `/v1/attempts/${bad}/submit`)).status).toBe(404);
+    expect((await call("u-edge", "GET", `/v1/attempts/${randomUUID()}`)).status).toBe(404);
+  });
+
+  it("an attempt needs an Idempotency-Key even for a quiz that does not exist", async () => {
+    const r = await call("u-edge", "POST", `/v1/quizzes/${randomUUID()}/attempts`, {});
+    expect(r.status).toBe(400);
+    expect(r.body.error.code).toBe("idempotency_key_required");
+  });
+
+  it("creating a quiz with no body at all uses the defaults", async () => {
+    const res = await app.inject({ method: "POST", url: "/v1/quizzes", headers: { authorization: `Bearer ${await token("u-nobody")}`, "idempotency-key": randomUUID() } });
+    expect(res.statusCode).toBe(202);
+  });
+
+  it("a failed quiz shows the user a sentence, not the raw failure recorded for operators", async () => {
+    const created = await create("u-failed", randomUUID());
+    const id = created.body.quiz.id as string;
+    await claimQuiz(ctx.db, id);
+    await failQuiz(ctx.db, { quizId: id, error: "BudgetExceededError: LLM call budget exceeded (16)" });
+    const got = await call("u-failed", "GET", `/v1/quizzes/${id}`);
+    expect(got.body.quiz.status).toBe("failed");
+    expect(got.body.quiz.error).toMatch(/too large or complex/);
+    expect(JSON.stringify(got.body)).not.toMatch(/BudgetExceededError/);
+    expect(got.body.questions).toEqual([]);
+  });
+
+  it("echoes a sane X-Request-Id, falls back to X-Amzn-Trace-Id, and replaces junk with a fresh id", async () => {
+    expect((await call(null, "GET", "/healthz", undefined, { "x-request-id": "abc-123" })).headers["x-request-id"]).toBe("abc-123");
+    expect((await call(null, "GET", "/healthz", undefined, { "x-amzn-trace-id": "Root=1-5e6722a7-cc2xmpl46db7ae02d4da47be" })).headers["x-request-id"]).toBe("Root=1-5e6722a7-cc2xmpl46db7ae02d4da47be");
+    const junk = (await call(null, "GET", "/healthz", undefined, { "x-request-id": "bad\u0001id<script>" })).headers["x-request-id"] as string;
+    expect(junk).toMatch(/^[0-9a-f-]{36}$/);
+    const none = (await call(null, "GET", "/healthz")).headers["x-request-id"] as string;
+    expect(none).toMatch(/^[0-9a-f-]{36}$/);
   });
 });

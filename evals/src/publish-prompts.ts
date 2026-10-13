@@ -57,7 +57,7 @@ export async function publishPrompts(api: PromptApi | undefined, opts: { sha?: s
 export const summaryTable = (rows: PublishRow[]): string =>
   ["### Prompts → Langfuse", "", "| Prompt | Result | Version |", "|---|---|---:|", ...rows.map((r) => `| \`${r.name}\` | ${r.action} | ${r.version ?? ""} |`)].join("\n");
 
-async function realApi(): Promise<PromptApi> {
+export async function realApi(): Promise<PromptApi> {
   const { LangfuseClient } = await import("@langfuse/client");
   const lf = new LangfuseClient({ publicKey: process.env.LANGFUSE_PUBLIC_KEY!, secretKey: process.env.LANGFUSE_SECRET_KEY!, ...(process.env.LANGFUSE_BASE_URL ? { baseUrl: process.env.LANGFUSE_BASE_URL } : {}) });
   return {

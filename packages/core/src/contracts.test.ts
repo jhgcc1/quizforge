@@ -28,5 +28,8 @@ describe("contracts", () => {
   it("requestFingerprint ignores key order and undefined, but not values", () => {
     expect(requestFingerprint({ a: 1, b: { y: 2, x: 1 } })).toBe(requestFingerprint({ b: { x: 1, y: 2 }, a: 1, c: undefined }));
     expect(requestFingerprint({ a: 1 })).not.toBe(requestFingerprint({ a: 2 }));
+    // arrays keep their order but their objects are normalised too
+    expect(requestFingerprint({ l: [{ b: 1, a: 2 }, 3] })).toBe(requestFingerprint({ l: [{ a: 2, b: 1 }, 3] }));
+    expect(requestFingerprint([1, 2])).not.toBe(requestFingerprint([2, 1]));
   });
 });

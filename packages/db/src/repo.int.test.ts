@@ -160,6 +160,23 @@ describe("attempts, answers and scoring", () => {
     expect(r!.questions[0]!.options.filter((o) => o.selected).map((o) => o.id)).toEqual([opt(0)]);
   });
 
+  it("getAttemptResult on a quiz that has no questions yet returns an empty breakdown", async () => {
+    const { quiz } = await createQuizIdempotent(ctx.db, {
+      ownerSub: "empty", sourceUrl: "https://github.com/o/r/blob/main/README.md", numQuestions: 5,
+      strategy: "auto", critique: true, idempotencyKey: randomUUID(), requestHash: "h",
+    });
+    const { attempt } = await getOrCreateAttempt(ctx.db, { quizId: quiz.id, userSub: "empty", idempotencyKey: randomUUID(), requestHash: "h" });
+    expect((await getAttemptResult(ctx.db, attempt.id, "empty"))!.questions).toEqual([]);
+  });
+
+  it("getAttemptResult on an attempt with no answers lists every question with nothing selected", async () => {
+    const { quiz, questions } = await readyQuiz("noans");
+    const { attempt } = await getOrCreateAttempt(ctx.db, { quizId: quiz.id, userSub: "u", idempotencyKey: randomUUID(), requestHash: "h" });
+    const r = await getAttemptResult(ctx.db, attempt.id, "u");
+    expect(r!.questions).toHaveLength(questions.length);
+    expect(r!.questions.every((q) => q.options.every((o) => !o.selected))).toBe(true);
+  });
+
   it("submit computes the weighted score from stored answers, treats blanks as 0, and is replay-safe", async () => {
     const { quiz, questions } = await readyQuiz("sub");
     const { attempt } = await getOrCreateAttempt(ctx.db, { quizId: quiz.id, userSub: "u", idempotencyKey: randomUUID(), requestHash: "h" });
@@ -199,5 +216,22 @@ describe("attempts, answers and scoring", () => {
     expect(new Set(oks.map((r) => r.status === "ok" && r.result.finalScore)).size).toBe(1);
     const final = await getAttemptResult(ctx.db, attempt.id, "u");
     expect(final!.questions.every((q) => q.score !== null)).toBe(true);
+  });
+});
+
+describe("attempts with no answers", () => {
+  it("shows an unanswered attempt as unscored, and submitting it scores every question 0", async () => {
+    const { quiz, questions } = await readyQuiz("blank");
+    const { attempt } = await getOrCreateAttempt(ctx.db, { quizId: quiz.id, userSub: "u", idempotencyKey: randomUUID(), requestHash: "h" });
+    const before = await getAttemptResult(ctx.db, attempt.id, "u");
+    expect(before!.finalScore).toBeNull();
+    expect(before!.questions).toHaveLength(questions.length);
+    expect(before!.questions.every((q) => q.options.every((o) => !o.selected))).toBe(true);
+    expect(await getAttemptResult(ctx.db, attempt.id, "someone-else")).toBeUndefined();
+
+    const done = await submitAttempt(ctx.db, { attemptId: attempt.id, userSub: "u" });
+    if (done.status !== "ok") throw new Error("submit failed");
+    expect(done.result.finalScore).toBe(0);
+    expect(done.result.questions.map((q) => q.score)).toEqual([0, 0, 0, 0, 0]);
   });
 });

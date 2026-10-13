@@ -80,6 +80,21 @@ describe("single-shot", () => {
     expect(r.questions.map((x) => x.sourceQuote)).not.toContain("this sentence does not exist in the document");
   });
 
+  it("a duplicated question is flagged by the deterministic gate and fixed by revise", async () => {
+    const dup = [...five];
+    dup[3] = q(3, { prompt: five[1]!.prompt });
+    const f = scripted({
+      "generate:single-shot": ok(...dup),
+      "revise:round-1": (m) => {
+        expect(m.at(-1)!.content).toContain("duplicate question");
+        return ok(q(3));
+      },
+    });
+    const r = await runQuizGraph({ llm: f.llm, budget: new JobBudget() }, { sourceText: SHORT_DOC, numQuestions: 5, strategy: "single-shot" });
+    expect(f.calls).toEqual(["generate:single-shot", "revise:round-1"]);
+    expect(new Set(r.questions.map((x) => x.prompt)).size).toBe(5);
+  });
+
   it("fails with QualityGateError when grounding is still broken after the max rounds", async () => {
     const bad = [...five];
     bad[0] = q(0, { sourceQuote: "totally made up quote here" });

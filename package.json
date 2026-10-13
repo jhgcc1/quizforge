@@ -9,6 +9,7 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:coverage": "vitest run --config vitest.coverage.config.ts --coverage",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "db:up": "docker compose up -d postgres elasticmq",
     "test:e2e": "tsx e2e/prepare.ts && playwright test --config e2e/playwright.config.ts",
@@ -23,6 +24,7 @@
     "@quizforge/db": "workspace:*",
     "@types/node": "^20.17.0",
     "@types/pg": "^8.23.1",
+    "@vitest/coverage-v8": "2.1.9",
     "eslint": "^9.39.5",
     "fast-check": "^3.23.0",
     "pg": "^8.23.1",

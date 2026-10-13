@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ScoreJobMessageSchema, type ScoreJobMessage } from "@quizforge/core";
 import { Consumer, type QueueMessage, type QueueTransport } from "./consumer.js";
 import { createLogger, emitMetrics } from "./log.js";
@@ -124,6 +124,70 @@ describe("logging", () => {
     const emf = JSON.parse(out[0]!);
     expect(emf._aws.CloudWatchMetrics[0]).toMatchObject({ Namespace: "QuizForge", Dimensions: [["Service"]] });
     expect(emf.QuizQuality).toBe(0.8);
+  });
+});
+
+describe("logging details", () => {
+  const capture = (level: "error" | "warn" | "info" | "debug" = "debug") => {
+    const lines: Record<string, unknown>[] = [];
+    return { lines, log: createLogger(level, { service2: "x" }, (l) => lines.push(JSON.parse(l))) };
+  };
+
+  it("drops lines below the configured level and keeps the rest, child bindings included", () => {
+    const { lines, log } = capture("warn");
+    log.debug({}, "d");
+    log.info({}, "i");
+    log.warn({ a: 1 }, "w");
+    log.child({ jobId: "j" }).error({}, "e");
+    expect(lines.map((l) => l.msg)).toEqual(["w", "e"]);
+    expect(lines[1]).toMatchObject({ level: "error", service: "worker", service2: "x", jobId: "j" });
+  });
+
+  it("serialises Errors without leaking more than 6 stack lines, and redacts secrets inside arrays", () => {
+    const { lines, log } = capture();
+    const err = new Error("boom");
+    err.stack = Array.from({ length: 20 }, (_, i) => `frame ${i}`).join("\n");
+    log.error({ err, items: [{ token: "t0p", name: "n" }] }, "m");
+    const e = lines[0]!.err as { name: string; message: string; stack: string };
+    expect(e).toMatchObject({ name: "Error", message: "boom" });
+    expect(e.stack.split("\n")).toHaveLength(6);
+    expect(lines[0]!.items).toEqual([{ token: "[redacted]", name: "n" }]);
+  });
+
+  it("stops descending into very deep objects instead of recursing forever", () => {
+    const { lines, log } = capture();
+    log.info({ a: { b: { c: { d: { e: { f: { token: "deep" } } } } } } }, "m");
+    expect(JSON.stringify(lines[0])).toContain("deep"); // beyond the depth limit the value is passed through untouched
+  });
+
+  it("an Error with no stack is still serialised", () => {
+    const { lines, log } = capture();
+    const err = new Error("no stack");
+    delete err.stack;
+    log.error({ err }, "m");
+    expect((lines[0]!.err as { message: string }).message).toBe("no stack");
+  });
+
+  it("emitMetrics writes to stdout by default, with unit None when none is given", () => {
+    const spy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    try {
+      emitMetrics({ X: { value: 2 } });
+      const rec = JSON.parse(String(spy.mock.calls[0]![0]));
+      expect(rec._aws.CloudWatchMetrics[0].Metrics).toEqual([{ Name: "X", Unit: "None" }]);
+      expect(rec.X).toBe(2);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("the default logger writes JSON lines to stdout", () => {
+    const spy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    try {
+      createLogger().info({}, "hello");
+      expect(JSON.parse(String(spy.mock.calls[0]![0]))).toMatchObject({ msg: "hello", level: "info" });
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 
