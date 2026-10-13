@@ -943,6 +943,22 @@ def cicd():
         ["4", "<code>terraform apply</code>", "Rolling update + circuit breaker with automatic rollback"],
         ["5", "Smoke test through CloudFront (7 assertions)", "Proves edge → load balancer → api works"],
     ], widths=["5%", "45%", "50%"])
+    body += "<h3>Automated tests and coverage</h3>" + table(["Layer", "Tests", "CI job", "What it covers"], [
+        ["<b>Unit</b>", "449 in 30 files (Vitest)", "<code>quality</code>", "Pure logic: scoring, schemas, guard and keyword rules, SSRF checks, JSON repair, the graph, output rails, migration policy"],
+        ["<b>Integration</b>", "75 in 7 files, real PostgreSQL", "<code>integration</code>", "The API end to end (login, quotas, idempotency, ownership), the worker, the scorer, the sweeper, the database constraints and the migrations"],
+        ["<b>End to end</b>", "6, Playwright in Chrome", "<code>e2e</code>", "Login, create, answer with a reload, submit, history and results, with the four services running and a fake model"],
+        ["<b>Prompts and guardrails</b>", "81 offline, 21 live (promptfoo)", "<code>promptfoo</code>, <code>llm-eval-pr</code>", "The attack corpus, language policy, bad replies, and the real model resisting"],
+    ], widths=["18%", "24%", "20%", "38%"])
+    body += table(["Where", "Statements covered (unit + integration)", "Notes"], [
+        ["<code>packages/core</code> (scoring, schemas, guard)", "99%", "The most critical logic, almost fully covered"],
+        ["<code>packages/db</code> (queries, migrations)", "95%", ""],
+        ["<code>packages/llm</code> (agent, prompts, rails)", "89%", "The rest is code that calls the real model"],
+        ["<code>apps/api</code>", "85%", ""],
+        ["<code>apps/worker</code>", "64%", "Start-up and wiring, exercised by the end-to-end test"],
+        ["<code>apps/web</code> (front end)", "no coverage measured", "One unit test file (helpers). The React components have no unit tests: they are checked by the end-to-end test in Chrome"],
+        ["All backend and shared code", "77% of statements, 88% of functions, 89% of branches", "Measured locally on 2026-10-12 with V8 coverage over 524 tests. <b>Not measured in CI and not 100%</b>"],
+    ], widths=["34%", "26%", "40%"])
+    body += callout("info", "Why not 100%", "A percentage gate would push tests for start-up code, UI wiring and calls to the real model, which tests cheaply prove nothing about. The critical logic (score, schemas, guard, queries) is above 95%. Next steps: report the coverage in CI and set a floor per package, and add component tests for the quiz screens.")
     return sec("cicd", "CI/CD", body)
 
 
