@@ -10,6 +10,21 @@ const login = async (page: Page, user: string) => {
   await expect(page.getByRole("heading", { name: "Your quizzes" })).toBeVisible();
 };
 
+test("sign-up and social buttons exist in local mode and the sign-up path reaches the dev page and logs in", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("link", { name: "Sign in", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Create account" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Continue with Google" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Continue with Facebook" })).toBeVisible();
+
+  await page.getByRole("link", { name: "Create account" }).click();
+  await expect(page).toHaveURL(/\/auth\/dev\?mode=signup/);
+  await expect(page.getByText("SIMULATION")).toBeVisible();
+  await page.getByLabel("User").fill("new-person");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await expect(page.getByRole("heading", { name: "Your quizzes" })).toBeVisible();
+});
+
 test("anonymous visitors are sent to sign-in and cannot call the BFF", async ({ page, request }) => {
   await page.goto("/app/quiz/6f1d1e0c-9a0b-4c43-8a6e-1f2d3c4b5a69");
   await expect(page).toHaveURL(/\/auth\/dev/);

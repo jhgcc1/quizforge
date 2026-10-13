@@ -86,7 +86,7 @@ The request/response schemas are one file (`packages/core/src/schemas.ts`) impor
 
 ## Security
 
-* Cognito **access tokens only**, verified in the API (signature/JWKS, `iss`, `exp`, `token_use`, `client_id`); sign-up disabled; users are created by an admin. Tokens live in **httpOnly cookies** and are exchanged by the Next.js server (PKCE), so browser JS never sees them.
+* Cognito **access tokens only**, verified in the API (signature/JWKS, `iss`, `exp`, `token_use`, `client_id`); self sign-up (e-mail + password) and Google/Facebook login are optional and switched by Terraform, see [`docs/auth-setup.md`](docs/auth-setup.md) (`allow_self_signup=false` goes back to admin-created users). Tokens live in **httpOnly cookies** and are exchanged by the Next.js server (PKCE), so browser JS never sees them.
 * Every row is scoped by `sub`; another user's resource is a 404.
 * SSRF guard on the document URL; the document is untrusted prompt input (delimiter neutralisation, schema-bound output, grounding gate).
 * **Input guard** (`packages/core/src/guard.ts`, `packages/llm/src/llm-input.ts`): hidden or encoded text in a document (Base64, hex, ROT13, percent/escape/entity encodings, invisible Unicode and tag characters, look-alike letters, instructions in HTML comments or hidden elements, chat-template tokens) is **rejected before any model call**; plain-text instructions are flagged and kept as delimited data; invisible characters and HTML comments are removed and the sanitized text is what is stored. The quiz topic must be one plain line.
