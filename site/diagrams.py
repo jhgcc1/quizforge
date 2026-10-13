@@ -152,6 +152,27 @@ def agent_graph():
     return svg(1100, 572, b, "The agent (LangGraph): generation, fixed checks and review. The judge runs later, in the scorer")
 
 
+def prep_flow():
+    """What happens to a README before the model sees it. Green = deterministic code, red = ML model, purple = LLM."""
+    b = ""
+    RULE, ML, LLM = "data", "sec", "ai"
+    row1 = [("1 · Download", "allow-list · public IP · 512 KB", RULE), ("2 · Normalize and clean", "decode hidden text · strip invisibles", RULE),
+            ("3 · Language", "en · pt · es only", RULE), ("4 · Classifier (optional)", "DeBERTa · English · flag only", ML)]
+    row2 = [("5 · Store", "cleaned text, once per hash", RULE), ("6 · Route and cut", "short: whole · long: sections", RULE),
+            ("7 · Build the prompt", "<document> tags · forged tags off", RULE), ("8 · Model-call guard", "strict schema · size caps · budget", RULE)]
+    for r, row in enumerate([row1, row2]):
+        for i, (t, sub, k) in enumerate(row):
+            x = 20 + i * 290
+            b += box(x, 20 + r * 112, 262, 72, t, sub, k, small=True)
+            if i: b += arrow(x - 28, 56 + r * 112, x, 56 + r * 112)
+    b += path("M1161 56 H 1185 V 112 H 10 V 168 H 20", "", 0, 0, dash=True)
+    b += box(940, 242, 230, 52, "MiniMax", "sees only the cleaned, delimited text", LLM, small=True)
+    b += arrow(1020 + 6, 204, 1055, 242)
+    b += text(20, 270, "A document that fails step 2 or 3 is rejected here: the model is never called (llmCalls = 0).", "note")
+    b += text(20, 290, "A plain instruction written in the document is not removed: it is flagged, counted and kept as data inside the tags.", "note")
+    return svg(1200, 312, b, "Before the model: how a README is prepared (all deterministic code, except the optional classifier)")
+
+
 def entity(x, y, name, cols, kind="data", w=290):
     h = 42 + 17 * len(cols)
     out = f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="8" class="box {kind}"/>'

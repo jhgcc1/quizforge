@@ -88,7 +88,19 @@ def data():
 
 
 def agent():
-    body = d.agent_graph()
+    body = ""
+    body += "<h3>Before the model: how the README is prepared</h3>" + d.prep_flow()
+    body += table(["Step", "What it does", "Why"], [
+        ["1 · Download", "Only <code>github.com</code> and <code>raw.githubusercontent.com</code>, https, the name resolved to public addresses only, redirects re-checked, 10 s, 512 KB, text content types", "The URL is user input: it must not reach internal addresses or huge files"],
+        ["2 · Normalize and clean", "Line endings and blank lines normalised; text hidden as Base64, hex, ROT13 and similar is decoded and looked into (a hidden instruction rejects the document); invisible characters and HTML comments are removed", "What the model reads is what a person reads"],
+        ["3 · Language", "Detected on the prose only (code blocks, inline code, links and HTML are dropped first); only English, Portuguese and Spanish are accepted", "The quality gates and rules are built for these three"],
+        ["4 · Classifier", "Optional DeBERTa model, English only, flags a likely injection and never blocks", "A second opinion for paraphrased attacks"],
+        ["5 · Store", "The cleaned text is saved once per content hash; the scorer later reads the same text back", "One version of the document for generation and scoring"],
+        ["6 · Route and cut", "A short document goes whole (cut at 60,000 characters); a long one with at least 4 sections is split by headings (below)", "The model gets a size it can handle"],
+        ["7 · Build the prompt", "The rules are in the system prompt; the document goes inside <code>&lt;document&gt;</code> tags and is told to be data; a fake closing tag in the README is neutralised; the topic is one plain line", "The document cannot pose as an instruction"],
+        ["8 · Model-call guard", "Strict message schema, size caps, the document inspected again, output tokens capped, a budget of 16 calls", "A last check at the only door to the model"],
+    ], widths=["16%", "56%", "28%"])
+    body += "<h3>The graph</h3>" + d.agent_graph()
     body += table(["Step", "What happens"], [
         ["<b>route</b>", "No model call: a short document (up to ~4,500 tokens) goes <code>single-shot</code>; a long one with 4 or more sections goes <code>section-map-reduce</code>, so the questions cover the whole document"],
         ["<b>generate</b> and <b>check</b>", "The model returns strict JSON (validated by zod, repaired up to 2 times). Fixed checks: every question must carry a <b>literal quote from the document</b>; a question whose quote cannot be found is dropped, never shown"],
