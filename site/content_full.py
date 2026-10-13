@@ -651,7 +651,6 @@ def secrets():
         ["Secrets in PR plan comments", "<b>None</b>", "PRs #6, #7 and #8: Terraform masks sensitive values; 0 matches"],
         ["Two secrets in plain text in the Terraform state", "<b>Yes (by design)</b>", "Cognito client secret and the CloudFront→ALB header value (marked sensitive, so masked in output, but stored in the file)"],
         ["The plan role can read the state", "<b>Yes</b>", "Simulated: no access to Secrets Manager values, but it can read and decrypt the state, so it can reach those two values"],
-        ["Keys pasted in this chat", "<b>Rotate</b>", "The MiniMax and Langfuse keys appeared in the conversation (not in Git)"],
     ], widths=["34%", "16%", "50%"])
     body += callout("warn", "The one real nuance", "Earlier I wrote that the plan role cannot read secrets. That is true for Secrets Manager, but the role can read the Terraform state, and the state holds 2 secrets. Who can use it: any workflow run on a branch or PR of this repository (forks never get it). Only people with write access can do that, so the risk is low. To lower it: restrict the plan role to <code>pull_request</code> and <code>main</code>, or accept it.")
     body += "<h3>Where each value lives</h3>" + table(["Name", "Secret?", "Used by", "Lives in", "How it gets there"], [
@@ -687,7 +686,6 @@ def secrets():
         ["<code>infra/bootstrap/bootstrap.tfplan</code> and <code>infra/terraform/plat.tfplan</code>", "Saved plans from the first PR, <b>committed to Git</b> by mistake", "Checked: only names, the account id and unknown (not yet created) values; no secret", "Removed from Git in PR #12; the old copies stay in history"],
     ], widths=["30%", "30%", "18%", "22%"])
     body += "<h3>What to do</h3>" + table(["Action", "Why", "Cost"], [
-        ["Rotate the MiniMax key and the Langfuse keys", "They were pasted into this chat", "5 minutes"],
         ["Delete <code>terraform.tfstate.backup</code> and <code>gh.tfplan</code>", "Old local copies nobody needs", "1 command"],
         ["Optional: restrict the plan role to <code>pull_request</code> and <code>main</code> (today any branch)", "Fewer ways to reach the two secrets in the state. The role also has the AWS ReadOnlyAccess policy for the whole account", "small Terraform change"],
         ["Optional: a rotation for the Cognito client secret", "It is a long-lived value", "medium"],
@@ -1200,7 +1198,7 @@ def limits():
         ["Language detection is statistical", "Very short or mixed texts can be misjudged; under 40 letters of prose the language is \"unknown\" and is let through."],
         ["Hidden-text guard is a heuristic", "It blocks the techniques in the attack corpus and close variants; a new encoding is only stopped by the model's own resistance. See \"Guardrails in execution\"."],
         ["Alarm e-mail", "Address set; nothing is delivered until the deploy runs and you confirm the AWS subscription e-mail."],
-        ["Your to-do", "Rotate the MiniMax key that was pasted in chat; delete the Cognito test user; decide: keep paused or destroy."],
+        ["Your to-do", "Delete the Cognito test user; decide: keep paused or destroy."],
     ], widths=["30%", "70%"])
     return sec("limits", "Limits and next steps", body)
 
