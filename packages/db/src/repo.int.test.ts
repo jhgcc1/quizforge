@@ -201,3 +201,20 @@ describe("attempts, answers and scoring", () => {
     expect(final!.questions.every((q) => q.score !== null)).toBe(true);
   });
 });
+
+describe("attempts with no answers", () => {
+  it("shows an unanswered attempt as unscored, and submitting it scores every question 0", async () => {
+    const { quiz, questions } = await readyQuiz("blank");
+    const { attempt } = await getOrCreateAttempt(ctx.db, { quizId: quiz.id, userSub: "u", idempotencyKey: randomUUID(), requestHash: "h" });
+    const before = await getAttemptResult(ctx.db, attempt.id, "u");
+    expect(before!.finalScore).toBeNull();
+    expect(before!.questions).toHaveLength(questions.length);
+    expect(before!.questions.every((q) => q.options.every((o) => !o.selected))).toBe(true);
+    expect(await getAttemptResult(ctx.db, attempt.id, "someone-else")).toBeUndefined();
+
+    const done = await submitAttempt(ctx.db, { attemptId: attempt.id, userSub: "u" });
+    if (done.status !== "ok") throw new Error("submit failed");
+    expect(done.result.finalScore).toBe(0);
+    expect(done.result.questions.map((q) => q.score)).toEqual([0, 0, 0, 0, 0]);
+  });
+});
