@@ -119,7 +119,7 @@ def agent_graph():
     b += box(20, 150, 130, 62, "fetch + SSRF", "https · allow-list · public IP", "sec", small=True)
     b += box(180, 150, 120, 62, "router", "heuristic (no LLM)", "compute", small=True)
     b += box(340, 60, 190, 62, "single-shot", "short doc: 1 prompt", "ai", small=True)
-    b += box(340, 240, 190, 62, "section-map-reduce", "sections × 2 candidates", "ai", small=True)
+    b += box(340, 240, 190, 62, "section-map-reduce", "long doc: split · pick · merge", "ai", small=True)
     b += box(560, 150, 170, 62, "check (no LLM)", "schema · grounding · lint", "sec", small=True)
     b += box(750, 60, 150, 62, "critique (LLM)", "once", "ai", small=True)
     b += box(750, 240, 150, 62, "revise (LLM)", "flagged only · ≤2×", "ai", small=True)
@@ -144,7 +144,12 @@ def agent_graph():
     b += text(20, 372, "Budget per job: 16 calls · 120k tokens · 5 min (survives redelivery).", "note")
     b += text(20, 396, "The checkpoint is deleted when the quiz is saved (or after 24 h); a CONTENT failure deletes it too: the retry regenerates.", "note")
     b += text(20, 420, "The judge is not a node of the graph: the quiz is saved as ready first, then judged in the scorer service.", "note")
-    return svg(1100, 450, b, "The agent (LangGraph): generation, fixed checks and review. The judge runs later, in the scorer")
+    b += group(20, 446, 1070, 112, "section-map-reduce, the path for a long document (more than ~4,500 tokens and at least 4 sections)", "grp sub")
+    b += text(36, 484, "1 · Split: a new section at every #, ## or ### heading (not inside code blocks); sections under 40 tokens are dropped. No model.", "note")
+    b += text(36, 506, "2 · Pick up to 5 sections: spread evenly over the document, or the best matches to the topic when one is given. No model.", "note")
+    b += text(36, 528, "3 · Map: one model call per section asks for 2 candidate questions from that section only (up to 3 calls in parallel).", "note")
+    b += text(36, 550, "4 · Reduce: take candidates in turn from each section, drop repeated questions, order easy → hard. No model. Then check, critique, revise.", "note")
+    return svg(1100, 572, b, "The agent (LangGraph): generation, fixed checks and review. The judge runs later, in the scorer")
 
 
 def entity(x, y, name, cols, kind="data", w=290):
