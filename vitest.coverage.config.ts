@@ -54,6 +54,7 @@ export default defineConfig({
       // Ratchet: a little below what is achieved today, so any drop fails the run. Raise when coverage rises.
       thresholds: {
         statements: 97, lines: 97, functions: 97, branches: 94,
+        "packages/contract/src/**": { statements: 100, lines: 100, functions: 100, branches: 100 },
         "packages/core/src/**": { statements: 100, lines: 100, functions: 100, branches: 90 },
         "packages/db/src/**": { statements: 100, lines: 100, functions: 85, branches: 94 },
         "packages/llm/src/**": { statements: 100, lines: 100, functions: 100, branches: 94 },

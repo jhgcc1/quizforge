@@ -96,9 +96,9 @@ importers:
 
   apps/web:
     dependencies:
-      '@quizforge/core':
+      '@quizforge/contract':
         specifier: workspace:*
-        version: link:../../packages/core
+        version: link:../../packages/contract
       jose:
         specifier: ^6.2.12
         version: 6.2.12
@@ -187,8 +187,17 @@ importers:
         specifier: ^4.19.0
         version: 4.23.15
 
+  packages/contract:
+    dependencies:
+      zod:
+        specifier: ^3.24.0
+        version: 3.25.76
+
   packages/core:
     dependencies:
+      '@quizforge/contract':
+        specifier: workspace:*
+        version: link:../contract
       zod:
         specifier: ^3.24.0
         version: 3.25.76

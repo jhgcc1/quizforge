@@ -1,31 +1,36 @@
 import { z } from "zod";
-// no ".js" extension: this file is also bundled for the browser, and Turbopack does not map ".js" to the ".ts" source
-import { checkShortText } from "./guard";
 
 /**
  * Request and response contracts shared by the API, the web BFF and the browser, so none of them can drift.
- * Pure zod (no Node imports): the browser bundle imports this file through "@quizforge/core/schemas".
+ * Pure zod (no Node imports, no keyword rules): the browser bundle imports this package, "@quizforge/contract".
  *  - requests are validated in the browser form, again at the BFF, and finally by the API (the only one that is trusted)
  *  - responses are validated in the browser client, and the API integration tests assert every response against them
  */
 
 export const STRATEGIES = ["auto", "single-shot", "section-map-reduce"] as const;
 
+// Local, basic check of the topic (the browser form and the BFF use it). The STRICT check (instruction phrases, encoded text)
+// is server-side only: core's CreateQuizBodyStrictSchema adds it on top of this one.
+const HAS_LINE_BREAK = /[\r\n\u2028\u2029]/;
+const HAS_CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/;
+const HAS_INVISIBLE = /[\u00AD\u034F\u061C\u115F\u1160\u17B4\u17B5\u180B-\u180E\u200B-\u200F\u202A-\u202E\u2060-\u206F\u3164\uFE00-\uFE0F\uFEFF\uFFA0]|[\u{E0000}-\u{E007F}]|[\u{E0100}-\u{E01EF}]/u;
+
+export const TopicSchema = z
+  .string()
+  .trim()
+  .min(2)
+  .max(200)
+  .superRefine((t, ctx) => {
+    if (HAS_LINE_BREAK.test(t)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "The topic must be a single line" });
+    else if (HAS_INVISIBLE.test(t) || HAS_CONTROL.test(t)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "The topic contains invisible or control characters" });
+  });
+
 export const CreateQuizBodySchema = z
   .object({
     /** Markdown document to quiz on. Falls back to the server default when omitted. */
     sourceUrl: z.string().trim().url().max(2000).optional(),
-    /** Free text that ends up in a prompt: one plain line, no invisible characters, no instructions, no encoded text (see guard.ts). */
-    topic: z
-      .string()
-      .trim()
-      .min(2)
-      .max(200)
-      .superRefine((t, ctx) => {
-        const issue = checkShortText(t);
-        if (issue) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `The topic ${issue.message}` });
-      })
-      .optional(),
+    /** Free text that ends up in a prompt: one plain line, no invisible characters. The server adds the strict check (instructions, encodings). */
+    topic: TopicSchema.optional(),
     numQuestions: z.number().int().min(5).max(8).default(6),
     strategy: z.enum(STRATEGIES).default("auto"),
     critique: z.boolean().default(true),
