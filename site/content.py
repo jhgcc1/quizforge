@@ -189,7 +189,6 @@ def tradeoffs():
         ["README sources", "Any public GitHub repository (host allow-list)", "Restrict to the catalog or to a list of owners"],
         ["Guard coverage", "Explicit patterns; the rest relies on the model and the output rails", "A multilingual classifier, more keyword languages, red-team generated attacks"],
         ["Evaluation size", "5 golden documents: small differences are noise", "More documents and repeated runs"],
-        ["Keys", "The MiniMax and Langfuse keys appeared in chat; the alarm e-mail needs its confirmation", "Rotate the keys, confirm the subscription"],
     ], widths=["20%", "46%", "34%"])
     return sec("tradeoffs", "Trade-offs and next steps", body, "What was decided on purpose, and what would change it.")
 
