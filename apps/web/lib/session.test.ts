@@ -6,7 +6,7 @@ import type { WebConfig } from "./config.js";
 vi.mock("server-only", () => ({}));
 const { AT, OAUTH, RT, clearSession, isFresh, peek, setSession, tokenRequest } = await import("./session.js");
 
-const cfg: WebConfig = { authMode: "cognito", cognitoDomain: "https://auth.example.com", clientId: "cid", clientSecret: "sec", appUrl: "https://app.example.com", apiUrl: "http://api", localSecret: "", secureCookies: true };
+const cfg: WebConfig = { authMode: "cognito", cognitoDomain: "https://auth.example.com", clientId: "cid", clientSecret: "sec", appUrl: "https://app.example.com", apiUrl: "http://api", localSecret: "", secureCookies: true, allowSignup: false, socialProviders: [] };
 const jwt = (claims: Record<string, unknown>) => new SignJWT(claims).setProtectedHeader({ alg: "HS256" }).sign(new TextEncoder().encode("k".repeat(32)));
 const inSeconds = (s: number) => Math.floor(Date.now() / 1000) + s;
 
