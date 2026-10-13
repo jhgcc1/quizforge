@@ -50,7 +50,7 @@ def architecture():
         ["<b>scorer</b> (1–2 tasks)", "Judges a quiz <b>after</b> it is saved: an LLM judge and fixed checks", "The user does not wait for the judge"],
         ["<b>RDS PostgreSQL</b>", "All data, and the agent's checkpoints", "Idempotency and scoring need real constraints and transactions"],
         ["<b>Cognito</b>", "Users and login (code flow with PKCE), no sign-up", "Standard JWT, no passwords stored by us"],
-        ["<b>Langfuse</b> and <b>CloudWatch</b>", "Traces, cost and quality scores; logs, metrics, 18 alarms by e-mail", "Langfuse for the AI, CloudWatch for the platform"],
+        ["<b>Langfuse</b> and <b>CloudWatch</b>", "Traces, cost and quality scores; logs, metrics, 20 alarms by e-mail (including two that watch for probing)", "Langfuse for the AI, CloudWatch for the platform"],
     ], widths=["24%", "42%", "34%"])
     return sec("architecture", "Architecture", body, "Everything runs in one AWS region (us-east-2), in two zones, created by Terraform.")
 
