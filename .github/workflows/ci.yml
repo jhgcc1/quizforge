@@ -396,6 +396,11 @@ jobs:
       contents: read
     env:
       TAG: ${{ github.sha }}
+      # social login (optional): empty = that provider is not created. Secrets of the `production` environment.
+      TF_VAR_google_client_id: ${{ secrets.GOOGLE_CLIENT_ID || '' }}
+      TF_VAR_google_client_secret: ${{ secrets.GOOGLE_CLIENT_SECRET || '' }}
+      TF_VAR_facebook_app_id: ${{ secrets.FACEBOOK_APP_ID || '' }}
+      TF_VAR_facebook_app_secret: ${{ secrets.FACEBOOK_APP_SECRET || '' }}
     steps:
       - name: Refuse to deploy while the environment is paused
         run: |

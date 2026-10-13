@@ -105,6 +105,8 @@ services:
       LOCAL_JWT_SECRET: "compose-local-secret-compose-local-secret"
       APP_URL: "http://localhost:13000"
       API_URL: "http://api:8080"
+      ALLOW_SIGNUP: "true"
+      SOCIAL_PROVIDERS: "google,facebook"
     ports: ["13000:3000"]
     depends_on: [api]
 
