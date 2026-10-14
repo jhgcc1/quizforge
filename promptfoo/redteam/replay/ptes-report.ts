@@ -6,20 +6,24 @@
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { INJECTION_RULES, inspectText } from "@quizforge/core";
-import { DATASETS, reasonCounts, replaySummary, replayTable, stage1Table, summarize, type RowResult } from "./ptes-data.js";
+import { judgeQuiz, type QuizQuestion } from "./filter.js";
+import { PTES_README_BLOCKS } from "./readmes-ptes.js";
+import { DATASETS, asParagraph, demandedPhrasesPtEs, reasonCounts, replaySummary, replayTable, stage1Table, summarize, type RowResult } from "./ptes-data.js";
 
 const arg = (k: string, d: string): string => process.argv.find((a) => a.startsWith(`--${k}=`))?.split("=")[1] ?? d;
 const stage1 = JSON.parse(readFileSync(arg("stage1", ".local/ptes-stage1.json"), "utf8")) as { rows: Record<string, RowResult[]> };
-const replay = JSON.parse(readFileSync(arg("replay", ".local/ptes-replay.json"), "utf8")) as { model: string; at: string; perGroup: number; usage: unknown; runs: { group: string; dataset: string; language: string; text: string; readme: string; position: string; outcome: string; guardFlagged: boolean; verdict?: { contaminated: boolean; reasons: string[] }; questions?: { prompt: string }[] }[] };
+const replay = JSON.parse(readFileSync(arg("replay", ".local/ptes-replay.json"), "utf8")) as { model: string; at: string; perGroup: number; usage: unknown; runs: { group: string; dataset: string; language: string; text: string; readme: string; position: string; outcome: string; guardFlagged: boolean; verdict?: { contaminated: boolean; reasons: string[] }; questions?: QuizQuestion[] }[] };
 const OUT = arg("out", "docs/security/replay-ptes.json");
 // the replay ran while the rules were being tuned: recount "guard flagged" with the rules of this commit (the model output does not depend on it, the guard only flags)
 for (const r of replay.runs) r.guardFlagged = inspectText(r.text).findings.some((f) => f.kind === "injection_phrase");
+// verdicts are recomputed with the oracle of this commit, so a change of the oracle needs no new model calls
+for (const r of replay.runs) if (r.questions) r.verdict = judgeQuiz(r.questions, asParagraph(r.text), PTES_README_BLOCKS[r.language as "pt" | "es"][r.readme]!.join("\n\n"), r.language, demandedPhrasesPtEs(r.text));
 const categoryOf = new Map(INJECTION_RULES.map((r) => [r.id, r.category]));
 
 const mayQuote = new Set(DATASETS.filter((d) => d.texts === "may be quoted").map((d) => d.key));
 const groups = Object.keys(stage1.rows);
 const s1 = groups.map((g) => summarize(g, stage1.rows[g]!));
-const s2 = groups.map((g) => replaySummary(g, replay.runs));
+const s2 = groups.map((g) => replaySummary(g, replay.runs)).filter((r) => r.runs > 0); // English is a stage 1 reference group only
 const contaminated = replay.runs.filter((r) => r.verdict?.contaminated && mayQuote.has(r.dataset)).map((r) => ({ group: r.group, readme: r.readme, position: r.position, text: r.text.replace(/\s+/g, " ").slice(0, 240), reasons: r.verdict!.reasons.slice(0, 3), firstQuestion: r.questions?.[0]?.prompt }));
 const perRule: Record<string, Record<string, number>> = {};
 const perCategory: Record<string, Record<string, number>> = {};

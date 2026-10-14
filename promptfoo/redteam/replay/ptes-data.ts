@@ -6,8 +6,10 @@
 import { fnv1a } from "../readme.js";
 
 export type Lang = "pt" | "es";
+/** A reference group may also be English (only for the multilingual dataset, to put the English recall next to pt and es). */
+export type GroupLang = Lang | "en";
 export interface RawRow { text: string; lang?: string; label?: string; split?: string }
-export interface Group { id: string; dataset: string; language: Lang; rows: string[] }
+export interface Group { id: string; dataset: string; language: GroupLang; rows: string[] }
 
 export interface DatasetSpec {
   key: string;
@@ -31,15 +33,15 @@ export const DATASETS: DatasetSpec[] = [
 const clean = (s: string): string => s.replace(/\s+/g, " ").trim();
 
 /** Rows of one dataset as groups per language. `detect` is detectLanguage; empty and duplicate texts are dropped. */
-export function groupRows(spec: DatasetSpec, rows: RawRow[], detect: (text: string) => string): Group[] {
-  const by: Record<Lang, Set<string>> = { pt: new Set(), es: new Set() };
+export function groupRows(spec: DatasetSpec, rows: RawRow[], detect: (text: string) => string, withEnglish = false): Group[] {
+  const by: Record<GroupLang, Set<string>> = { pt: new Set(), es: new Set(), en: new Set() };
   for (const r of rows) {
     if (!r.text || clean(r.text).length < 8) continue;
     if (r.label !== undefined && r.label !== "ataque") continue;
     const lang = spec.languageFrom === "detected" ? detect(r.text) : (r.lang ?? spec.declared);
-    if (lang === "pt" || lang === "es") by[lang].add(r.text);
+    if (lang === "pt" || lang === "es" || (withEnglish && spec.languageFrom === "detected" && lang === "en")) by[lang].add(r.text);
   }
-  return (["pt", "es"] as const).filter((l) => by[l].size > 0).map((language) => ({ id: `${spec.key}/${language}`, dataset: spec.key, language, rows: [...by[language]] }));
+  return (["pt", "es", "en"] as const).filter((l) => by[l].size > 0).map((language) => ({ id: `${spec.key}/${language}`, dataset: spec.key, language, rows: [...by[language]] }));
 }
 
 /** A deterministic sample of `n` items (the same every run): sorted by a hash of the text. */

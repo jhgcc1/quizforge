@@ -24,7 +24,7 @@ const detector = USE_DETECTOR ? ((await import(/* @vite-ignore */ detectorModule
 const perRow: Record<string, RowResult[]> = {};
 for (const spec of DATASETS) {
   const rows = JSON.parse(readFileSync(`.local/ds/ptes/${spec.key}.json`, "utf8")) as RawRow[];
-  for (const g of groupRows(spec, rows, detectLanguage)) {
+  for (const g of groupRows(spec, rows, detectLanguage, true)) {
     const results: RowResult[] = [];
     for (const text of g.rows) {
       const lang = detectLanguage(text);

@@ -38,6 +38,7 @@ const jobs: Job[] = [];
 for (const spec of DATASETS) {
   const rows = JSON.parse(readFileSync(`.local/ds/ptes/${spec.key}.json`, "utf8")) as RawRow[];
   for (const g of groupRows(spec, rows, detectLanguage)) {
+    if (g.language === "en") continue; // (never produced here: English is a stage 1 reference only)
     const readmes = Object.keys(PTES_README_BLOCKS[g.language]);
     for (const text of sampleStable(g.rows, PER_GROUP, (t) => t)) {
       const h = fnv1a(text);

@@ -1,5 +1,7 @@
 # Audit of the guard rules and of the tests around them
 
+> Later work: `guard-pt-es.md` checks the rules in Portuguese and Spanish (real READMEs, public attack datasets, replay on the real model) and changed some rules (106 rules now: 35 per language plus 1). The tables below are the state at the time of this audit.
+
 Scope: the 103 keyword rules of the input guard (`packages/core/src/injection-rules.ts`, used by `guard.ts` and, for the link check, by the output rails), the tests around them, and the question "is the quiz really about the document?". The numbers come from two scripts that anyone can run again: `promptfoo/redteam/audit-rules.ts` (rule usage, writes `docs/security/guard-audit.json`) and `promptfoo/redteam/replay/topic-check.ts` (topic check, writes `docs/security/topic-check.json`). Part 1 (the replay of the dataset attacks with the real model) is in `docs/security/replay-deepset.md`.
 
 ## Summary

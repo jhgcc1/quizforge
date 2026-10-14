@@ -1,4 +1,5 @@
 from lib import arrow, bar_chart, box, group, path, svg, text
+import facts as F
 
 
 def architecture():
@@ -14,9 +15,9 @@ def architecture():
     b += box(506, 100, 200, 60, "ALB", "CloudFront only + secret header", "edge")
     b += box(780, 100, 190, 60, "NAT Gateway", "outbound internet (~$33/mo)", "edge", small=True)
     b += group(486, 220, 508, 300, "Private subnets (app) · Fargate ARM64", "grp sub")
-    b += box(504, 262, 140, 74, "web ×2–6", "Next.js SSR + BFF", "compute")
+    b += box(504, 262, 140, 74, "web ×2–6", "Next.js · own repo", "compute")
     b += box(664, 262, 140, 74, "api ×2–6", "Fastify · JWT", "compute")
-    b += box(830, 262, 150, 74, "worker ×1–4", "LangGraph · 1 job/task", "ai")
+    b += box(830, 262, 150, 74, "worker ×1–4", "agent + Prompt Guard 2", "ai")
     b += box(690, 392, 150, 60, "SQS: jobs + scoring", "each with a dead-letter queue", "data", small=True)
     b += box(782, 466, 112, 46, "scorer ×1–2", "eval scores (judge)", "ai", small=True)
     b += arrow(815, 452, 830, 466, "", dash=True)
@@ -176,30 +177,40 @@ def prep_flow():
 
 
 def repos():
-    """The two repositories and how the front end reaches the deploy."""
+    """The two repositories and the two ways a front end change reaches production."""
     b = ""
     b += group(10, 10, 400, 250, "github.com/jhgcc1/quizforge-web (public)", "grp")
-    b += box(26, 50, 368, 56, "Next.js front end + BFF", "pages · login with Cognito · calls the API", "compute", small=True)
-    b += box(26, 120, 368, 56, "Own CI", "quality (coverage floor) · build · docker-build + Trivy · secrets-scan", "ci", small=True)
+    b += box(26, 50, 368, 56, "Next.js front end + BFF", "login with Cognito · error boundary · POST /bff/client-log", "compute", small=True)
+    b += box(26, 120, 368, 56, "Own CI: no AWS role, no Terraform", "quality (85 tests) · build · docker-build + Trivy · secrets-scan", "ci", small=True)
     b += box(26, 190, 368, 56, "Dockerfile", "builds the web image from this repository alone", "mgd", small=True)
     b += group(540, 10, 640, 250, "github.com/jhgcc1/quizforge (back end, infrastructure, deploy)", "grp")
     b += box(556, 50, 200, 56, "api · worker · scorer", "Fastify · LangGraph · judge", "compute", small=True)
     b += box(772, 50, 190, 56, "packages", "contract · core · db · llm · detector", "data", small=True)
     b += box(978, 50, 186, 56, "tests", "unit · integration · e2e · promptfoo", "ci", small=True)
-    b += box(556, 120, 200, 56, "infra (Terraform)", "AWS, GitHub rules, bootstrap", "sec", small=True)
-    b += box(772, 120, 392, 56, "CI/CD", "10 checks on a PR · deploy with a human approval", "ci", small=True)
-    b += box(556, 190, 608, 56, "web.ref", "the commit of quizforge-web that the e2e test and the deploy build (a PR changes it)", "edge", small=True)
+    b += box(556, 120, 200, 56, "infra (Terraform)", "AWS · GitHub rules · bootstrap", "sec", small=True)
+    b += box(772, 120, 392, 56, "CI/CD", "11 jobs on a PR (9 required) · two deploy paths · one approval", "ci", small=True)
+    b += box(556, 190, 608, 56, "web.ref", "the front end commit that the e2e test and both deploys build (a PR in this repository changes it)", "edge", small=True)
     b += arrow(540, 80, 394, 80, "", dash=True)
     b += text(404, 40, "API contract", "note", "middle")
     b += text(404, 56, "(tarball of a", "note", "middle")
     b += text(404, 70, "GitHub Release)", "note", "middle")
     b += arrow(410, 218, 540, 218)
     b += text(475, 208, "pinned", "note", "middle")
-    b += box(300, 300, 580, 60, "Deploy: one pipeline, one approval, one Terraform", "build api, worker, web and redteam images (tag = commit) → ECR → migration → ECS", "ai", small=True)
-    b += arrow(860, 246, 640, 300)
-    b += arrow(210, 246, 330, 300)
-    b += text(20, 392, "The front end and the back end share only the API contract. Each service keeps its own image and its own ECS service.", "note")
-    return svg(1190, 412, b, "Two repositories: what lives where and how they meet at the deploy")
+    b += group(10, 290, 575, 230, "A · Full deploy: push to main (ci.yml, job deploy)", "grp")
+    for i, s in enumerate(["1 · build api, worker, web and redteam images, push to ECR", "     web tag = web-<front end commit>; the others = the commit sha", "2 · drift check, then the migration BEFORE the new code",
+                           "3 · ONE terraform apply (rolling, circuit breaker)", "4 · ONE approval: environment production (OIDC role)", "5 · smoke test through CloudFront (7 checks)", "Runs after every gate, on main only; refused while paused"]):
+        b += text(28, 326 + i * 26, s, "note")
+    b += group(605, 290, 575, 230, "B · Front-end-only deploy: manual (deploy-web.yml)", "grp")
+    for i, s in enumerate(["Same approval and OIDC role · refused while paused", "Needs quality, e2e and docker-build green on the commit",
+                           "Builds ONLY the web image, at the commit in web.ref", "Reads the image tag the api runs now (nothing else changes)",
+                           "Targeted apply: aws_ecs_task_definition.web + aws_ecs_service.web", "Refuses a plan that deletes anything but an old task definition", "Smoke test (4 checks)"]):
+        b += text(623, 326 + i * 26, s, "note")
+    b += arrow(700, 246, 400, 290)
+    b += arrow(1000, 246, 880, 290)
+    b += text(20, 548, "Terraform lives only in the back end repository: the front end repository has no Terraform and no AWS role.", "note")
+    b += text(20, 568, "Google and Facebook login credentials are read from AWS Secrets Manager (quizforge/prod/google-login, facebook-login) by the deploy jobs, masked; none is a GitHub secret.", "note")
+    b += text(20, 588, "The front end and the back end share only the API contract. Each service keeps its own image and its own ECS service.", "note")
+    return svg(1190, 604, b, "Two repositories and two deploy paths: what lives where and how a front end change reaches production")
 
 
 def redteam_nightly():
@@ -210,7 +221,7 @@ def redteam_nightly():
     b += box(230, 40, 250, 110, "", "", "ai", small=True)
     b += text(242, 62, "Fargate task: redteam", "t")
     b += text(242, 84, "one-shot · 2 vCPU · 4 GB · no service", "note"); b += text(242, 102, "promptfoo (pinned) + the pipeline", "note")
-    b += text(242, 120, "Llama Prompt Guard 2 baked in", "note"); b += text(242, 138, "~600 attacks · en, pt, es", "note")
+    b += text(242, 120, "Llama Prompt Guard 2 baked in", "note"); b += text(242, 138, f"~{F.PF_NIGHTLY_TESTS} attacks · en, pt, es", "note")
     b += arrow(180, 92, 230, 92)
     b += box(540, 10, 190, 52, "MiniMax API", "the model under test", "ext", small=True)
     b += arrow(480, 70, 540, 40, "via NAT", lx=470, ly=36)
@@ -401,17 +412,17 @@ def cicd():
     b = ""
     b += group(10, 10, 1160, 230, "Pull request (never deploys)", "grp")
     gates = [("quality", "typecheck · lint · tests · eval"), ("integration", "real Postgres"), ("migrations", "drift · policy · applies twice"), ("e2e", "Playwright + Chrome"),
-             ("docker-build", "build + Trivy"), ("terraform-validate", "fmt · validate · Trivy"), ("secrets-scan", "gitleaks"), ("promptfoo", "guard + prompt rules, 81 tests"), ("terraform-plan", "plan on the PR (informational)"), ("llm-eval-pr + redteam-sample", "real model: golden set, 50 attacks")]
+             ("docker-build", "build + Trivy"), ("terraform-validate", "fmt · validate · Trivy"), ("secrets-scan", "gitleaks"), ("promptfoo", f"guard + prompt rules, {F.PF_OFFLINE} tests"), ("terraform-plan", "plan on the PR (informational)"), ("llm-eval-pr + redteam-sample", "real model: golden set, 50 attacks")]
     for i, (n, s) in enumerate(gates):
         x = 30 + (i % 5) * 226; y = 48 + (i // 5) * 88
         b += box(x, y, 206, 66, n, s, "ci", small=True)
     b += box(30, 252 - 0, 0, 0, "", "", "ci") if False else ""
     b += group(10, 270, 1160, 240, "merge to main (ruleset: PR + required checks + linear history + no bypass) → pipeline runs again", "grp")
-    b += box(30, 318, 230, 66, "the same 8 gates", "", "ci", small=True)
+    b += box(30, 318, 230, 66, "the same jobs", "", "ci", small=True)
     b += box(290, 318, 230, 66, "llm-eval (real model gate)", "golden set + promptfoo live", "ai", small=True)
     b += box(550, 318, 190, 66, "human approval", "environment: production", "sec", small=True)
     b += arrow(260, 351, 290, 351); b += arrow(520, 351, 550, 351)
-    steps = [("build arm64", "ECR · tag = git sha"), ("drift check", "plan -refresh-only"), ("migration", "Fargate task BEFORE the code"), ("terraform apply", "rolling + circuit breaker"), ("smoke test", "through CloudFront · 7 asserts")]
+    steps = [("build arm64", "tags: sha · web = front end commit"), ("drift check", "plan -refresh-only"), ("migration", "Fargate task BEFORE the code"), ("terraform apply", "rolling + circuit breaker"), ("smoke test", "through CloudFront · 7 asserts")]
     for i, (n, s) in enumerate(steps):
         x = 30 + i * 226
         b += box(x, 428, 206, 60, n, s, "compute", small=True)
@@ -420,7 +431,13 @@ def cicd():
     b += path("M645 408 L 130 408 L 130 428", "", 0, 0)
     b += text(750, 345, "deploy: needs every gate · push to main only", "note")
     b += text(750, 365, "AWS deploy role: only environment `production` (main only)", "note")
-    return svg(1180, 520, b, "CI/CD: what runs at each stage and what blocks the merge and the deploy")
+    b += group(10, 512, 1160, 92, "Front-end-only deploy (manual, deploy-web.yml): same approval and role, refused while paused, needs quality + e2e + docker-build green", "grp")
+    fe = [("build web only", "image tag web-<front end commit>"), ("read the running tag", "the api keeps its image"), ("targeted terraform apply", "web task definition + service"), ("plan guard", "no delete except an old revision"), ("smoke test", "4 checks through CloudFront")]
+    for i, (n, s) in enumerate(fe):
+        x = 30 + i * 226
+        b += box(x, 540, 206, 52, n, s, "compute", small=True)
+        if i: b += arrow(x - 20, 566, x, 566)
+    return svg(1180, 616, b, "CI/CD: what runs at each stage and what blocks the merge and the deploy")
 
 
 def state_diagram():
@@ -791,9 +808,9 @@ def input_defense():
     b += text(10, 140, "2. The document (worker, before any model call)", "t")
     row2 = [
         (10, "Fetch README", "https · allow-list", "sec"),
-        (172, "Guard + 49 rules", "hidden/encoded → reject", "sec"),
+        (172, f"Guard + {F.RULES_TOTAL} rules", "hidden/encoded → reject", "sec"),
         (334, "Language", "en · pt · es only", "sec"),
-        (496, "Detector (optional)", "English only · flag", "mgd"),
+        (496, "Prompt Guard 2", "en · pt · es · flag", "mgd"),
         (658, "Strict input", "zod · size · topic", "sec"),
         (820, "guardLlm", "every call · 16k cap", "sec"),
         (982, "MiniMax", "data in <document>", "ai"),
@@ -811,7 +828,7 @@ def input_defense():
         (172, "Zod shape", "4 options · indexes", "sec"),
         (334, "Prompt leak", "8-word runs of ours", "sec"),
         (496, "Markup · links", "none that are new", "sec"),
-        (658, "Echoed attack", "45 rules, not in doc", "sec"),
+        (658, "Echoed attack", f"{F.RULES_IMPERATIVE} rules, not in doc", "sec"),
         (820, "Looks like a quiz", "≥70% questions", "sec"),
         (982, "Quote exists", "then SAVED", "data"),
     ]
@@ -829,9 +846,9 @@ def input_defense():
 def promptfoo_flow():
     b = ""
     lanes = [
-        (14, "Every pull request", "promptfoo OFFLINE · 81 tests", "no model, no secrets, ~1 minute", "ci", "required to merge"),
-        (110, "Merge to main", "promptfoo LIVE · 21 tests", "real MiniMax, inside llm-eval", "ai", "blocks the deploy"),
-        (206, "Every night + on demand", "promptfoo LIVE · 21 tests", "catches provider or model drift", "mgd", "opens a red run"),
+        (14, "Every pull request", f"promptfoo OFFLINE · {F.PF_OFFLINE} tests", "no model, no secrets, ~1 minute", "ci", "required to merge"),
+        (110, "Merge to main", f"promptfoo LIVE · {F.PF_LIVE} tests", "real MiniMax, inside llm-eval", "ai", "blocks the deploy"),
+        (206, "Every night + on demand", f"promptfoo LIVE · {F.PF_LIVE} tests", "catches provider or model drift", "mgd", "opens a red run"),
     ]
     for y, when, what, note, kind, gate in lanes:
         b += box(10, y, 190, 70, when, "", "ext", small=True)
@@ -859,18 +876,18 @@ def pipeline_overview():
     b += text(10, 24, "1 · Pull request: nothing reaches AWS, nothing is deployed", "t")
     b += box(10, 40, 130, 96, "push a branch", "open a PR", "ext", small=True)
     b += box(170, 40, 460, 96, "", "", "ci", small=True)
-    b += text(400, 62, "9 jobs in parallel (no secrets)", "t-s", "middle")
+    b += text(400, 62, "11 jobs in parallel (the two real-model jobs use only the model key)", "t-s", "middle")
     b += text(400, 86, "quality (typecheck, lint, tests, offline eval) · integration · migrations", "note", "middle")
     b += text(400, 104, "e2e · docker-build · terraform-validate · secrets-scan", "note", "middle")
-    b += text(400, 122, "terraform-plan · promptfoo OFFLINE (81 tests)", "note", "middle")
-    b += box(660, 40, 190, 96, "8 required checks", "green + linear history", "sec", small=True)
+    b += text(400, 122, f"llm-eval-pr · redteam-sample · terraform-plan · promptfoo OFFLINE ({F.PF_OFFLINE} tests)", "note", "middle")
+    b += box(660, 40, 190, 96, "9 required checks", "green + linear history", "sec", small=True)
     b += box(880, 40, 130, 96, "squash merge", "no bypass", "data", small=True)
     for x1, x2 in ((140, 170), (630, 660), (850, 880)):
         b += arrow(x1, 88, x2, 88)
 
     b += text(10, 164, "2 · Merge to main: the same jobs, plus the real model, then a human decides", "t")
-    b += box(10, 180, 150, 70, "same 8 jobs", "on the merged code", "ci", small=True)
-    b += box(190, 180, 230, 70, "llm-eval (real MiniMax)", "golden set + promptfoo LIVE (21)", "ai", small=True)
+    b += box(10, 180, 150, 70, "the same jobs", "on the merged code", "ci", small=True)
+    b += box(190, 180, 230, 70, "llm-eval (real MiniMax)", f"golden set + promptfoo LIVE ({F.PF_LIVE})", "ai", small=True)
     b += box(450, 180, 170, 70, "human approval", "environment: production", "sec", small=True)
     b += box(650, 180, 520, 70, "deploy", "build ARM64 → drift check → migrate → apply → smoke test · refused while PAUSED=true", "compute", small=True)
     for x1, x2 in ((160, 190), (420, 450), (620, 650)):
@@ -891,7 +908,7 @@ def pipeline_overview():
     for x in (150, 720, 1025):
         b += arrow(x, 436, x, 456, dash=True)
     b += text(10, 530, "Langfuse receives data in 5 places only: llm-eval and publish-prompts on main, the nightly eval, the manual comparison, and production. A pull request never talks to it.", "note")
-    b += text(10, 550, "promptfoo runs in 3: OFFLINE on every PR and main (81 tests, required), LIVE inside llm-eval on main (blocks the deploy) and in the nightly run.", "note")
+    b += text(10, 550, f"promptfoo runs in 3: OFFLINE on every PR and main ({F.PF_OFFLINE} tests, required), LIVE inside llm-eval on main (blocks the deploy) and in the nightly run.", "note")
     return svg(1180, 572, b, "The whole pipeline over time: where promptfoo runs and where Langfuse gets data")
 
 
@@ -907,8 +924,8 @@ def repo_structure():
         return out
 
     b += panel(10, 10, 300, 150, "apps/  (the 3 services)", "compute", [("web", "Next.js: UI + BFF (cookies, PKCE, validation)"), ("api", "Fastify REST: auth, quota, idempotency, queue"), ("worker", "one image, 3 roles: generate · score · sweeper")])
-    b += panel(10, 180, 300, 190, "packages/  (shared code)", "ai", [("core", "schemas, guard, 49 rules, scoring (browser-safe)"), ("llm", "graph, prompts, guardLlm, output rails, quality"), ("db", "Drizzle schema, migrations, repositories"), ("detector", "optional ONNX injection classifier (English)")])
-    b += panel(330, 10, 300, 150, "tests and quality gates", "ci", [("evals/", "golden set, comparison, reports, publish-prompts"), ("promptfoo/", "81 offline + 21 live tests, provider, assertions"), ("e2e/", "Playwright in real Chrome (4 local services)")])
+    b += panel(10, 180, 300, 190, "packages/  (shared code)", "ai", [("core", f"schemas, guard, {F.RULES_TOTAL} rules, scoring (browser-safe)"), ("llm", "graph, prompts, guardLlm, output rails, quality"), ("db", "Drizzle schema, migrations, repositories"), ("detector", "Prompt Guard 2 (ONNX, en · pt · es), flag only")])
+    b += panel(330, 10, 300, 150, "tests and quality gates", "ci", [("evals/", "golden set, comparison, reports, publish-prompts"), ("promptfoo/", f"{F.PF_OFFLINE} offline + {F.PF_LIVE} live tests, provider, assertions"), ("e2e/", "Playwright in real Chrome (4 local services)")])
     b += panel(330, 180, 300, 190, "data of the agent", "data", [("prompts/", "prompts.lock.json: hash of every prompt"), ("evals/fixtures/", "test READMEs (dropdown + golden set)"), ("evals/references/", "hand-written reference questions"), ("docker/ · docker-compose", "local Postgres + SQS emulator")])
     b += panel(650, 10, 300, 150, "infra/  (Terraform)", "sec", [("bootstrap/", "state bucket, ECR, OIDC roles (applied by hand)"), ("terraform/", "the platform: VPC, ECS, RDS, SQS, edge, alarms"), ("github/", "ruleset, environments, variables (by hand)")])
     b += panel(650, 180, 300, 190, "operations and docs", "mgd", [(".github/workflows/", "ci.yml · eval.yml · drift.yml · compare"), ("scripts/", "pause · resume · audit-aws · promptfoo · reports"), ("docs/", "the committed reports (HTML)"), ("site/", "generator of the architecture report")])
@@ -923,8 +940,8 @@ def guardrail_zones():
     """The same guardrails, by WHEN they run: in the pipeline, or in a user's request (before and after the model call)."""
     b = ""
     b += group(10, 10, 380, 470, "CI/CD · before deploy, never in a request", "grp ext")
-    ci = [("promptfoo offline · 81 tests", "every PR: real pipeline, fake model"), ("promptfoo live · 21 tests", "real model: PR (if relevant), main, nightly"),
-          ("Golden set · real model", "quality gates: grounded, lint, judge, diversity…"), ("Unit tests", "guard, 49 rules, schemas, output rails, scoring"),
+    ci = [(f"promptfoo offline · {F.PF_OFFLINE} tests", "every PR: real pipeline, fake model"), (f"promptfoo live · {F.PF_LIVE} tests", "real model: PR (if relevant), main, nightly"),
+          ("Golden set · real model", "quality gates: grounded, lint, judge, diversity…"), ("Unit tests", f"guard, {F.RULES_TOTAL} rules, schemas, output rails, scoring"),
           ("Attack corpus", "one source for vitest and promptfoo"), ("Prompt lock + PROMPT_VERSION", "a prompt cannot change by accident"),
           ("Benchmark · 500 public samples", "run by hand: detection and false positives")]
     for i, (t, sub) in enumerate(ci):
@@ -932,7 +949,7 @@ def guardrail_zones():
     b += text(26, 470, "They prove the guardrails work. They do not run for a user.", "note")
     b += group(410, 10, 440, 470, "AT RUN · BEFORE the generation call", "grp")
     pre = [("1 · Edge, login, request, limits", "WAF · JWT · CSRF · zod · quota · rate limit", "edge"), ("2 · Fetch the document", "URL allow-list · public IPs only · 512 KB", "compute"),
-           ("3 · Input guard", "hidden or encoded text · 49 rules · language en/pt/es", "ai"), ("4 · Classifier (optional)", "ONNX model · English · flag only · OFF in AWS", "ai"),
+           ("3 · Input guard", f"hidden or encoded text · {F.RULES_TOTAL} rules · language en/pt/es", "ai"), ("4 · Classifier", "Prompt Guard 2 · en/pt/es · flag only · on in AWS", "ai"),
            ("5 · Model-call guard", "guardLlm · <document> tags · budget 16 calls", "ai")]
     for i, (t, sub, k) in enumerate(pre):
         b += box(426, 44 + i * 80, 408, 62, t, sub, k, small=True)
@@ -957,7 +974,7 @@ def guardrail_layers():
         ("2 · Identity", "Cognito · JWT · cookies", "access token only, signature, issuer, audience, expiry; httpOnly cookies; Origin + X-Requested-With; ownership by sub", "forged or stolen tokens, CSRF, other users' data", "sec"),
         ("3 · Request", "zod in browser, BFF and API", "strict schemas, no extra keys, size and range limits, one plain line for the topic, URL allow-list and public IPs only", "malformed bodies, SSRF, topic injection", "compute"),
         ("4 · Abuse", "rate limit · quota · idempotency", "120 requests/min and 10 quizzes/min per user, 10 quizzes per 24 h, Idempotency-Key", "cost abuse, double submits", "compute"),
-        ("5 · Document", "guard · language · sanitize", "hidden or encoded text rejected, invisible characters and comments removed, only en · pt · es, 49 keyword rules, optional classifier", "hidden instructions, foreign languages", "ai"),
+        ("5 · Document", "guard · language · sanitize", "hidden or encoded text rejected, invisible characters and comments removed, only en · pt · es, " + str(F.RULES_TOTAL) + " keyword rules, Prompt Guard 2 (flag)", "hidden instructions, foreign languages", "ai"),
         ("6 · Model call", "guardLlm · budget", "strict message schema, 200k chars, 16k output tokens, document in <document> tags as data, 16 calls · 120k tokens · 5 min", "oversized prompts, runaway cost, forged tags", "ai"),
         ("7 · Reply", "output rails · schema · grounding", "only the JSON, no prompt leak, no script, no new link, no echoed instruction, really questions, each quote must exist in the document", "hijacked or hallucinated output", "data"),
         ("8 · Data", "database · logs", "CHECK and UNIQUE constraints, answer key never sent before submit, secrets in Secrets Manager, logs redacted, prompts only in Langfuse", "bad writes, leaks", "mgd"),

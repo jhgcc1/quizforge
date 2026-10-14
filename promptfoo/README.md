@@ -156,3 +156,18 @@ by language and by strategy, and saves the failing cases that are not already in
 | Pull request from a fork | yes | no (no secrets) | no (no secrets) | no |
 | Merge to main | yes | yes | yes | no |
 | Nightly | no | yes | no | yes |
+
+## Portuguese and Spanish validation (public datasets, not part of CI)
+
+Done by hand, reported in `docs/security/guard-pt-es.md`. Nothing here runs in CI and none of the raw texts is committed.
+
+| Step | Command | What it does |
+|---|---|---|
+| Real READMEs | `pnpm exec tsx promptfoo/redteam/replay/fetch-real-readmes.ts` | Downloads the 64 READMEs listed in `docs/security/real-readmes-pt-es.json` (repository, path, commit, sha256) into `.local/real-readmes-pt-es/` and checks every hash |
+| False positives | `pnpm exec tsx promptfoo/redteam/replay/ptes-fp.ts` | Every rule hit on those READMEs, per rule and per line (`docs/security/guard-pt-es-readmes.json`); must be empty |
+| Datasets | `pnpm exec tsx promptfoo/redteam/replay/fetch-ptes-datasets.ts` | Downloads the pt/es rows of four Hugging Face datasets into `.local/ds/ptes/` |
+| Guard and Prompt Guard 2 | `pnpm exec tsx promptfoo/redteam/replay/ptes-datasets.ts` | Each attack as the body of a document: language policy, rules, Prompt Guard 2 (flag only). Free |
+| Full pipeline | `pnpm exec tsx promptfoo/redteam/replay/ptes-replay.ts` (needs `MINIMAX_API_KEY` in the environment) | A seeded sample (70 per dataset and language) laid in a benign pt/es README (`readmes-ptes.ts`), through the real pipeline; the oracle is code |
+| Aggregate | `pnpm exec tsx promptfoo/redteam/replay/ptes-report.ts` | Writes `docs/security/replay-ptes.json` (counts only; no text of a dataset without a licence) |
+
+The unit tests (`promptfoo/redteam/replay/ptes.test.ts`) do not need the network: they use short self-written pt/es paragraphs, and check the downloaded READMEs only when `.local/` has them.
