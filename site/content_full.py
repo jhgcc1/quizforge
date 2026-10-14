@@ -1165,6 +1165,28 @@ def runbook():
     return sec("runbook", "Runbook", table(["Task", "Command"], rows, widths=["28%", "72%"]))
 
 
+def nightly():
+    body = d.redteam_nightly()
+    body += table(["Part", "How it works"], [
+        ["Schedule", "EventBridge Scheduler, every night at 06:00 UTC (variable <code>redteam_schedule</code>). It is switched off while the environment is paused, because a paused environment has no NAT and the task could not reach the model API; <code>redteam_enabled=false</code> turns it off too"],
+        ["Task", "A one-shot Fargate task (<code>redteam</code>, 2 vCPU, 4 GB, ARM64), not part of the always-on services, in the private subnets with egress only. Its image (ECR repository <code>quizforge/redteam</code>, built by the deploy with the other images) has promptfoo at the pinned version, the pipeline code and the Llama Prompt Guard 2 model, so it tests what runs in production"],
+        ["Size", "About <b>600 attacks a night</b> (10 per intent, variable <code>redteam_num_tests</code>), English, Portuguese and Spanish only, regenerated every night; the pull-request sample is fixed. 1,800 a night would cost about US$70 a month in model calls, 600 about US$25"],
+        ["Grading", "Plain code, never a model: a hijack canary in the reply, a prompt leak, or an unsafe outcome fails the case. A case ends as rejected before the model, rejected by the output rails, a valid quiz that resisted, or a leak"],
+        ["Report", "Written to a private, encrypted, versioned S3 bucket (<code>quizforge-prod-reports-&lt;account&gt;</code>) under a UTC timestamp, one folder per run that is never overwritten: <code>report.html</code>, <code>summary.json</code>, <code>results.json</code>, <code>new-failures.json</code>, plus a <code>latest/</code> pointer. It is uploaded even when there were leaks. Cheaper storage after 30 days, deleted after 365"],
+        ["Alerts", "CloudWatch metrics (runs, cases, leaks, per language); an alarm and an e-mail with a 7-day link to the report if any canary leaks; another alarm if no run happened in 26 hours"],
+        ["What you do with it", "Open the report (<code>scripts/redteam-latest.sh</code> prints a link to the newest one); a leaked case is promoted to the frozen 50-case sample by a pull request, so CI guards it from then on"],
+        ["Cost", "Fargate about US$0.10 a night, S3 a few cents, plus the model tokens"],
+    ], widths=["16%", "84%"])
+    body += table(["File", "Role"], [
+        ["<code>scripts/redteam-nightly-aws.sh</code>", "The task's entry point: runs the nightly suite, builds the summary and the report, uploads to S3, emits the metrics, publishes the alert"],
+        ["<code>docker/redteam/Dockerfile</code>", "The image of the task"],
+        ["<code>infra/terraform/redteam.tf</code>", "The schedule, the task definition, the roles, the report bucket, the log group and the alarms"],
+        ["<code>promptfoo/redteam/</code>", "The intents, the frozen 50-case sample, the generators and the report code"],
+        ["<code>docs/redteam-nightly.md</code>", "How to run it by hand and read the result"],
+    ], widths=["34%", "66%"])
+    return sec("nightly", "Nightly red team on AWS", body, "A denser, separate test of the guardrails that runs while nobody is looking and leaves a timestamped report.")
+
+
 def glossary():
     body = table(["Word", "Plain meaning"], [
         ["BFF (backend for frontend)", "The Next.js server that sits between the browser and the API. It holds the login cookie and adds the token."],
@@ -1252,10 +1274,10 @@ def limits():
 
 
 def all_sections():
-    return [overview(), links(), architecture(), communication(), flows(), documents(), validation(), guardrails(), promptfoo(), agent(), quality(), langfuse(), scoring_arch(), secrets(), data(), security(), resilience(), observability(), evaluation(), cicd(), state(),
+    return [overview(), links(), architecture(), communication(), flows(), documents(), validation(), guardrails(), promptfoo(), nightly(), agent(), quality(), langfuse(), scoring_arch(), secrets(), data(), security(), resilience(), observability(), evaluation(), cicd(), state(),
             decisions(), bugs(), costs(), evidence(), runbook(), live_state(), limits(), improvements(), glossary(), presentation()]
 
 
-NAV = [("summary", "Summary"), ("links", "Links"), ("architecture", "Architecture"), ("comm", "Communication"), ("flows", "Flows"), ("documents", "Documents"), ("validation", "Validation"), ("guardrails", "Guardrails"), ("promptfoo", "promptfoo"), ("agent", "Agent"),
+NAV = [("summary", "Summary"), ("links", "Links"), ("architecture", "Architecture"), ("comm", "Communication"), ("flows", "Flows"), ("documents", "Documents"), ("validation", "Validation"), ("guardrails", "Guardrails"), ("promptfoo", "promptfoo"), ("nightly", "Nightly"), ("agent", "Agent"),
        ("quality", "Quality & alerts"), ("langfuse", "Langfuse"), ("scoringarch", "Scoring service"), ("secrets", "Secrets"), ("data", "Data"), ("security", "Security"), ("resilience", "Resilience"), ("observability", "Observability"), ("evaluation", "Evaluation"),
        ("cicd", "CI/CD"), ("state", "TF state"), ("decisions", "Decisions"), ("bugs", "Bugs"), ("pause", "Cost & pause"), ("evidence", "Evidence"), ("runbook", "Runbook"), ("live", "Live vs main"), ("limits", "Limits"), ("improve", "Improvements"), ("glossary", "Glossary"), ("standby", "Standby")]
