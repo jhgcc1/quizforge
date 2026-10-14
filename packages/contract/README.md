@@ -12,3 +12,10 @@ The public API contract of QuizForge: the zod schemas of every request and respo
 - 100% statement coverage.
 
 **Versioning**: by git tag `contract-vX.Y.Z`. A breaking change to a schema is a new major version.
+
+## Releasing a version
+1. Change `version` in `package.json` (semver: a breaking change of a schema is a new major version).
+2. Merge to `main`, then push the tag `contract-vX.Y.Z` on that commit.
+3. The workflow `release-contract.yml` packs the package and attaches `quizforge-contract-X.Y.Z.tgz` to a GitHub Release.
+4. The front end (jhgcc1/quizforge-web) depends on the tarball URL, so it only changes when someone updates that URL:
+   `https://github.com/jhgcc1/quizforge/releases/download/contract-vX.Y.Z/quizforge-contract-X.Y.Z.tgz`

@@ -1,0 +1,35 @@
+name: Release the API contract
+
+# Pushing a tag `contract-vX.Y.Z` packs packages/contract and attaches it to a GitHub Release. The front end repository
+# (jhgcc1/quizforge-web) depends on that tarball by URL, so a version never changes after it is released.
+on:
+  push:
+    tags: ["contract-v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: The tag must match the version in package.json
+        run: |
+          v=$(node -p "require('./packages/contract/package.json').version")
+          [ "contract-v${v}" = "${GITHUB_REF_NAME}" ] || { echo "::error::tag ${GITHUB_REF_NAME} does not match package version ${v}"; exit 1; }
+      - name: Pack
+        run: |
+          mkdir -p /tmp/out
+          cd packages/contract && pnpm pack --pack-destination /tmp/out
+          ls -l /tmp/out
+      - name: Create the release with the tarball
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" /tmp/out/*.tgz --title "API contract ${GITHUB_REF_NAME#contract-v}" \
+            --notes "The request and response schemas of the QuizForge API (zod). Install in the front end with the URL of the attached tarball."
