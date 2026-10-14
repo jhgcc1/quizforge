@@ -14,10 +14,11 @@ COPY . .
 RUN --mount=type=cache,target=/pnpm-store pnpm install --frozen-lockfile --prod --filter @quizforge/promptfoo...
 RUN --mount=type=cache,target=/pnpm-store pnpm install --frozen-lockfile --prod --filter @quizforge/detector...
 RUN pnpm --filter @quizforge/detector deploy --prod --legacy /detector-out
+# (overrides.basic-ftp: a transitive dependency of promptfoo with a fixed HIGH CVE-2026-102990, Trivy gate; the red team never uses FTP)
 # promptfoo at the version pinned in scripts/promptfoo.sh (one place for the number), installed once here so the nightly task downloads nothing
 RUN version="$(sed -n 's/.*PROMPTFOO_VERSION:-\([0-9][0-9.]*\)}.*/\1/p' scripts/promptfoo.sh)" \
  && test -n "$version" && echo "promptfoo $version" \
- && mkdir -p /opt/promptfoo && cd /opt/promptfoo && npm init -y >/dev/null && npm install --no-audit --no-fund "promptfoo@$version" \
+ && mkdir -p /opt/promptfoo && cd /opt/promptfoo && npm init -y >/dev/null && npm pkg set overrides.basic-ftp=6.2.1 && npm install --no-audit --no-fund "promptfoo@$version" \
  && echo "$version" > /opt/promptfoo/VERSION
 
 FROM node:${NODE_VERSION}-slim AS runtime
