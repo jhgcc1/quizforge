@@ -9,7 +9,7 @@ export * from "@quizforge/contract";
 
 /**
  * The create-quiz body as the SERVER validates it: the contract's schema plus the strict topic check (instruction phrases,
- * encoded or disguised text: the 103 keyword rules). The browser only has the basic check. Server code must use this one.
+ * encoded or disguised text: the 106 keyword rules). The browser only has the basic check. Server code must use this one.
  */
 export const CreateQuizBodyStrictSchema = CreateQuizBodySchema.extend({
   topic: TopicSchema.superRefine((t, ctx) => {

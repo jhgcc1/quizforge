@@ -12,6 +12,7 @@ else:
     import content  # noqa: E402  (the short report for the presentation)
 
 HERE = Path(__file__).parent
+import facts  # noqa: E402
 
 CSS = """
 :root{--bg:#f6f7f9;--panel:#fff;--ink:#1c2230;--mute:#5d6678;--line:#dde1ea;--acc:#2f5bea;--ok:#177a4a;--warn:#a15c00;--info:#2f5bea;
@@ -109,6 +110,7 @@ def main():
         "<footer>Generated from the real repository and AWS account. Contains account-specific IDs: do not publish.</footer>"
         f"<script>{JS}</script></body></html>"
     )
+    html = facts.tok(html)  # [[name]] tokens: numbers read from the repository files
     html = inline_images(html)
     assert_no_secrets(html)
     if PUBLIC:
