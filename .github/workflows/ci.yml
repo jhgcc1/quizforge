@@ -197,7 +197,8 @@ jobs:
         run: |
           for s in api worker web; do
             if [ "$s" = web ]; then dockerfile=web/Dockerfile; ctx=web; else dockerfile=apps/$s/Dockerfile; ctx=.; fi
-            docker buildx build -f $dockerfile -t quizforge-$s:ci --load \
+            T=""; [ "$s" = worker ] && T="--target runtime-detector" # the worker image carries the Llama Prompt Guard 2 model
+            docker buildx build -f $dockerfile $T -t quizforge-$s:ci --load \
               --cache-from type=gha,scope=$s --cache-to type=gha,scope=$s,mode=max $ctx
           done
       - name: Scan images (fail on fixable HIGH/CRITICAL)
@@ -478,7 +479,8 @@ jobs:
               echo "$s:$TAG already in ECR, skipping"; continue
             fi
             if [ "$s" = web ]; then dockerfile=web/Dockerfile; ctx=web; else dockerfile=apps/$s/Dockerfile; ctx=.; fi
-            docker buildx build -f $dockerfile -t "$repo:$TAG" --push \
+            T=""; [ "$s" = worker ] && T="--target runtime-detector" # the worker image carries the Llama Prompt Guard 2 model
+            docker buildx build -f $dockerfile $T -t "$repo:$TAG" --push \
               --cache-from type=gha,scope=$s-arm --cache-to type=gha,scope=$s-arm,mode=max $ctx
           done
 
