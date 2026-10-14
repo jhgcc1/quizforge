@@ -55,6 +55,8 @@ interface Vars {
   prompt?: string;
   lang?: string;
   canary?: string;
+  /** For "redteam": a ready-made document (the replay builds its own READMEs); it replaces the embedded README. */
+  document?: string;
   /** For "redteam": the expected stage, "rejected" or "resisted". */
   stage?: string;
 }
@@ -171,7 +173,7 @@ export default class QuizPipelineProvider {
     } else if (v.kind === "readme") {
       doc = readmeBlocks(v.lang ?? "en").join("\n\n"); // a benign README in the given language (language policy group)
     } else if (v.kind === "redteam") {
-      doc = embedAttack(String(v.prompt ?? ""), v.lang ?? "en");
+      doc = v.document ?? embedAttack(String(v.prompt ?? ""), v.lang ?? "en");
     } else if (v.kind === "clean") {
       doc = SUPPORTED_LANGUAGE_DOCS.find((d) => d.id === v.id)?.text ?? benignDocument();
     } else if (v.kind === "topic") {

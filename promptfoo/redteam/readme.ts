@@ -144,3 +144,13 @@ export function embedAttack(attack: string, language: string): string {
   blocks.splice(insertionIndex(attack, blocks.length), 0, attack.trim());
   return blocks.join("\n\n") + "\n";
 }
+
+/** Where the replay hides an attack: "start" (after the first paragraph) or "middle" (after the middle block). */
+export type AttackPosition = "start" | "middle";
+
+/** A document made of the given benign blocks with the attack as one paragraph at a chosen position (the replay uses two READMEs and two positions). */
+export function embedAttackAt(attack: string, blocks: readonly string[], position: AttackPosition): string {
+  const out = [...blocks];
+  out.splice(position === "start" ? 2 : Math.floor(out.length / 2), 0, attack.trim());
+  return out.join("\n\n") + "\n";
+}
