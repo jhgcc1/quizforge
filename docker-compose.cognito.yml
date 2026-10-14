@@ -1,0 +1,19 @@
+# Overlay: run the local stack against the REAL Cognito user pool (sign-up, Google, Facebook), instead of the development login.
+# Use scripts/local-cognito.sh (it fetches the values below into .env.cognito, which is git-ignored).
+#   scripts/local-cognito.sh up      real login on http://localhost:13000
+#   scripts/local-cognito.sh down    back to the development login
+services:
+  api:
+    environment:
+      AUTH_MODE: cognito
+      COGNITO_USER_POOL_ID: ${COGNITO_USER_POOL_ID:?run scripts/local-cognito.sh up}
+      COGNITO_CLIENT_IDS: ${COGNITO_LOCAL_CLIENT_ID:?run scripts/local-cognito.sh up}
+  web:
+    environment:
+      AUTH_MODE: cognito
+      APP_URL: http://localhost:13000
+      COGNITO_DOMAIN: ${COGNITO_DOMAIN:?run scripts/local-cognito.sh up}
+      COGNITO_CLIENT_ID: ${COGNITO_LOCAL_CLIENT_ID:?run scripts/local-cognito.sh up}
+      COGNITO_CLIENT_SECRET: ${COGNITO_LOCAL_CLIENT_SECRET:?run scripts/local-cognito.sh up}
+      ALLOW_SIGNUP: "true"
+      SOCIAL_PROVIDERS: ${SOCIAL_PROVIDERS:-facebook}
