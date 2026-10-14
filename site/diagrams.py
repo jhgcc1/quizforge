@@ -157,7 +157,7 @@ def prep_flow():
     b = ""
     RULE, ML, LLM = "data", "sec", "ai"
     row1 = [("1 · Download", "allow-list · public IP · 512 KB", RULE), ("2 · Normalize and clean", "decode hidden text · strip invisibles", RULE),
-            ("3 · Language", "en · pt · es only", RULE), ("4 · Classifier (optional)", "DeBERTa · English · flag only", ML)]
+            ("3 · Language", "en · pt · es only", RULE), ("4 · Classifier", "Prompt Guard 2 · flag only", ML)]
     row2 = [("5 · Store", "cleaned text, once per hash", RULE), ("6 · Route and cut", "short: whole · long: sections", RULE),
             ("7 · Build the prompt", "<document> tags · forged tags off", RULE), ("8 · Model-call guard", "strict schema · size caps · budget", RULE)]
     for r, row in enumerate([row1, row2]):
@@ -306,7 +306,7 @@ def guardrail_flow():
     RULE, ML, LLM = "data", "sec", "ai"
     b += group(10, 10, 410, 392, "INPUT · before the model call", "grp")
     inp = [("Edge and login", "WAF · JWT · CSRF · quotas · zod", RULE), ("Fetch the README", "host allow-list · public IPs only · 512 KB", RULE),
-           ("Document guard", "hidden or encoded text · 49 keyword rules · language (franc)", RULE), ("Classifier (optional)", "DeBERTa, ONNX · English · flag only · off in AWS", ML),
+           ("Document guard", "hidden or encoded text · rules (en, pt, es) · language", RULE), ("Classifier", "Llama Prompt Guard 2 (ONNX) · flag only · on", ML),
            ("Model-call guard", "document in <document> tags · budget 16 calls", RULE)]
     for i, (t, sub, k) in enumerate(inp):
         b += box(26, 44 + i * 70, 378, 56, t, sub, k, small=True)
@@ -317,7 +317,7 @@ def guardrail_flow():
     b += text(456, 288, "itself resisting an instruction.", "note")
     b += arrow(404, 195, 456, 195)
     b += group(760, 10, 410, 392, "OUTPUT · after the model call", "grp mgd")
-    out = [("Output rails", "JSON only · no leak · no script · no new link · no echo", RULE), ("Quiz schema", "zod: 4 options, a correct one, a quote", RULE),
+    out = [("Output rails", "JSON only · no leak · no script · strict links · no echo", RULE), ("Quiz schema", "zod: 4 options, a correct one, a quote", RULE),
            ("Grounding", "every quote must exist in the document", RULE), ("Save", "answer key hidden until the submit", RULE), ("Judge (later, scorer)", "scores quality · blocks nothing", LLM)]
     for i, (t, sub, k) in enumerate(out):
         b += box(776, 44 + i * 70, 378, 56, t, sub, k, small=True)
@@ -399,12 +399,12 @@ def cicd():
     b = ""
     b += group(10, 10, 1160, 230, "Pull request (never deploys)", "grp")
     gates = [("quality", "typecheck · lint · tests · eval"), ("integration", "real Postgres"), ("migrations", "drift · policy · applies twice"), ("e2e", "Playwright + Chrome"),
-             ("docker-build", "build + Trivy"), ("terraform-validate", "fmt · validate · Trivy"), ("secrets-scan", "gitleaks"), ("promptfoo", "guard + prompt rules, 81 tests"), ("terraform-plan", "plan on the PR (informational)"), ("llm-eval-pr", "real model, only if prompts/LLM code changed")]
+             ("docker-build", "build + Trivy"), ("terraform-validate", "fmt · validate · Trivy"), ("secrets-scan", "gitleaks"), ("promptfoo", "guard + prompt rules, 81 tests"), ("terraform-plan", "plan on the PR (informational)"), ("llm-eval-pr + redteam-sample", "real model: golden set, 50 attacks")]
     for i, (n, s) in enumerate(gates):
         x = 30 + (i % 5) * 226; y = 48 + (i // 5) * 88
         b += box(x, y, 206, 66, n, s, "ci", small=True)
     b += box(30, 252 - 0, 0, 0, "", "", "ci") if False else ""
-    b += group(10, 270, 1160, 240, "merge to main (ruleset: PR + 8 required checks + linear history + no bypass) → pipeline runs again", "grp")
+    b += group(10, 270, 1160, 240, "merge to main (ruleset: PR + required checks + linear history + no bypass) → pipeline runs again", "grp")
     b += box(30, 318, 230, 66, "the same 8 gates", "", "ci", small=True)
     b += box(290, 318, 230, 66, "llm-eval (real model gate)", "golden set + promptfoo live", "ai", small=True)
     b += box(550, 318, 190, 66, "human approval", "environment: production", "sec", small=True)
@@ -843,7 +843,7 @@ def promptfoo_flow():
     b += text(790, 86, "· plain instructions arrive sanitized, in tags", "note")
     b += text(790, 104, "· the prompts keep their safety rules", "note")
     b += text(790, 140, "Live proves the MODEL does not obey:", "note")
-    b += text(790, 160, "· plain instruction written in 7 languages, hidden in 9 places", "note")
+    b += text(790, 160, "· plain instruction written in 3 languages, hidden in 9 places", "note")
     b += text(790, 178, "· requests for a poem, a joke, physics, prices", "note")
     b += text(790, 196, "· a clean document still gives a normal quiz", "note")
     b += text(10, 300, "The attack corpus is ONE file (packages/core/src/attacks.ts): vitest and promptfoo test the same attacks.", "note")
