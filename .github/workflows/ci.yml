@@ -465,11 +465,6 @@ jobs:
       contents: read
     env:
       TAG: ${{ github.sha }}
-      # social login (optional): empty = that provider is not created. Secrets of the `production` environment.
-      TF_VAR_google_client_id: ${{ secrets.GOOGLE_CLIENT_ID || '' }}
-      TF_VAR_google_client_secret: ${{ secrets.GOOGLE_CLIENT_SECRET || '' }}
-      TF_VAR_facebook_app_id: ${{ secrets.FACEBOOK_APP_ID || '' }}
-      TF_VAR_facebook_app_secret: ${{ secrets.FACEBOOK_APP_SECRET || '' }}
     steps:
       - name: Refuse to deploy while the environment is paused
         run: |
@@ -496,18 +491,23 @@ jobs:
       - uses: aws-actions/amazon-ecr-login@v2
         id: ecr
       - uses: docker/setup-buildx-action@v3
+      - name: Social login credentials from AWS Secrets Manager
+        uses: ./.github/actions/social-secrets
+      - name: "The web image is tagged with the front end commit (a front-end-only deploy reuses it)"
+        run: echo "WEB_TAG=web-$(cut -c1-12 <<< '${{ steps.webref.outputs.sha }}')" >> "$GITHUB_ENV"
 
-      - name: Build and push images (tag = commit sha, immutable)
+      - name: "Build and push images (api and worker tagged with the commit sha, web with the front end commit; immutable)"
         run: |
           for s in api worker web redteam; do
             repo="${{ steps.ecr.outputs.registry }}/quizforge/$s"
-            if aws ecr describe-images --repository-name "quizforge/$s" --image-ids imageTag=$TAG >/dev/null 2>&1; then
-              echo "$s:$TAG already in ECR, skipping"; continue
+            t=$TAG; [ "$s" = web ] && t=$WEB_TAG
+            if aws ecr describe-images --repository-name "quizforge/$s" --image-ids imageTag=$t >/dev/null 2>&1; then
+              echo "$s:$t already in ECR, skipping"; continue
             fi
             if [ "$s" = web ]; then dockerfile=web/Dockerfile; ctx=web; elif [ "$s" = redteam ]; then dockerfile=docker/redteam/Dockerfile; ctx=.; else dockerfile=apps/$s/Dockerfile; ctx=.; fi
             T=""; [ "$s" = worker ] && T="--target runtime-detector" # the worker image carries the Llama Prompt Guard 2 model
             [ "$s" = redteam ] && T="--build-arg GIT_SHA=$TAG" # the red team report names the commit
-            docker buildx build -f $dockerfile $T -t "$repo:$TAG" --push \
+            docker buildx build -f $dockerfile $T -t "$repo:$t" --push \
               --cache-from type=gha,scope=$s-arm --cache-to type=gha,scope=$s-arm,mode=max $ctx
           done
 
@@ -522,7 +522,7 @@ jobs:
         working-directory: infra/terraform
         run: |
           set +e
-          terraform plan -input=false -no-color -detailed-exitcode -refresh-only -var "image_tag=$TAG" > drift.txt 2>&1
+          terraform plan -input=false -no-color -detailed-exitcode -refresh-only -var "image_tag=$TAG" -var "web_image_tag=$WEB_TAG" > drift.txt 2>&1
           code=$?
           cat drift.txt | tail -40
           if [ $code -eq 1 ]; then echo "::error::terraform could not read the state/infrastructure"; exit 1; fi
@@ -533,7 +533,7 @@ jobs:
         working-directory: infra/terraform
         run: |
           if terraform state show aws_ecs_task_definition.migrate >/dev/null 2>&1; then
-            terraform apply -input=false -auto-approve -var "image_tag=$TAG" -target=aws_ecs_task_definition.migrate
+            terraform apply -input=false -auto-approve -var "image_tag=$TAG" -var "web_image_tag=$WEB_TAG" -target=aws_ecs_task_definition.migrate
             ../../scripts/run-migration.sh
             echo "first=false" >> "$GITHUB_OUTPUT"
           else
@@ -543,7 +543,7 @@ jobs:
 
       - name: terraform apply (rolling deploy with circuit breaker; waits for steady state)
         working-directory: infra/terraform
-        run: terraform apply -input=false -auto-approve -var "image_tag=$TAG"
+        run: terraform apply -input=false -auto-approve -var "image_tag=$TAG" -var "web_image_tag=$WEB_TAG"
 
       - name: "Database migration (first deployment only, the database did not exist before the apply)"
         if: steps.premigrate.outputs.first == 'true'
