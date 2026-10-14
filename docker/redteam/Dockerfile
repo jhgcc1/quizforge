@@ -27,6 +27,8 @@ RUN apt-get update && apt-get -y --no-install-recommends upgrade && rm -rf /var/
 RUN npm install -g pnpm@10.34.6 \
  && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /opt/yarn* /usr/local/bin/yarn* /root/.npm
 ENV NODE_ENV=production PROMPTFOO_BIN=/opt/promptfoo/node_modules/.bin/promptfoo
+# `pnpm exec tsx` runs from the repo root, but tsx is installed in the promptfoo workspace package: put its bin folder on PATH
+ENV PATH=/app/promptfoo/node_modules/.bin:$PATH
 WORKDIR /app
 # AWS RDS CA bundle is NOT needed: this task never talks to the database.
 COPY --from=build --chown=node:node /repo/node_modules ./node_modules
