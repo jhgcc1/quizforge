@@ -157,7 +157,7 @@ def prep_flow():
     b = ""
     RULE, ML, LLM = "data", "sec", "ai"
     row1 = [("1 · Download", "allow-list · public IP · 512 KB", RULE), ("2 · Normalize and clean", "decode hidden text · strip invisibles", RULE),
-            ("3 · Language", "en · pt · es only", RULE), ("4 · Classifier (optional)", "DeBERTa · English · flag only", ML)]
+            ("3 · Language", "en · pt · es only", RULE), ("4 · Classifier", "Prompt Guard 2 · flag only", ML)]
     row2 = [("5 · Store", "cleaned text, once per hash", RULE), ("6 · Route and cut", "short: whole · long: sections", RULE),
             ("7 · Build the prompt", "<document> tags · forged tags off", RULE), ("8 · Model-call guard", "strict schema · size caps · budget", RULE)]
     for r, row in enumerate([row1, row2]):
@@ -171,6 +171,65 @@ def prep_flow():
     b += text(20, 270, "A document that fails step 2 or 3 is rejected here: the model is never called (llmCalls = 0).", "note")
     b += text(20, 290, "A plain instruction written in the document is not removed: it is flagged, counted and kept as data inside the tags.", "note")
     return svg(1200, 312, b, "Before the model: how a README is prepared (all deterministic code, except the optional classifier)")
+
+
+def repos():
+    """The two repositories and how the front end reaches the deploy."""
+    b = ""
+    b += group(10, 10, 400, 250, "github.com/jhgcc1/quizforge-web (public)", "grp")
+    b += box(26, 50, 368, 56, "Next.js front end + BFF", "pages · login with Cognito · calls the API", "compute", small=True)
+    b += box(26, 120, 368, 56, "Own CI", "quality (coverage floor) · build · docker-build + Trivy · secrets-scan", "ci", small=True)
+    b += box(26, 190, 368, 56, "Dockerfile", "builds the web image from this repository alone", "mgd", small=True)
+    b += group(540, 10, 640, 250, "github.com/jhgcc1/quizforge (back end, infrastructure, deploy)", "grp")
+    b += box(556, 50, 200, 56, "api · worker · scorer", "Fastify · LangGraph · judge", "compute", small=True)
+    b += box(772, 50, 190, 56, "packages", "contract · core · db · llm · detector", "data", small=True)
+    b += box(978, 50, 186, 56, "tests", "unit · integration · e2e · promptfoo", "ci", small=True)
+    b += box(556, 120, 200, 56, "infra (Terraform)", "AWS, GitHub rules, bootstrap", "sec", small=True)
+    b += box(772, 120, 392, 56, "CI/CD", "10 checks on a PR · deploy with a human approval", "ci", small=True)
+    b += box(556, 190, 608, 56, "web.ref", "the commit of quizforge-web that the e2e test and the deploy build (a PR changes it)", "edge", small=True)
+    b += arrow(540, 80, 394, 80, "", dash=True)
+    b += text(404, 40, "API contract", "note", "middle")
+    b += text(404, 56, "(tarball of a", "note", "middle")
+    b += text(404, 70, "GitHub Release)", "note", "middle")
+    b += arrow(410, 218, 540, 218)
+    b += text(475, 208, "pinned", "note", "middle")
+    b += box(300, 300, 580, 60, "Deploy: one pipeline, one approval, one Terraform", "build api, worker, web and redteam images (tag = commit) → ECR → migration → ECS", "ai", small=True)
+    b += arrow(860, 246, 640, 300)
+    b += arrow(210, 246, 330, 300)
+    b += text(20, 392, "The front end and the back end share only the API contract. Each service keeps its own image and its own ECS service.", "note")
+    return svg(1190, 412, b, "Two repositories: what lives where and how they meet at the deploy")
+
+
+def redteam_nightly():
+    """The nightly red-team run on AWS: schedule, one-shot Fargate task, S3 report with a timestamp, metrics and alarms."""
+    b = ""
+    b += box(10, 60, 170, 64, "EventBridge Scheduler", "every night 06:00 UTC", "mgd", small=True)
+    b += text(10, 140, "off while the environment", "note"); b += text(10, 156, "is paused (no NAT)", "note")
+    b += box(230, 40, 250, 110, "", "", "ai", small=True)
+    b += text(242, 62, "Fargate task: redteam", "t")
+    b += text(242, 84, "one-shot · 2 vCPU · 4 GB · no service", "note"); b += text(242, 102, "promptfoo (pinned) + the pipeline", "note")
+    b += text(242, 120, "Llama Prompt Guard 2 baked in", "note"); b += text(242, 138, "~600 attacks · en, pt, es", "note")
+    b += arrow(180, 92, 230, 92)
+    b += box(540, 10, 190, 52, "MiniMax API", "the model under test", "ext", small=True)
+    b += arrow(480, 70, 540, 40, "via NAT", lx=470, ly=36)
+    b += group(540, 86, 640, 150, "S3 bucket: quizforge-prod-reports-<account> (private, encrypted, versioned)", "grp mgd")
+    b += text(556, 126, "redteam/2026-10-15T06-00-12Z/   ← one folder per run, never overwritten", "note")
+    b += text(572, 148, "report.html · summary.json · results.json · new-failures.json", "note")
+    b += text(556, 176, "redteam/latest/report.html   ← pointer to the newest run", "note")
+    b += text(556, 204, "lifecycle: cheaper storage after 30 days, deleted after 365", "note")
+    b += arrow(480, 110, 540, 130)
+    b += box(230, 210, 250, 56, "CloudWatch metrics", "RedteamRuns · Cases · Leaks · Language", "mgd", small=True)
+    b += arrow(355, 144, 355, 210)
+    b += box(10, 290, 220, 56, "Alarms", "leak ≥ 1 · no run in 26 h", "sec", small=True)
+    b += arrow(230, 238, 150, 290)
+    b += box(290, 290, 190, 56, "SNS → e-mail", "counts + 7-day link to the report", "mgd", small=True)
+    b += arrow(230, 318, 290, 318)
+    b += box(540, 290, 300, 56, "You", "open the report; a leaked case becomes a test", "compute", small=True)
+    b += arrow(480, 318, 540, 318)
+    b += box(870, 290, 310, 56, "Frozen 50-case sample (CI)", "promote the leaked case by a pull request", "ci", small=True)
+    b += arrow(840, 318, 870, 318)
+    b += text(10, 376, "The pull-request sample (50 cases) proves nothing regressed; the nightly run looks for what is new.", "note")
+    return svg(1190, 396, b, "Nightly red team on AWS: a separate Fargate task writes a timestamped report to S3")
 
 
 def entity(x, y, name, cols, kind="data", w=290):
@@ -247,7 +306,7 @@ def guardrail_flow():
     RULE, ML, LLM = "data", "sec", "ai"
     b += group(10, 10, 410, 392, "INPUT · before the model call", "grp")
     inp = [("Edge and login", "WAF · JWT · CSRF · quotas · zod", RULE), ("Fetch the README", "host allow-list · public IPs only · 512 KB", RULE),
-           ("Document guard", "hidden or encoded text · 49 keyword rules · language (franc)", RULE), ("Classifier (optional)", "DeBERTa, ONNX · English · flag only · off in AWS", ML),
+           ("Document guard", "hidden or encoded text · rules (en, pt, es) · language", RULE), ("Classifier", "Llama Prompt Guard 2 (ONNX) · flag only · on", ML),
            ("Model-call guard", "document in <document> tags · budget 16 calls", RULE)]
     for i, (t, sub, k) in enumerate(inp):
         b += box(26, 44 + i * 70, 378, 56, t, sub, k, small=True)
@@ -258,7 +317,7 @@ def guardrail_flow():
     b += text(456, 288, "itself resisting an instruction.", "note")
     b += arrow(404, 195, 456, 195)
     b += group(760, 10, 410, 392, "OUTPUT · after the model call", "grp mgd")
-    out = [("Output rails", "JSON only · no leak · no script · no new link · no echo", RULE), ("Quiz schema", "zod: 4 options, a correct one, a quote", RULE),
+    out = [("Output rails", "JSON only · no leak · no script · strict links · no echo", RULE), ("Quiz schema", "zod: 4 options, a correct one, a quote", RULE),
            ("Grounding", "every quote must exist in the document", RULE), ("Save", "answer key hidden until the submit", RULE), ("Judge (later, scorer)", "scores quality · blocks nothing", LLM)]
     for i, (t, sub, k) in enumerate(out):
         b += box(776, 44 + i * 70, 378, 56, t, sub, k, small=True)
@@ -340,12 +399,12 @@ def cicd():
     b = ""
     b += group(10, 10, 1160, 230, "Pull request (never deploys)", "grp")
     gates = [("quality", "typecheck · lint · tests · eval"), ("integration", "real Postgres"), ("migrations", "drift · policy · applies twice"), ("e2e", "Playwright + Chrome"),
-             ("docker-build", "build + Trivy"), ("terraform-validate", "fmt · validate · Trivy"), ("secrets-scan", "gitleaks"), ("promptfoo", "guard + prompt rules, 81 tests"), ("terraform-plan", "plan on the PR (informational)"), ("llm-eval-pr", "real model, only if prompts/LLM code changed")]
+             ("docker-build", "build + Trivy"), ("terraform-validate", "fmt · validate · Trivy"), ("secrets-scan", "gitleaks"), ("promptfoo", "guard + prompt rules, 81 tests"), ("terraform-plan", "plan on the PR (informational)"), ("llm-eval-pr + redteam-sample", "real model: golden set, 50 attacks")]
     for i, (n, s) in enumerate(gates):
         x = 30 + (i % 5) * 226; y = 48 + (i // 5) * 88
         b += box(x, y, 206, 66, n, s, "ci", small=True)
     b += box(30, 252 - 0, 0, 0, "", "", "ci") if False else ""
-    b += group(10, 270, 1160, 240, "merge to main (ruleset: PR + 8 required checks + linear history + no bypass) → pipeline runs again", "grp")
+    b += group(10, 270, 1160, 240, "merge to main (ruleset: PR + required checks + linear history + no bypass) → pipeline runs again", "grp")
     b += box(30, 318, 230, 66, "the same 8 gates", "", "ci", small=True)
     b += box(290, 318, 230, 66, "llm-eval (real model gate)", "golden set + promptfoo live", "ai", small=True)
     b += box(550, 318, 190, 66, "human approval", "environment: production", "sec", small=True)
@@ -784,7 +843,7 @@ def promptfoo_flow():
     b += text(790, 86, "· plain instructions arrive sanitized, in tags", "note")
     b += text(790, 104, "· the prompts keep their safety rules", "note")
     b += text(790, 140, "Live proves the MODEL does not obey:", "note")
-    b += text(790, 160, "· plain instruction written in 7 languages, hidden in 9 places", "note")
+    b += text(790, 160, "· plain instruction written in 3 languages, hidden in 9 places", "note")
     b += text(790, 178, "· requests for a poem, a joke, physics, prices", "note")
     b += text(790, 196, "· a clean document still gives a normal quiz", "note")
     b += text(10, 300, "The attack corpus is ONE file (packages/core/src/attacks.ts): vitest and promptfoo test the same attacks.", "note")
