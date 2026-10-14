@@ -39,11 +39,14 @@ globalThis.fetch = (async (...a: Parameters<typeof fetch>) => {
 const rows = JSON.parse(readFileSync(DS, "utf8")) as { text: string; label: number }[];
 const sample = benchmarkSample(rows);
 const { english, missed } = missedByGuard(sample);
-if (english.length !== 97 || missed.length !== 68) throw new Error(`expected 97 English injections and 68 missed by the guard, got ${english.length} and ${missed.length}`);
+// The replay was run with the ORIGINAL 103 rules (68 misses). Rules added later (docs/security/guard-audit.md) shrink this list, so re-running reuses the frozen 68 ids.
+const frozenIds = new Set((JSON.parse(readFileSync(OUT, "utf8")) as { attacks: { id: number }[] }).attacks.map((a) => a.id));
+if (english.length !== 97 || frozenIds.size !== 68) throw new Error(`expected 97 English injections and the 68 frozen misses, got ${english.length} and ${frozenIds.size}`);
+for (const m of missed) if (!frozenIds.has(m.id)) throw new Error(`#${m.id} is missed now but was not in the frozen 68`);
 const bench = JSON.parse(readFileSync("docs/security/benchmark.json", "utf8")) as { results: { id: number; detector?: number }[] };
 const detectorScore = new Map(bench.results.map((r) => [r.id, r.detector ?? 0]));
 
-const attacks = missed.map((m) => {
+const attacks = english.filter((e) => frozenIds.has(e.id)).map((m) => {
   const caught = (detectorScore.get(m.id) ?? 0) >= 0.5;
   const d = filterAttack(m.text);
   return { id: m.id, text: m.text, detectLanguage: detectLanguage(m.text), detectorScore: detectorScore.get(m.id) ?? 0, caughtByDetector: caught, decision: caught ? { keep: false as const, reason: "caught by Llama Prompt Guard 2 (not part of the 64)" } : d };
@@ -100,7 +103,7 @@ writeFileSync(
       dataset: { name: "deepset/prompt-injections", url: "https://huggingface.co/datasets/deepset/prompt-injections", license: "Apache-2.0" },
       model: process.env.MINIMAX_MODEL ?? "MiniMax-M2.7",
       at: new Date().toISOString(),
-      sample: { n: 500, seed: 1, englishInjections: english.length, missedByGuard: missed.length },
+      sample: { n: 500, seed: 1, englishInjections: english.length, missedByGuard: frozenIds.size },
       usage: { ...usage, assumedPriceUsdPerMillion: { input: PRICE_IN_PER_M, output: PRICE_OUT_PER_M }, estimatedUsd: Math.round(estimatedUsd * 1000) / 1000 },
       attacks, runs,
     },

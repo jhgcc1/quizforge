@@ -1046,10 +1046,8 @@
     }
    ],
    "verdict": {
-    "contaminated": true,
-    "reasons": [
-     "(d) q1: written in \"pt\", the README is \"en\""
-    ],
+    "contaminated": false,
+    "reasons": [],
     "groundedInReadme": 5,
     "total": 5
    }
@@ -1121,10 +1119,8 @@
     }
    ],
    "verdict": {
-    "contaminated": true,
-    "reasons": [
-     "(d) q1: written in \"pt\", the README is \"en\""
-    ],
+    "contaminated": false,
+    "reasons": [],
     "groundedInReadme": 5,
     "total": 5
    }
@@ -1488,10 +1484,8 @@
     }
    ],
    "verdict": {
-    "contaminated": true,
-    "reasons": [
-     "(d) q2: written in \"other\", the README is \"en\""
-    ],
+    "contaminated": false,
+    "reasons": [],
     "groundedInReadme": 5,
     "total": 5
    }
@@ -1636,10 +1630,8 @@
     }
    ],
    "verdict": {
-    "contaminated": true,
-    "reasons": [
-     "(d) q1: written in \"pt\", the README is \"en\""
-    ],
+    "contaminated": false,
+    "reasons": [],
     "groundedInReadme": 5,
     "total": 5
    }
@@ -2078,11 +2070,7 @@
    "verdict": {
     "contaminated": true,
     "reasons": [
-     "(d) q1: written in \"other\", the README is \"en\"",
-     "(d) q2: written in \"other\", the README is \"en\"",
-     "(d) q3: written in \"other\", the README is \"en\"",
-     "(d) q4: written in \"other\", the README is \"en\"",
-     "(d) q5: written in \"other\", the README is \"en\""
+     "(d) the quiz is written in \"other\", the README is \"en\""
     ],
     "groundedInReadme": 5,
     "total": 5
@@ -2301,10 +2289,8 @@
     }
    ],
    "verdict": {
-    "contaminated": true,
-    "reasons": [
-     "(d) q1: written in \"pt\", the README is \"en\""
-    ],
+    "contaminated": false,
+    "reasons": [],
     "groundedInReadme": 5,
     "total": 5
    }
@@ -2522,10 +2508,8 @@
     }
    ],
    "verdict": {
-    "contaminated": true,
-    "reasons": [
-     "(d) q1: written in \"pt\", the README is \"en\""
-    ],
+    "contaminated": false,
+    "reasons": [],
     "groundedInReadme": 5,
     "total": 5
    }
@@ -3995,10 +3979,8 @@
     }
    ],
    "verdict": {
-    "contaminated": true,
-    "reasons": [
-     "(d) q1: written in \"pt\", the README is \"en\""
-    ],
+    "contaminated": false,
+    "reasons": [],
     "groundedInReadme": 5,
     "total": 5
    }
@@ -4654,10 +4636,8 @@
     }
    ],
    "verdict": {
-    "contaminated": true,
-    "reasons": [
-     "(d) q2: written in \"other\", the README is \"en\""
-    ],
+    "contaminated": false,
+    "reasons": [],
     "groundedInReadme": 5,
     "total": 5
    }
@@ -6846,10 +6826,8 @@
     }
    ],
    "verdict": {
-    "contaminated": true,
-    "reasons": [
-     "(d) q1: written in \"pt\", the README is \"en\""
-    ],
+    "contaminated": false,
+    "reasons": [],
     "groundedInReadme": 5,
     "total": 5
    }
@@ -7943,10 +7921,8 @@
     }
    ],
    "verdict": {
-    "contaminated": true,
-    "reasons": [
-     "(d) q2: written in \"other\", the README is \"en\""
-    ],
+    "contaminated": false,
+    "reasons": [],
     "groundedInReadme": 5,
     "total": 5
    }
@@ -9770,10 +9746,8 @@
     }
    ],
    "verdict": {
-    "contaminated": true,
-    "reasons": [
-     "(d) q1: written in \"pt\", the README is \"en\""
-    ],
+    "contaminated": false,
+    "reasons": [],
     "groundedInReadme": 5,
     "total": 5
    }
@@ -9918,10 +9892,8 @@
     }
    ],
    "verdict": {
-    "contaminated": true,
-    "reasons": [
-     "(d) q2: written in \"other\", the README is \"en\""
-    ],
+    "contaminated": false,
+    "reasons": [],
     "groundedInReadme": 5,
     "total": 5
    }
@@ -10869,10 +10841,8 @@
     }
    ],
    "verdict": {
-    "contaminated": true,
-    "reasons": [
-     "(d) q2: written in \"other\", the README is \"en\""
-    ],
+    "contaminated": false,
+    "reasons": [],
     "groundedInReadme": 5,
     "total": 5
    }
@@ -11528,10 +11498,8 @@
     }
    ],
    "verdict": {
-    "contaminated": true,
-    "reasons": [
-     "(d) q1: written in \"pt\", the README is \"en\""
-    ],
+    "contaminated": false,
+    "reasons": [],
     "groundedInReadme": 5,
     "total": 5
    }
@@ -12116,11 +12084,7 @@
    "verdict": {
     "contaminated": true,
     "reasons": [
-     "(d) q1: written in \"other\", the README is \"en\"",
-     "(d) q2: written in \"other\", the README is \"en\"",
-     "(d) q3: written in \"other\", the README is \"en\"",
-     "(d) q4: written in \"other\", the README is \"en\"",
-     "(d) q5: written in \"other\", the README is \"en\""
+     "(d) the quiz is written in \"other\", the README is \"en\""
     ],
     "groundedInReadme": 5,
     "total": 5
@@ -13288,10 +13252,8 @@
     }
    ],
    "verdict": {
-    "contaminated": true,
-    "reasons": [
-     "(d) q1: written in \"pt\", the README is \"en\""
-    ],
+    "contaminated": false,
+    "reasons": [],
     "groundedInReadme": 5,
     "total": 5
    }
@@ -15115,10 +15077,8 @@
     }
    ],
    "verdict": {
-    "contaminated": true,
-    "reasons": [
-     "(d) q1: written in \"pt\", the README is \"en\""
-    ],
+    "contaminated": false,
+    "reasons": [],
     "groundedInReadme": 5,
     "total": 5
    }
@@ -15628,10 +15588,8 @@
     }
    ],
    "verdict": {
-    "contaminated": true,
-    "reasons": [
-     "(d) q1: written in \"pt\", the README is \"en\""
-    ],
+    "contaminated": false,
+    "reasons": [],
     "groundedInReadme": 5,
     "total": 5
    }
@@ -15995,10 +15953,8 @@
     }
    ],
    "verdict": {
-    "contaminated": true,
-    "reasons": [
-     "(d) q1: written in \"pt\", the README is \"en\""
-    ],
+    "contaminated": false,
+    "reasons": [],
     "groundedInReadme": 5,
     "total": 5
    }
