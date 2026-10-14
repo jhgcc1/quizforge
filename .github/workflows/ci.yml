@@ -357,6 +357,31 @@ jobs:
         if: always() && steps.scope.outputs.run == 'true'
         with: { name: eval-report-pr, path: "evals/report.json\npromptfoo/out/live.json", retention-days: 30 }
 
+  # ---------------------------------------------------------------- red team sample (every PR from this repository, and every merge to main)
+  # 50 FROZEN attacks (en, pt, es; 12 intents with canaries; Base64, ROT13, leetspeak, jailbreak templates, other tones) run through the real
+  # pipeline: first offline (guard, language policy, fake model), then live (MiniMax). Plain code decides: a canary in the reply fails the job.
+  # Same rules as llm-eval-pr: only MINIMAX_API_KEY (environment `llm-eval-pr`, no Langfuse keys), never for pull requests from forks.
+  # NOT a required check (the maintainer decides). Details: promptfoo/README.md.
+  redteam-sample:
+    name: redteam-sample
+    if: (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: llm-eval-pr
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "${{ env.NODE_VERSION }}", cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: Red team sample (offline stage, then live stage; fails if a canary leaks)
+        env:
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+        run: scripts/promptfoo.sh redteam-sample
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: redteam-sample, path: "promptfoo/out/redteam-sample-offline.json\npromptfoo/out/redteam-sample-live.json", retention-days: 30 }
+
   # ---------------------------------------------------------------- prompts to Langfuse (main only, after every gate)
   # A prompt reaches Langfuse Prompt Management ONLY from here: after the pull request checks passed (and blocked the merge if not),
   # and after the same checks, the real-model evaluation and the live promptfoo suite passed again on main. A prompt whose text

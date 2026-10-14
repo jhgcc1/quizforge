@@ -1,0 +1,15 @@
+# Red team sample, OFFLINE stage: the 50 frozen attacks go through the guard, the language policy, (when INJECTION_DETECTOR_MODEL_DIR is
+# set) the semantic detector and the prompt, with a deterministic fake model. No network, no secrets.
+# Proves: what must be rejected is rejected BEFORE the model, and what reaches the model arrives sanitized inside <document> tags.
+description: "QuizForge red team sample (offline: guard, language policy, detector)"
+prompts:
+  - "{{prompt}}"
+providers:
+  - id: file://../provider.ts
+    label: redteam-offline
+    config:
+      mode: offline
+# the 50 frozen attacks, and the small language policy group (5 more tests, not counted in the 50)
+tests:
+  - file://sample.yaml
+  - file://language-policy.yaml

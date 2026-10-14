@@ -38,15 +38,25 @@ import {
   createMiniMaxClient,
   detectLanguage,
   generateQuiz,
+  parseDetectorMode,
+  screenWithDetector,
   type ChatMessage,
+  type InjectionDetector,
   type LlmClient,
 } from "@quizforge/llm";
+import { embedAttack, readmeBlocks } from "./redteam/readme.js";
 
 interface Vars {
-  kind: "attack" | "language" | "topic" | "clean" | "off-purpose-topic" | "prompts" | "bad-output" | "fixture";
+  kind: "attack" | "language" | "topic" | "clean" | "off-purpose-topic" | "prompts" | "bad-output" | "fixture" | "redteam" | "readme";
   id?: string;
   /** For "attack": which payload (default: the English one). */
   payload?: string;
+  /** For "redteam": the attack text (it may be encoded), the language of the README it is hidden in, and its canary. */
+  prompt?: string;
+  lang?: string;
+  canary?: string;
+  /** For "redteam": the expected stage, "rejected" or "resisted". */
+  stage?: string;
 }
 
 const OFF_PURPOSE_TOPICS: Record<string, string> = {
@@ -84,8 +94,23 @@ function liveClient(): LlmClient {
   return createMiniMaxClient({ apiKey, baseUrl: process.env.MINIMAX_BASE_URL ?? "https://api.minimax.io/v1", model: process.env.MINIMAX_MODEL ?? "MiniMax-M2.7" });
 }
 
+/**
+ * The optional semantic detector (stage 3). It is off unless INJECTION_DETECTOR_MODEL_DIR is set; then `@quizforge/detector`
+ * (a heavy package, not a dependency of this one) is loaded through its public createOnnxDetector API. If it cannot be loaded the
+ * run FAILS: a red team run that silently skips a stage you asked for proves nothing.
+ */
+export async function loadDetector(env: Record<string, string | undefined> = process.env): Promise<{ detector: InjectionDetector; mode: "flag" | "block" } | undefined> {
+  const dir = env.INJECTION_DETECTOR_MODEL_DIR;
+  if (!dir) return undefined;
+  const moduleName = env.INJECTION_DETECTOR_MODULE ?? "@quizforge/detector";
+  const mod = (await import(/* @vite-ignore */ moduleName)) as { createOnnxDetector(opts?: { model?: string }): InjectionDetector };
+  const mode = parseDetectorMode(env.REDTEAM_DETECTOR_MODE ?? "block");
+  return { detector: mod.createOnnxDetector({ model: dir }), mode: mode === "flag" ? "flag" : "block" };
+}
+
 export default class QuizPipelineProvider {
   private mode: "offline" | "live";
+  private detector: Promise<Awaited<ReturnType<typeof loadDetector>>> | undefined;
   constructor(options: { config?: { mode?: string } } = {}) {
     // test traffic (attack documents) must never be sent to Langfuse
     for (const k of ["LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_BASE_URL"]) delete process.env[k];
@@ -129,6 +154,10 @@ export default class QuizPipelineProvider {
       technique = t.id;
     } else if (v.kind === "language") {
       doc = [...UNSUPPORTED_LANGUAGE_DOCS, ...SUPPORTED_LANGUAGE_DOCS].find((d) => d.id === v.id)?.text ?? "";
+    } else if (v.kind === "readme") {
+      doc = readmeBlocks(v.lang ?? "en").join("\n\n"); // a benign README in the given language (language policy group)
+    } else if (v.kind === "redteam") {
+      doc = embedAttack(String(v.prompt ?? ""), v.lang ?? "en");
     } else if (v.kind === "clean") {
       doc = SUPPORTED_LANGUAGE_DOCS.find((d) => d.id === v.id)?.text ?? benignDocument();
     } else if (v.kind === "topic") {
@@ -147,8 +176,27 @@ export default class QuizPipelineProvider {
       mode: this.mode,
       language: detectLanguage(doc),
       findings: inspectText(doc).findings.map((f) => ({ kind: f.kind, severity: f.severity })),
+      ...(v.kind === "redteam" ? { canary: v.canary, lang: v.lang, stage: v.stage } : {}),
     };
+    let detectorState = "off";
     try {
+      if (v.kind === "redteam") {
+        // stage 3 (optional): the semantic detector looks at the document after the guard and the language policy accepted it
+        const det = await (this.detector ??= loadDetector());
+        if (det) {
+          let admitted: ReturnType<typeof admitDocument> | undefined;
+          try {
+            admitted = admitDocument(doc);
+          } catch {
+            /* the guard or the language policy rejects it: generateQuiz below reports the same error */
+          }
+          if (admitted) {
+            const s = await screenWithDetector(admitted.text, admitted.language, det.detector, det.mode);
+            detectorState = s.status;
+            if (s.status === "blocked") return { ...base, status: "detector_blocked", detector: detectorState, llmCalls: 0, reason: s.finding.detail.slice(0, 200) };
+          } else detectorState = "not-reached";
+        }
+      }
       const r = await generateQuiz({
         llm: recorder,
         input: { sourceText: doc, numQuestions: 5, topic, strategy: "single-shot", critique: false },
@@ -164,6 +212,7 @@ export default class QuizPipelineProvider {
         questions: r.questions.map((q) => ({ prompt: q.prompt, options: q.options, explanation: q.explanation, sourceQuote: q.sourceQuote })),
         promptSeen: user,
         systemSeen: system,
+        ...(v.kind === "redteam" ? { detector: detectorState, systemPrompts: [GENERATION_SYSTEM, CRITIQUE_SYSTEM, REVISE_SYSTEM, PLAN_SYSTEM, JUDGE_SYSTEM] } : {}),
       };
     } catch (err) {
       const user = seen.flat().filter((m) => m.role === "user").map((m) => m.content).join("\n---\n");
@@ -174,7 +223,7 @@ export default class QuizPipelineProvider {
         : err instanceof QualityGateError || err instanceof StructuredOutputError ? "no_quiz"
         : err instanceof Error && err.message.startsWith("fake llm:") ? "fake_limit" /* the offline fake cannot do everything (for example revise) */
         : "error";
-      return { ...base, status, llmCalls: seen.length, reason: err instanceof Error ? err.message.slice(0, 200) : String(err), promptSeen: user };
+      return { ...base, status, llmCalls: seen.length, reason: err instanceof Error ? err.message.slice(0, 200) : String(err), promptSeen: user, ...(v.kind === "redteam" ? { detector: detectorState } : {}) };
     }
   }
 }
