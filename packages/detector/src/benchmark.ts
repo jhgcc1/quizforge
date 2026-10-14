@@ -1,7 +1,8 @@
 /**
  * Security benchmark: the input guard (and optionally the ONNX classifier) against a PUBLIC prompt-injection dataset.
  *   pnpm --filter @quizforge/detector benchmark                 500 samples, guard only (offline, free, seconds)
- *   pnpm --filter @quizforge/detector benchmark -- --detector   also the classifier (downloads ~740 MB once)
+ *   pnpm --filter @quizforge/detector benchmark -- --detector   also the classifier (Llama Prompt Guard 2 86M: 1.1 GB, downloaded once;
+ *                                                                set INJECTION_DETECTOR_MODEL_DIR to use a local copy)
  *   options: --n=500 --seed=1 --out=docs/security
  * Dataset: deepset/prompt-injections (Hugging Face, Apache-2.0, 662 labelled prompts, English and German; label 1 = injection).
  * It is downloaded to .local/ds (git-ignored). The sample is stratified (keeps the injection / benign ratio) and seeded, so a run is repeatable.
@@ -9,7 +10,7 @@
  * Counted as DETECTED: the guard blocks or flags it. Language policy (en, pt, es only) is reported separately: a German sample is
  * refused by the language policy, which stops it, but that is not detection of the injection itself.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { inspectText } from "@quizforge/core";
 import { detectLanguage } from "@quizforge/llm";
@@ -60,6 +61,7 @@ const nInj = Math.round((N * inj.length) / all.length);
 const sample = [...inj.slice(0, nInj), ...ben.slice(0, N - nInj)];
 
 const detector = USE_DETECTOR ? createOnnxDetector({ threshold: 0.5 }) : undefined;
+const THRESHOLDS = [0.5, 0.7, 0.9, 0.95, 0.99];
 
 interface Result { id: number; label: number; lang: string; supported: boolean; guard: "block" | "flag" | "pass"; rules: string[]; detector?: number; text: string }
 const results: Result[] = [];
@@ -101,11 +103,45 @@ const english = results.filter((r) => r.lang === "en");
 const ruleHits: Record<string, number> = {};
 for (const r of results.filter((x) => x.label === 1)) for (const rule of r.rules) ruleHits[rule] = (ruleHits[rule] ?? 0) + 1;
 
+// threshold sweep: recall and false positives of the classifier alone, overall and per detected language
+function sweep(rows: Result[]) {
+  const inj = rows.filter((r) => r.label === 1);
+  const ben = rows.filter((r) => r.label === 0);
+  return THRESHOLDS.map((t) => {
+    const c = inj.filter((r) => (r.detector ?? 0) >= t).length;
+    const f = ben.filter((r) => (r.detector ?? 0) >= t).length;
+    return { threshold: t, injections: inj.length, caught: c, recallPct: pct(c, inj.length), benign: ben.length, falsePositives: f, falsePositivePct: pct(f, ben.length) };
+  });
+}
+const sweepByGroup = detector ? { all: sweep(results), en: sweep(english), ...Object.fromEntries(Object.keys(byLang).map((l) => [`lang:${l}`, sweep(results.filter((r) => r.lang === l))])) } : null;
+
+// real READMEs (legitimate documents, some quote or discuss attacks): the score of the worst window
+async function readmes() {
+  const dir = join(root, "evals/fixtures");
+  const files: { name: string; text: string }[] = readdirSync(dir).filter((f) => f.endsWith(".md")).map((f) => ({ name: f, text: readFileSync(join(dir, f), "utf8") }));
+  const cache = join(root, ".local/ds/pipecat-live.md");
+  try {
+    if (!existsSync(cache)) writeFileSync(cache, await (await fetch("https://raw.githubusercontent.com/pipecat-ai/pipecat/main/README.md")).text());
+    files.push({ name: "pipecat (live, main)", text: readFileSync(cache, "utf8") });
+  } catch { /* offline: the fixtures only */ }
+  const probe = createOnnxDetector({ threshold: 0 }); // threshold 0: always reports the worst window
+  const out = [];
+  for (const f of files) {
+    const r = await probe.detect(f.text);
+    out.push({ name: f.name, expectedMalicious: f.name === "injection.md", score: Math.round(r.score * 1000) / 1000, windows: r.scanned, ms: r.ms, worstWindow: (r.excerpt ?? "").replace(/\s+/g, " ") });
+  }
+  return out;
+}
+const readmeScores = detector ? await readmes() : null;
+
 const summary = {
   dataset: { name: "deepset/prompt-injections", url: "https://huggingface.co/datasets/deepset/prompt-injections", license: "Apache-2.0", size: all.length, labelled: "1 = injection" },
   sample: { n: sample.length, seed: SEED, stratified: true },
   at: new Date().toISOString(),
-  detector: detector ? { name: detector.name, threshold: 0.5, languages: ["en"] } : null,
+  detector: detector ? { name: detector.name, threshold: 0.5, languages: [...detector.languages] } : null,
+  // the previous classifier on the same 500 samples (threshold 0.5), kept as a comparison row in the report
+  previousDetector: detector ? { name: "protectai/deberta-v3-base-prompt-injection-v2 (English only)", threshold: 0.5, english: { recallPct: 39.2, falsePositives: 0 }, all: { recallPct: 40.2, falsePositives: 3 }, pipecatReadme: 0.995 } : null,
+  thresholdSweep: sweepByGroup, readmes: readmeScores,
   all: stats(results), english: stats(english), byLanguage: byLang,
   topRules: Object.entries(ruleHits).sort((a, b) => b[1] - a[1]).slice(0, 12),
 };

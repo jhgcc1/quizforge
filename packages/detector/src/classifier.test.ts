@@ -3,7 +3,7 @@ import { chunkProse } from "./chunk.js";
 
 const state = {
   loads: [] as unknown[][],
-  env: { cacheDir: "unset" as string },
+  env: { cacheDir: "unset" as string, localModelPath: "unset" as string, allowRemoteModels: true },
   calls: [] as { text: string; opts: unknown }[],
   answer: (_t: string): unknown => ({ label: "SAFE", score: 0.99 }),
 };
@@ -25,6 +25,8 @@ beforeEach(() => {
   state.loads.length = 0;
   state.calls.length = 0;
   state.env.cacheDir = "unset";
+  state.env.localModelPath = "unset";
+  state.env.allowRemoteModels = true;
   state.answer = () => ({ label: "SAFE", score: 0.99 });
 });
 afterEach(() => vi.unstubAllEnvs());
@@ -35,7 +37,27 @@ describe("the real classifier path (transformers.js replaced by a fake pipeline)
     expect(d.name).toBe(`onnx:${DEFAULT_MODEL}`);
     await d.detect("A paragraph of ordinary documentation text.");
     await d.detect("Another paragraph of ordinary documentation text.");
-    expect(state.loads).toEqual([["text-classification", DEFAULT_MODEL, { dtype: "fp32" }]]);
+    expect(state.loads).toEqual([["text-classification", DEFAULT_MODEL, { dtype: "fp32", subfolder: "" }]]); // weights at the repo root
+    expect(state.env.allowRemoteModels).toBe(true);
+  });
+
+  it("loads from a local folder (INJECTION_DETECTOR_MODEL_DIR) with remote downloads disabled", async () => {
+    vi.stubEnv("INJECTION_DETECTOR_MODEL_DIR", "/models/prompt-guard-2/");
+    const d = createOnnxDetector();
+    await d.detect("A paragraph of ordinary documentation text.");
+    expect(state.loads).toEqual([["text-classification", "prompt-guard-2", { dtype: "fp32" }]]);
+    expect(state.env.localModelPath).toBe("/models/");
+    expect(state.env.allowRemoteModels).toBe(false);
+    state.loads.length = 0;
+    await createOnnxDetector({ modelDir: "pg2" }).detect("A paragraph of ordinary documentation text.");
+    expect(state.env.localModelPath).toBe("/");
+    expect(state.loads[0]![1]).toBe("pg2");
+  });
+
+  it("takes the hub id from INJECTION_DETECTOR_MODEL", async () => {
+    vi.stubEnv("INJECTION_DETECTOR_MODEL", "env/model");
+    const d = createOnnxDetector();
+    expect(d.name).toBe("onnx:env/model");
   });
 
   it("uses the model given in the options", async () => {

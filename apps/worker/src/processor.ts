@@ -43,7 +43,7 @@ export interface ProcessDeps {
   allowedHosts: string[];
   /** Languages a document may be written in; any other is rejected before the model is called. Default: en, pt, es. */
   allowedLanguages?: readonly SupportedLanguage[] | undefined;
-  /** Optional semantic classifier (English only) and what to do with its verdict. Default: not used. */
+  /** Optional semantic classifier (Llama Prompt Guard 2, multilingual) and what to do with its verdict. Default: not used. */
   detector?: InjectionDetector | undefined;
   detectorMode?: DetectorMode | undefined;
   pricing: { inPerM: number; outPerM: number };
@@ -94,7 +94,7 @@ export async function processQuizJob(
       log.warn({ findings: flagged.map((f) => ({ kind: f.kind, detail: f.detail })) }, "the document contains instructions aimed at a model (kept as data)");
       emit({ InjectionFlagged: { value: 1, unit: "Count" } });
     }
-    // Optional second opinion from a classifier model (English only; skipped for other languages). Never throws.
+    // Optional second opinion from a classifier model (multilingual; skipped for a language the model does not declare). Never throws.
     const screened = await screenWithDetector(doc.text, doc.language, d.detector, d.detectorMode ?? "off").catch((err: unknown) => {
       log.error({ err }, "semantic detector failed; continuing without it");
       emit({ DetectorFailed: { value: 1, unit: "Count" } });
