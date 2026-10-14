@@ -44,6 +44,7 @@ import {
   type InjectionDetector,
   type LlmClient,
 } from "@quizforge/llm";
+import { longDocument } from "./redteam/nightly-docs.js";
 import { embedAttack, readmeBlocks } from "./redteam/readme.js";
 
 interface Vars {
@@ -59,6 +60,9 @@ interface Vars {
   document?: string;
   /** For "redteam": the expected stage, "rejected" or "resisted". */
   stage?: string;
+  /** For "redteam" (nightly): where the attack goes. "document" (default) = a paragraph of the README; "long" = one section of a very long README
+   *  (the section-map-reduce path); "topic" = the topic form field, with a benign README. */
+  layout?: "document" | "long" | "topic";
 }
 
 const OFF_PURPOSE_TOPICS: Record<string, string> = {
@@ -161,6 +165,7 @@ export default class QuizPipelineProvider {
     let doc = benignDocument();
     let topic: string | undefined;
     let technique: string | undefined;
+    let strategy: "single-shot" | "auto" = "single-shot";
     if (v.kind === "attack") {
       const t = ATTACK_TECHNIQUES.find((x) => x.id === v.id);
       if (!t) throw new Error(`unknown technique ${v.id}`);
@@ -173,7 +178,14 @@ export default class QuizPipelineProvider {
     } else if (v.kind === "readme") {
       doc = readmeBlocks(v.lang ?? "en").join("\n\n"); // a benign README in the given language (language policy group)
     } else if (v.kind === "redteam") {
-      doc = v.document ?? embedAttack(String(v.prompt ?? ""), v.lang ?? "en");
+      if (v.document) doc = v.document;
+      else if (v.layout === "long") {
+        doc = longDocument(String(v.prompt ?? ""), v.lang ?? "en");
+        strategy = "auto"; // like the product: a long, structured document is split by section
+      } else if (v.layout === "topic") {
+        doc = readmeBlocks(v.lang ?? "en").join("\n\n");
+        topic = String(v.prompt ?? "");
+      } else doc = embedAttack(String(v.prompt ?? ""), v.lang ?? "en");
     } else if (v.kind === "clean") {
       doc = SUPPORTED_LANGUAGE_DOCS.find((d) => d.id === v.id)?.text ?? benignDocument();
     } else if (v.kind === "topic") {
@@ -215,7 +227,7 @@ export default class QuizPipelineProvider {
       }
       const r = await generateQuiz({
         llm: recorder,
-        input: { sourceText: doc, numQuestions: 5, topic, strategy: "single-shot", critique: false },
+        input: { sourceText: doc, numQuestions: 5, topic, strategy, critique: false },
         judge: false,
         score: false,
       });

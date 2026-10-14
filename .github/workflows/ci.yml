@@ -193,17 +193,18 @@ jobs:
           ref: ${{ steps.webref.outputs.sha }}
           path: web
       - uses: docker/setup-buildx-action@v3
-      - name: Build web, api and worker images
+      - name: Build web, api, worker and redteam images
         run: |
-          for s in api worker web; do
-            if [ "$s" = web ]; then dockerfile=web/Dockerfile; ctx=web; else dockerfile=apps/$s/Dockerfile; ctx=.; fi
+          for s in api worker web redteam; do
+            if [ "$s" = web ]; then dockerfile=web/Dockerfile; ctx=web; elif [ "$s" = redteam ]; then dockerfile=docker/redteam/Dockerfile; ctx=.; else dockerfile=apps/$s/Dockerfile; ctx=.; fi
             T=""; [ "$s" = worker ] && T="--target runtime-detector" # the worker image carries the Llama Prompt Guard 2 model
+            [ "$s" = redteam ] && T="--build-arg GIT_SHA=$GITHUB_SHA" # the red team report names the commit
             docker buildx build -f $dockerfile $T -t quizforge-$s:ci --load \
               --cache-from type=gha,scope=$s --cache-to type=gha,scope=$s,mode=max $ctx
           done
       - name: Scan images (fail on fixable HIGH/CRITICAL)
         run: |
-          for s in api worker web; do
+          for s in api worker web redteam; do
             docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD/.trivyignore:/.trivyignore:ro" \
               aquasec/trivy:0.58.1 image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --ignorefile /.trivyignore quizforge-$s:ci
           done
@@ -498,13 +499,14 @@ jobs:
 
       - name: Build and push images (tag = commit sha, immutable)
         run: |
-          for s in api worker web; do
+          for s in api worker web redteam; do
             repo="${{ steps.ecr.outputs.registry }}/quizforge/$s"
             if aws ecr describe-images --repository-name "quizforge/$s" --image-ids imageTag=$TAG >/dev/null 2>&1; then
               echo "$s:$TAG already in ECR, skipping"; continue
             fi
-            if [ "$s" = web ]; then dockerfile=web/Dockerfile; ctx=web; else dockerfile=apps/$s/Dockerfile; ctx=.; fi
+            if [ "$s" = web ]; then dockerfile=web/Dockerfile; ctx=web; elif [ "$s" = redteam ]; then dockerfile=docker/redteam/Dockerfile; ctx=.; else dockerfile=apps/$s/Dockerfile; ctx=.; fi
             T=""; [ "$s" = worker ] && T="--target runtime-detector" # the worker image carries the Llama Prompt Guard 2 model
+            [ "$s" = redteam ] && T="--build-arg GIT_SHA=$TAG" # the red team report names the commit
             docker buildx build -f $dockerfile $T -t "$repo:$TAG" --push \
               --cache-from type=gha,scope=$s-arm --cache-to type=gha,scope=$s-arm,mode=max $ctx
           done

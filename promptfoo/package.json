@@ -10,10 +10,11 @@
     "live": "promptfoo eval -c live.yaml --no-cache --no-progress-bar --no-table -j 3 -o out/live.json"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1147.0",
+    "@aws-sdk/client-sns": "^3.1147.0",
+    "@aws-sdk/s3-request-presigner": "^3.1147.0",
     "@quizforge/core": "workspace:*",
-    "@quizforge/llm": "workspace:*"
-  },
-  "devDependencies": {
+    "@quizforge/llm": "workspace:*",
     "tsx": "^4.19.0",
     "yaml": "2.9.1"
   }
