@@ -149,8 +149,21 @@ jobs:
           for i in $(seq 1 40); do docker compose ps postgres --format '{{.Health}}' | grep -q healthy && break; sleep 2; done
           for i in $(seq 1 30); do curl -sf "http://localhost:9324/?Action=ListQueues" >/dev/null && break; sleep 2; done
       - run: pnpm exec playwright install --with-deps chromium
-      - name: Build the web app
-        run: AUTH_MODE=local APP_URL=http://localhost:13000 pnpm --filter @quizforge/web build
+      - name: Read the pinned front end commit (web.ref)
+        id: webref
+        run: echo "sha=$(tr -d '[:space:]' < web.ref)" >> "$GITHUB_OUTPUT"
+      - name: Check out the front end (jhgcc1/quizforge-web at web.ref) into web/
+        uses: actions/checkout@v4
+        with:
+          repository: jhgcc1/quizforge-web
+          ref: ${{ steps.webref.outputs.sha }}
+          path: web
+      - name: Install and build the front end (standalone project, not part of this workspace)
+        working-directory: web
+        run: |
+          pnpm install --ignore-workspace --frozen-lockfile
+          pnpm build
+        env: { AUTH_MODE: local, APP_URL: "http://localhost:13000" }
       - name: Playwright (login -> generate -> answer -> reload -> submit -> score)
         run: pnpm test:e2e
         env: { CI: "true" }
@@ -170,12 +183,22 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - name: Read the pinned front end commit (web.ref)
+        id: webref
+        run: echo "sha=$(tr -d '[:space:]' < web.ref)" >> "$GITHUB_OUTPUT"
+      - name: Check out the front end (jhgcc1/quizforge-web at web.ref) into web/
+        uses: actions/checkout@v4
+        with:
+          repository: jhgcc1/quizforge-web
+          ref: ${{ steps.webref.outputs.sha }}
+          path: web
       - uses: docker/setup-buildx-action@v3
       - name: Build web, api and worker images
         run: |
           for s in api worker web; do
-            docker buildx build -f apps/$s/Dockerfile -t quizforge-$s:ci --load \
-              --cache-from type=gha,scope=$s --cache-to type=gha,scope=$s,mode=max .
+            if [ "$s" = web ]; then dockerfile=web/Dockerfile; ctx=web; else dockerfile=apps/$s/Dockerfile; ctx=.; fi
+            docker buildx build -f $dockerfile -t quizforge-$s:ci --load \
+              --cache-from type=gha,scope=$s --cache-to type=gha,scope=$s,mode=max $ctx
           done
       - name: Scan images (fail on fixable HIGH/CRITICAL)
         run: |
@@ -428,6 +451,15 @@ jobs:
             exit 1
           fi
       - uses: actions/checkout@v4
+      - name: Read the pinned front end commit (web.ref)
+        id: webref
+        run: echo "sha=$(tr -d '[:space:]' < web.ref)" >> "$GITHUB_OUTPUT"
+      - name: Check out the front end (jhgcc1/quizforge-web at web.ref) into web/
+        uses: actions/checkout@v4
+        with:
+          repository: jhgcc1/quizforge-web
+          ref: ${{ steps.webref.outputs.sha }}
+          path: web
       - uses: hashicorp/setup-terraform@v3
         with: { terraform_version: "1.x", terraform_wrapper: false }
       - uses: aws-actions/configure-aws-credentials@v4
@@ -445,8 +477,9 @@ jobs:
             if aws ecr describe-images --repository-name "quizforge/$s" --image-ids imageTag=$TAG >/dev/null 2>&1; then
               echo "$s:$TAG already in ECR, skipping"; continue
             fi
-            docker buildx build -f apps/$s/Dockerfile -t "$repo:$TAG" --push \
-              --cache-from type=gha,scope=$s-arm --cache-to type=gha,scope=$s-arm,mode=max .
+            if [ "$s" = web ]; then dockerfile=web/Dockerfile; ctx=web; else dockerfile=apps/$s/Dockerfile; ctx=.; fi
+            docker buildx build -f $dockerfile -t "$repo:$TAG" --push \
+              --cache-from type=gha,scope=$s-arm --cache-to type=gha,scope=$s-arm,mode=max $ctx
           done
 
       - name: terraform init (remote state, native S3 locking)

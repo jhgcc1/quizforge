@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 cd "$(dirname "$0")/.."; mkdir -p .local; exec > .local/rescan.log 2>&1
-for s in api worker web; do docker build -q -f apps/$s/Dockerfile -t quizforge-$s:local . >/dev/null && echo "$s built" || echo "$s BUILD FAILED"; done
+scripts/web.sh >/dev/null
+for s in api worker web; do
+  if [ "$s" = web ]; then dockerfile=web/Dockerfile; ctx=web; else dockerfile=apps/$s/Dockerfile; ctx=.; fi
+  docker build -q -f $dockerfile -t quizforge-$s:local $ctx >/dev/null && echo "$s built" || echo "$s BUILD FAILED"
+done
 for s in api worker web; do
   echo "=== $s"
   docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD/.trivyignore:/.trivyignore:ro" aquasec/trivy:0.58.1 image --severity HIGH,CRITICAL --ignore-unfixed --ignorefile /.trivyignore --format json quizforge-$s:local 2>/dev/null | python3 -c "

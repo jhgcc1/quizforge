@@ -46,3 +46,6 @@ site/__pycache__/
 
 # local comparison reports (the committed reference run lives in docs/eval)
 evals/reports/
+
+# front end checkout (scripts/web.sh, pinned by web.ref)
+/web/

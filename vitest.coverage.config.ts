@@ -1,15 +1,11 @@
-import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
 // Combined run: unit + integration tests together (integration needs Postgres, see vitest.integration.config.ts).
 export default defineConfig({
-  resolve: { alias: { "@": fileURLToPath(new URL("./apps/web", import.meta.url)) } }, // Next.js "@/..." imports in apps/web
   test: {
     include: [
       "packages/*/src/**/*.test.ts",
       "apps/*/src/**/*.test.ts",
-      "apps/web/lib/**/*.test.ts",
-      "apps/web/app/**/*.test.ts",
       "scripts/**/*.test.ts",
       "evals/src/**/*.test.ts",
     ],
@@ -28,8 +24,6 @@ export default defineConfig({
         "apps/api/src/**/*.ts",
         "apps/worker/src/**/*.ts",
         "evals/src/**/*.ts",
-        "apps/web/lib/**/*.ts",
-        "apps/web/app/**/route.ts",
       ],
       exclude: [
         "**/*.test.ts",
@@ -62,8 +56,6 @@ export default defineConfig({
         "apps/api/src/**": { statements: 100, lines: 100, functions: 95, branches: 97 },
         "apps/worker/src/**": { statements: 98, lines: 98, functions: 100, branches: 94 },
         "evals/src/**": { statements: 97, lines: 97, functions: 97, branches: 91 },
-        "apps/web/lib/**": { statements: 99, lines: 99, functions: 100, branches: 98 },
-        "apps/web/app/**": { statements: 50, lines: 50, functions: 70, branches: 68 }, // route handlers only; auth/callback and auth/dev still have no unit test
       },
     },
   },

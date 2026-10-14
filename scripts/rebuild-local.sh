@@ -5,9 +5,11 @@ cd "$(dirname "$0")/.."
 mkdir -p .local
 exec > .local/rebuild.log 2>&1
 docker compose --profile app down --remove-orphans
+scripts/web.sh   # checks out the front end into ./web at the commit pinned in web.ref
 for s in api worker web; do
   start=$(date +%s)
-  if docker build -q -f apps/$s/Dockerfile -t quizforge-$s:local .; then echo "$s image OK ($(( $(date +%s)-start ))s)"; else echo "$s image FAILED"; exit 1; fi
+  if [ "$s" = web ]; then dockerfile=web/Dockerfile; ctx=web; else dockerfile=apps/$s/Dockerfile; ctx=.; fi
+  if docker build -q -f $dockerfile -t quizforge-$s:local $ctx; then echo "$s image OK ($(( $(date +%s)-start ))s)"; else echo "$s image FAILED"; exit 1; fi
 done
 docker compose --profile app up -d
 sleep 25
