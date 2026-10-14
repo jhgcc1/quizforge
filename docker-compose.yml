@@ -62,16 +62,15 @@ services:
       AUTH_MODE: local
       QUEUE_MODE: sqs
 
-  # The worker image is built with the ONNX semantic prompt-injection detector (Dockerfile target runtime-detector) and runs it
-  # in `flag` mode by default: a finding is recorded and the document goes on. English only. The first document downloads the
-  # model (~740 MB) into the hfcache volume. INJECTION_DETECTOR=block rejects flagged documents; INJECTION_DETECTOR=off disables it.
+  # The worker image is built with the semantic prompt-injection detector (Dockerfile target runtime-detector: Llama Prompt Guard 2
+  # 86M, multilingual, baked into the image at /models/prompt-guard-2, so nothing is downloaded at run time) and runs it in
+  # `flag` mode by default: a finding is recorded and the document goes on. INJECTION_DETECTOR=block rejects flagged documents;
+  # INJECTION_DETECTOR=off disables it. The first build downloads 1.1 GB (verified by sha256); later builds reuse the layer.
   worker:
     profiles: ["app"]
     build: { context: ., dockerfile: apps/worker/Dockerfile, target: runtime-detector }
     image: quizforge-worker:local
-    mem_limit: 3g
-    volumes:
-      - hfcache:/hf-cache
+    mem_limit: 4g
     environment:
       <<: *common
       INJECTION_DETECTOR: ${INJECTION_DETECTOR:-flag}
@@ -113,4 +112,3 @@ services:
 
 volumes:
   pgdata:
-  hfcache:

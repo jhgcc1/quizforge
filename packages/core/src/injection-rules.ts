@@ -8,7 +8,7 @@
  *
  * TODO (expand): full lists for French, German, Russian, Chinese and Japanese (today only the main phrases), and new languages if
  * the supported set grows (see packages/llm/src/language.ts). Paraphrases are not covered by keywords at all: that is the job of
- * the semantic detector (packages/detector, English only today).
+ * the semantic detector (packages/detector, Llama Prompt Guard 2, multilingual).
  */
 
 export type RuleCategory =

@@ -41,9 +41,10 @@ if (config.WORKER_ROLE === "score") {
     handler: (msg, receive) => processScoreJob({ db, judgeLlm, judgeSamples: config.JUDGE_SAMPLES, pricing, log }, msg, { count: receive.count, max: config.SQS_MAX_RECEIVE }),
   });
 } else {
-  // Optional semantic detector (English only). It is NOT a dependency of this app: its ONNX runtime and ~740 MB model would add
-  // ~430 MB to every image. To use it, build an image that includes @quizforge/detector (TODO: a second Dockerfile target and
-  // 2 GB of memory). Asked for but missing = a loud log line, and the service keeps running without it.
+  // Optional semantic detector (Llama Prompt Guard 2 86M, multilingual). It is NOT a dependency of this app: its ONNX runtime and
+  // the 1.1 GB model would add ~1.5 GB to every image, so it lives in the Dockerfile target `runtime-detector`, which bakes the
+  // model in at INJECTION_DETECTOR_MODEL_DIR (needs about 3 GB of memory). Asked for but missing = a loud log line, and the
+  // service keeps running without it.
   let detector: InjectionDetector | undefined;
   if (config.INJECTION_DETECTOR !== "off") {
     try {
@@ -51,6 +52,8 @@ if (config.WORKER_ROLE === "score") {
       const mod = (await import(/* @vite-ignore */ moduleName)) as { createOnnxDetector(): InjectionDetector };
       detector = mod.createOnnxDetector();
       log.info({ mode: config.INJECTION_DETECTOR, detector: detector.name }, "semantic injection detector enabled");
+      // load the model now (about 10 s) instead of during the first job; a failure here is not fatal, the first document retries it
+      void detector.detect("Warm-up paragraph with a few ordinary words so the model is loaded before the first document.").catch((err: unknown) => log.error({ err }, "semantic detector warm-up failed"));
     } catch (err) {
       log.error({ err }, "INJECTION_DETECTOR is set but @quizforge/detector is not installed in this image: running without the semantic detector");
     }

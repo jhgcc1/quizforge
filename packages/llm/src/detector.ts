@@ -3,7 +3,7 @@ import type { Lang } from "./language.js";
 
 /**
  * Seam for an OPTIONAL semantic prompt-injection detector (a classifier model). The implementation lives in
- * `@quizforge/detector` (heavy dependencies: ONNX runtime, a ~740 MB model) so that the service images stay small unless it is
+ * `@quizforge/detector` (heavy dependencies: ONNX runtime, a 1.1 GB model) so that the service images stay small unless it is
  * switched on. Nothing here depends on it.
  */
 export interface DetectorResult {
