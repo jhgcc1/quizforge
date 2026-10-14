@@ -173,6 +173,65 @@ def prep_flow():
     return svg(1200, 312, b, "Before the model: how a README is prepared (all deterministic code, except the optional classifier)")
 
 
+def repos():
+    """The two repositories and how the front end reaches the deploy."""
+    b = ""
+    b += group(10, 10, 400, 250, "github.com/jhgcc1/quizforge-web (public)", "grp")
+    b += box(26, 50, 368, 56, "Next.js front end + BFF", "pages · login with Cognito · calls the API", "compute", small=True)
+    b += box(26, 120, 368, 56, "Own CI", "quality (coverage floor) · build · docker-build + Trivy · secrets-scan", "ci", small=True)
+    b += box(26, 190, 368, 56, "Dockerfile", "builds the web image from this repository alone", "mgd", small=True)
+    b += group(540, 10, 640, 250, "github.com/jhgcc1/quizforge (back end, infrastructure, deploy)", "grp")
+    b += box(556, 50, 200, 56, "api · worker · scorer", "Fastify · LangGraph · judge", "compute", small=True)
+    b += box(772, 50, 190, 56, "packages", "contract · core · db · llm · detector", "data", small=True)
+    b += box(978, 50, 186, 56, "tests", "unit · integration · e2e · promptfoo", "ci", small=True)
+    b += box(556, 120, 200, 56, "infra (Terraform)", "AWS, GitHub rules, bootstrap", "sec", small=True)
+    b += box(772, 120, 392, 56, "CI/CD", "10 checks on a PR · deploy with a human approval", "ci", small=True)
+    b += box(556, 190, 608, 56, "web.ref", "the commit of quizforge-web that the e2e test and the deploy build (a PR changes it)", "edge", small=True)
+    b += arrow(540, 80, 394, 80, "", dash=True)
+    b += text(404, 40, "API contract", "note", "middle")
+    b += text(404, 56, "(tarball of a", "note", "middle")
+    b += text(404, 70, "GitHub Release)", "note", "middle")
+    b += arrow(410, 218, 540, 218)
+    b += text(475, 208, "pinned", "note", "middle")
+    b += box(300, 300, 580, 60, "Deploy: one pipeline, one approval, one Terraform", "build api, worker, web and redteam images (tag = commit) → ECR → migration → ECS", "ai", small=True)
+    b += arrow(860, 246, 640, 300)
+    b += arrow(210, 246, 330, 300)
+    b += text(20, 392, "The front end and the back end share only the API contract. Each service keeps its own image and its own ECS service.", "note")
+    return svg(1190, 412, b, "Two repositories: what lives where and how they meet at the deploy")
+
+
+def redteam_nightly():
+    """The nightly red-team run on AWS: schedule, one-shot Fargate task, S3 report with a timestamp, metrics and alarms."""
+    b = ""
+    b += box(10, 60, 170, 64, "EventBridge Scheduler", "every night 06:00 UTC", "mgd", small=True)
+    b += text(10, 140, "off while the environment", "note"); b += text(10, 156, "is paused (no NAT)", "note")
+    b += box(230, 40, 250, 110, "", "", "ai", small=True)
+    b += text(242, 62, "Fargate task: redteam", "t")
+    b += text(242, 84, "one-shot · 2 vCPU · 4 GB · no service", "note"); b += text(242, 102, "promptfoo (pinned) + the pipeline", "note")
+    b += text(242, 120, "Llama Prompt Guard 2 baked in", "note"); b += text(242, 138, "~600 attacks · en, pt, es", "note")
+    b += arrow(180, 92, 230, 92)
+    b += box(540, 10, 190, 52, "MiniMax API", "the model under test", "ext", small=True)
+    b += arrow(480, 70, 540, 40, "via NAT", lx=470, ly=36)
+    b += group(540, 86, 640, 150, "S3 bucket: quizforge-prod-reports-<account> (private, encrypted, versioned)", "grp mgd")
+    b += text(556, 126, "redteam/2026-10-15T06-00-12Z/   ← one folder per run, never overwritten", "note")
+    b += text(572, 148, "report.html · summary.json · results.json · new-failures.json", "note")
+    b += text(556, 176, "redteam/latest/report.html   ← pointer to the newest run", "note")
+    b += text(556, 204, "lifecycle: cheaper storage after 30 days, deleted after 365", "note")
+    b += arrow(480, 110, 540, 130)
+    b += box(230, 210, 250, 56, "CloudWatch metrics", "RedteamRuns · Cases · Leaks · Language", "mgd", small=True)
+    b += arrow(355, 144, 355, 210)
+    b += box(10, 290, 220, 56, "Alarms", "leak ≥ 1 · no run in 26 h", "sec", small=True)
+    b += arrow(230, 238, 150, 290)
+    b += box(290, 290, 190, 56, "SNS → e-mail", "counts + 7-day link to the report", "mgd", small=True)
+    b += arrow(230, 318, 290, 318)
+    b += box(540, 290, 300, 56, "You", "open the report; a leaked case becomes a test", "compute", small=True)
+    b += arrow(480, 318, 540, 318)
+    b += box(870, 290, 310, 56, "Frozen 50-case sample (CI)", "promote the leaked case by a pull request", "ci", small=True)
+    b += arrow(840, 318, 870, 318)
+    b += text(10, 376, "The pull-request sample (50 cases) proves nothing regressed; the nightly run looks for what is new.", "note")
+    return svg(1190, 396, b, "Nightly red team on AWS: a separate Fargate task writes a timestamped report to S3")
+
+
 def entity(x, y, name, cols, kind="data", w=290):
     h = 42 + 17 * len(cols)
     out = f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="8" class="box {kind}"/>'

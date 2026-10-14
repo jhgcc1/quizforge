@@ -52,6 +52,11 @@ def architecture():
         ["<b>Cognito</b>", "Users and login (code flow with PKCE), no sign-up", "Standard JWT, no passwords stored by us"],
         ["<b>Langfuse</b> and <b>CloudWatch</b>", "Traces, cost and quality scores; logs, metrics, 20 alarms by e-mail (including two that watch for probing)", "Langfuse for the AI, CloudWatch for the platform"],
     ], widths=["24%", "42%", "34%"])
+    body += "<h3>Two repositories</h3>" + d.repos()
+    body += table(["Repository", "Holds", "Meets the other by"], [
+        ["<b>quizforge-web</b> (public)", "The Next.js front end and its BFF; its own CI, Dockerfile and coverage floor", "The API contract (<code>@quizforge/contract</code>), installed from a tarball on a GitHub Release of the back end"],
+        ["<b>quizforge</b>", "API, worker, scorer, the contract, database, agent, evals, promptfoo, end-to-end test, Terraform, the deploy", "<code>web.ref</code>: the commit of the front end that its e2e test and its deploy build; a pull request bumps it"],
+    ], widths=["22%", "46%", "32%"])
     return sec("architecture", "Architecture", body, "Everything runs in one AWS region (us-east-2), in two zones, created by Terraform.")
 
 
@@ -196,6 +201,21 @@ def cost():
     return sec("cost", "Cost and standby", body)
 
 
+def nightly():
+    body = d.redteam_nightly()
+    body += table(["Part", "How it works"], [
+        ["Schedule", "EventBridge Scheduler, every night at 06:00 UTC. It is switched off while the environment is paused, because a paused environment has no NAT and the task could not reach the model API"],
+        ["Task", "A one-shot Fargate task (<code>redteam</code>, 2 vCPU, 4 GB, ARM64), not part of the always-on services. Its image has promptfoo at a pinned version, the pipeline code and the Llama Prompt Guard 2 model, so it tests what runs in production"],
+        ["Size", "About <b>600 attacks a night</b> (10 per intent), English, Portuguese and Spanish only, regenerated every night (the PR sample is fixed). A Terraform variable raises or lowers it; 1,800 a night would cost about US$70 a month in model calls, 600 about US$25"],
+        ["Grading", "Plain code, never a model: a hijack canary in the reply, a prompt leak, or an unsafe outcome fails the case"],
+        ["Report", "Written to a private, encrypted, versioned S3 bucket under a UTC timestamp, one folder per run that is never overwritten: <code>report.html</code>, <code>summary.json</code>, <code>results.json</code>, <code>new-failures.json</code>, plus a <code>latest/</code> pointer. It is uploaded even when there were leaks"],
+        ["Alerts", "CloudWatch metrics (runs, cases, leaks, per language); an alarm and an e-mail with a 7-day link to the report if any canary leaks; another alarm if no run happened in 26 hours"],
+        ["What you do with it", "Open the report; a leaked case is promoted to the frozen 50-case sample by a pull request, so CI guards it from then on"],
+        ["Cost", "Fargate about US$0.10 a night, S3 a few cents, plus the model tokens"],
+    ], widths=["16%", "84%"])
+    return sec("nightly", "Nightly red team on AWS", body, "A denser, separate test of the guardrails that runs while nobody is looking and leaves a timestamped report.")
+
+
 def tradeoffs():
     body = table(["Topic", "What we chose", "What would change it"], [
         ["Agent checkpoints", "In Postgres, deleted when the quiz is saved and after 24 h at the latest: no extra service", "Redis or Valkey with a native TTL (about US$12 a month), only if the checkpoint writes show up in the database metrics"],
@@ -233,8 +253,8 @@ def links():
 
 
 def all_sections():
-    return [overview(), architecture(), flow(), data(), agent(), guardrails(), promptfoo(), quality(), cicd(), cost(), tradeoffs(), links()]
+    return [overview(), architecture(), flow(), data(), agent(), guardrails(), promptfoo(), nightly(), quality(), cicd(), cost(), tradeoffs(), links()]
 
 
-NAV = [("summary", "What it is"), ("architecture", "Architecture"), ("flow", "End to end"), ("data", "Data model"), ("agent", "Agent and score"), ("guardrails", "Guardrails"), ("promptfoo", "promptfoo"),
+NAV = [("summary", "What it is"), ("architecture", "Architecture"), ("flow", "End to end"), ("data", "Data model"), ("agent", "Agent and score"), ("guardrails", "Guardrails"), ("promptfoo", "promptfoo"), ("nightly", "Nightly"),
        ("quality", "Quality"), ("cicd", "CI/CD"), ("cost", "Cost"), ("tradeoffs", "Trade-offs"), ("links", "Links")]
