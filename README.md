@@ -35,6 +35,15 @@ Real model: `LLM_MODE=minimax MINIMAX_API_KEY=… docker compose --profile app u
 | `scripts/audit-aws.sh` | read-only audit of the *deployed* infrastructure against the security claims below (39 checks, 40 once the scorer service exists) |
 | `scripts/smoke-api.mjs` | black-box API test usable against local containers and AWS |
 
+## Repository structure
+
+| Path | What it is |
+|---|---|
+| `packages/contract` | `@quizforge/contract`: the small, browser-safe public API contract (zod request/response schemas, basic topic check). Only dependency: `zod`. `apps/web` depends on this package only. Versioned by git tag `contract-vX.Y.Z` |
+| `packages/core` | scoring, generated-quiz schema, input guard and its 49 keyword rules, attack corpus, sample catalog, queue messages, request fingerprint, `CreateQuizBodyStrictSchema` (contract body + strict topic check, used by the API). Re-exports the contract |
+| `packages/db`, `packages/llm`, `packages/detector` | Postgres access, LLM generation/judging, optional semantic detector |
+| `apps/api`, `apps/worker`, `apps/web` | REST API, queue worker/scorer, Next.js front end (BFF + UI) |
+
 ## REST API
 
 OpenAPI at `/docs` (`/openapi.json`). Every state-changing call is **idempotent**:
@@ -67,7 +76,7 @@ Tables: `sources` → `quizzes` → `questions` → `options`; `quizzes` → `ge
 
 ## Validation of the JSON
 
-The request/response schemas are one file (`packages/core/src/schemas.ts`) imported by the browser, the BFF, the API and the tests: the **browser form** validates before sending and parses **every response**; the **BFF** validates `POST /quizzes` and `PUT answers` before forwarding; the **API** validates body, params and headers (the trusted layer); **Postgres** enforces CHECK/UNIQUE/FK. Contract tests assert every API response of the full quiz flow against the same schemas, and that the hand-written OpenAPI file lists the same fields.
+The request/response schemas are one file (`packages/contract/src/schemas.ts`, package `@quizforge/contract`) imported by the browser, the BFF, the API and the tests; the browser only has the basic topic check, the API adds the strict one (`CreateQuizBodyStrictSchema` in core): the **browser form** validates before sending and parses **every response**; the **BFF** validates `POST /quizzes` and `PUT answers` before forwarding; the **API** validates body, params and headers (the trusted layer); **Postgres** enforces CHECK/UNIQUE/FK. Contract tests assert every API response of the full quiz flow against the same schemas, and that the hand-written OpenAPI file lists the same fields.
 
 ## Generation quality
 

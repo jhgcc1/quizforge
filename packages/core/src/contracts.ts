@@ -1,9 +1,22 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import { CreateQuizBodySchema, TopicSchema } from "@quizforge/contract";
+import { checkShortText } from "./guard.js";
 
-/** Queue contract and request fingerprint (server only). The request/response schemas live in schemas.ts, which the browser can import too. */
+/** Queue contract and request fingerprint (server only). The request/response schemas live in @quizforge/contract, which the browser imports too. */
 
-export * from "./schemas.js";
+export * from "@quizforge/contract";
+
+/**
+ * The create-quiz body as the SERVER validates it: the contract's schema plus the strict topic check (instruction phrases,
+ * encoded or disguised text: the 49 keyword rules). The browser only has the basic check. Server code must use this one.
+ */
+export const CreateQuizBodyStrictSchema = CreateQuizBodySchema.extend({
+  topic: TopicSchema.superRefine((t, ctx) => {
+    const issue = checkShortText(t);
+    if (issue) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `The topic ${issue.message}` });
+  }).optional(),
+});
 
 /** SQS message: only an id. The row in Postgres is the source of truth, so redelivery is harmless. */
 export const QuizJobMessageSchema = z.object({

@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { SAMPLE_CATALOG } from "./catalog.js";
-import { CatalogEntrySchema, CatalogResponseSchema, CreateQuizBodySchema } from "./schemas.js";
+import { CatalogEntrySchema, CatalogResponseSchema, CreateQuizBodySchema } from "@quizforge/contract";
 
 const fixtures = fileURLToPath(new URL("../../../evals/fixtures/", import.meta.url));
 const ALLOWED = ["github.com", "raw.githubusercontent.com"]; // the API default (apps/api config)

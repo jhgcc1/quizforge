@@ -1,4 +1,4 @@
-import type { CatalogEntry } from "./schemas.js";
+import type { CatalogEntry } from "@quizforge/contract";
 
 /**
  * The documents offered in the "Document" dropdown. Real READMEs show the generator on real input; the `test`

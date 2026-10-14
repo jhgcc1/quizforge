@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ATTACK_MARKER, ATTACK_TECHNIQUES, BAD_TOPICS, DEFAULT_PAYLOAD, benignDocument } from "./attacks.js";
-import { CreateQuizBodySchema } from "./schemas.js";
+import { CreateQuizBodyStrictSchema } from "./contracts.js";
 import { checkShortText, inspectText } from "./guard.js";
 
 const b64url = (o: object): string => Buffer.from(JSON.stringify(o)).toString("base64url");
@@ -86,13 +86,13 @@ describe("checkShortText (the quiz topic)", () => {
   it("accepts ordinary topics in the supported languages and the request schema agrees", () => {
     for (const topic of ["Retries and dead jobs", "Configuração e histórico", "¿Cómo funciona la caché?", "C++ templates (2nd edition)"]) {
       expect(checkShortText(topic), topic).toBeUndefined();
-      expect(CreateQuizBodySchema.safeParse({ topic }).success, topic).toBe(true);
+      expect(CreateQuizBodyStrictSchema.safeParse({ topic }).success, topic).toBe(true);
     }
   });
 
   it("the request schema rejects every bad topic with a readable message", () => {
     for (const b of BAD_TOPICS) {
-      const r = CreateQuizBodySchema.safeParse({ topic: b.topic });
+      const r = CreateQuizBodyStrictSchema.safeParse({ topic: b.topic });
       expect(r.success, b.id).toBe(false);
     }
   });

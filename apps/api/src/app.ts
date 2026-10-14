@@ -4,7 +4,7 @@ import rateLimit from "@fastify/rate-limit";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { z } from "zod";
 import {
-  CreateQuizBodySchema,
+  CreateQuizBodyStrictSchema,
   IdempotencyKeySchema,
   SAMPLE_CATALOG,
   SaveAnswerBodySchema,
@@ -174,7 +174,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       const sub = req.user!.sub;
       const key = idemKey(req, reply);
       if (!key) return;
-      const body = CreateQuizBodySchema.safeParse(req.body ?? {});
+      const body = CreateQuizBodyStrictSchema.safeParse(req.body ?? {});
       if (!body.success) return fail(reply, 400, "validation_error", "Invalid request body", body.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })));
 
       let rawUrl: string;
