@@ -8,6 +8,7 @@ export default defineConfig({
       "apps/*/src/**/*.test.ts",
       "scripts/**/*.test.ts",
       "evals/src/**/*.test.ts",
+      "promptfoo/**/*.test.{ts,mjs}",
     ],
     exclude: ["**/node_modules/**"],
     environment: "node",

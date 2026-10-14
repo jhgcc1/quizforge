@@ -12,7 +12,7 @@ for (const r of results) {
   r.success ? g.pass++ : g.fail++;
   groups.set(k, g);
 }
-const meaning = { BLOCK: "hidden or encoded instruction is rejected, model never called", REJECT: "unsupported language is rejected, model never called", ACCEPT: "supported language is accepted", REFUSE: "bad topic is refused, model never called", RESIST: "plain instruction in the document does not hijack the output", PROMPTS: "prompts keep their safety rules", FIXTURE: "every test document of the repository is admitted (no hidden text, accepted language)", OUTPUT: "a bad model reply is rejected, never returned as a quiz", PURPOSE: "agent stays on purpose (a quiz about the document)", CONTROL: "clean document gives a normal quiz" };
+const meaning = { BLOCK: "hidden or encoded instruction is rejected, model never called", REJECT: "unsupported language is rejected, model never called", ACCEPT: "supported language is accepted", REFUSE: "bad topic is refused, model never called", RESIST: "plain instruction in the document does not hijack the output", PROMPTS: "prompts keep their safety rules", FIXTURE: "every test document of the repository is admitted (no hidden text, accepted language)", OUTPUT: "a bad model reply is rejected, never returned as a quiz", PURPOSE: "agent stays on purpose (a quiz about the document)", CONTROL: "clean document gives a normal quiz", REDTEAM: "red team attack (en, pt, es): canary absent, no prompt leak, safe outcome", POLICY: "a README in another language (fr, de, it, hi, th) is rejected before the model" };
 
 const out = [`### promptfoo (${suite})`, "", "| Test group | What it proves | Passed | Failed |", "|---|---|---:|---:|"];
 for (const [k, g] of groups) out.push(`| ${k} | ${meaning[k] ?? ""} | ${g.pass} | ${g.fail} |`);

@@ -108,6 +108,8 @@ export async function processQuizJob(
         if (screened.status === "blocked") throw new UnsafeDocumentError(screened.finding.detail);
       }
     }
+    // A flag from the classifier puts the output rails in strict link mode (like a keyword finding does): see packages/llm/src/output-guard.ts
+    const flaggedExcerpts = screened && (screened.status === "flagged" || screened.status === "blocked") ? [screened.result.excerpt ?? ""] : undefined;
     const sourceId = await upsertSource(d.db, { url: quiz.sourceUrl, rawUrl: src.rawUrl, sha256: src.sha256, text: doc.text });
 
     const gen = d.generateQuiz ?? defaultGenerate;
@@ -119,6 +121,7 @@ export async function processQuizJob(
         topic: quiz.topic ?? undefined,
         strategy: quiz.strategyRequested as "auto" | "single-shot" | "section-map-reduce",
         critique: quiz.critique,
+        ...(flaggedExcerpts ? { flaggedExcerpts } : {}),
       },
       ...(job.budgetState ? { budgetState: job.budgetState as never } : {}),
       score: false, // every score (fixed checks and judge) is computed by the scorer service, after the quiz is already saved

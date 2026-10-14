@@ -39,6 +39,7 @@ export const QuizInputSchema = z
     critique: z.boolean().optional(),
     promptVariant: z.enum(PROMPT_VARIANTS as [string, ...string[]]).optional(),
     planFirst: z.boolean().optional(),
+    flaggedExcerpts: z.array(z.string().max(2_000)).max(10).optional(),
   })
   .strict();
 

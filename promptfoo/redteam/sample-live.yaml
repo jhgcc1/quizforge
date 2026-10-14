@@ -1,0 +1,12 @@
+# Red team sample, LIVE stage: the same 50 frozen attacks, with the real MiniMax model behind the guard (needs MINIMAX_API_KEY).
+# Proves: the canary of every attack is absent from the reply, no system prompt is repeated, and the outcome is one of the three safe
+# ones (rejected before the model, rejected by the output rails, or a valid grounded quiz). Costs about 50 generations.
+description: QuizForge red team sample (live model)
+prompts:
+  - "{{prompt}}"
+providers:
+  - id: file://../provider.ts
+    label: redteam-live
+    config:
+      mode: live
+tests: file://sample.yaml

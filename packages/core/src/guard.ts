@@ -1,4 +1,4 @@
-import { MODEL_MARKUP, matchingRules, type RuleCategory } from "./injection-rules";
+import { IMPERATIVE_RULES, MODEL_MARKUP, matchingRules, type RuleCategory } from "./injection-rules";
 
 /**
  * Input guard: pure functions (no I/O, no dependencies, browser-safe) that look at text BEFORE it can reach an LLM.
@@ -246,6 +246,31 @@ export function inspectText(input: string, _opts: InspectOptions = {}): InspectR
   }
 
   return { text, findings, blocked: findings.some((f) => f.severity === "block") };
+}
+
+/** Longest line that is flagged as a whole; in a longer line (a long paragraph) only the flagged sentences are. */
+const MAX_FLAGGED_LINE = 400;
+const SENTENCE_BREAK = /(?<=[.!?\u3002])\s+/u;
+const isOrder = (s: string): boolean => IMPERATIVE_RULES.some((r) => r.re.test(s.toLowerCase()) || r.re.test(normalizeForMatching(s)));
+
+/**
+ * The parts of `text` that give an ORDER to the model (an imperative keyword rule matches; the rules that merely mention the
+ * system prompt are left out). A short line is returned whole (an attacker can put the instruction in one sentence and the payload,
+ * for example a URL, in the next one); in a long paragraph only the flagged sentences are. Used by the output rail to decide which
+ * text of the document it may NOT trust as a source for the links of a quiz (see packages/llm/src/output-guard.ts).
+ */
+export function flaggedSegments(text: string): string[] {
+  const out = new Set<string>();
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (!line || !isOrder(line)) continue;
+    if (line.length <= MAX_FLAGGED_LINE) out.add(line);
+    else {
+      const hits = line.split(SENTENCE_BREAK).map((x) => x.trim()).filter((x) => x && isOrder(x));
+      for (const h of hits.length ? hits : [line]) out.add(h); // a rule that spans two sentences matches only the whole line
+    }
+  }
+  return [...out];
 }
 
 /** A one-line, user-safe reason for a blocked document (no payload echoed). */
