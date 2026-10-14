@@ -19,6 +19,7 @@ Browser ─HTTPS─> CloudFront + WAF ─> ALB ─┬─ /v1/* /docs ─> api   
 
 ```bash
 pnpm install
+scripts/web.sh                               # the front end is its own repository: checks it out into ./web at the commit in web.ref
 docker compose --profile app up --build      # Postgres, SQS emulator, migrate, api, worker (fake LLM), web
 open http://localhost:13000                  # dev login → create quiz → answer → score
 ```
@@ -39,10 +40,11 @@ Real model: `LLM_MODE=minimax MINIMAX_API_KEY=… docker compose --profile app u
 
 | Path | What it is |
 |---|---|
-| `packages/contract` | `@quizforge/contract`: the small, browser-safe public API contract (zod request/response schemas, basic topic check). Only dependency: `zod`. `apps/web` depends on this package only. Versioned by git tag `contract-vX.Y.Z` |
+| `packages/contract` | `@quizforge/contract`: the small, browser-safe public API contract (zod request/response schemas, basic topic check). Only dependency: `zod`. The front end (`jhgcc1/quizforge-web`) depends on this package only. Versioned by git tag `contract-vX.Y.Z` |
 | `packages/core` | scoring, generated-quiz schema, input guard and its 49 keyword rules, attack corpus, sample catalog, queue messages, request fingerprint, `CreateQuizBodyStrictSchema` (contract body + strict topic check, used by the API). Re-exports the contract |
 | `packages/db`, `packages/llm`, `packages/detector` | Postgres access, LLM generation/judging, optional semantic detector |
-| `apps/api`, `apps/worker`, `apps/web` | REST API, queue worker/scorer, Next.js front end (BFF + UI) |
+| `apps/api`, `apps/worker` | REST API, queue worker/scorer |
+| `web.ref`, `scripts/web.sh` | the front end (Next.js BFF + UI) lives in its own repository, [`jhgcc1/quizforge-web`](https://github.com/jhgcc1/quizforge-web). `web.ref` holds the commit SHA of that repository this repo builds, tests (e2e) and deploys; `scripts/web.sh` checks it out into `web/` (git-ignored, not part of the pnpm workspace). Bumping the front end = a pull request that changes `web.ref`. Front end code, unit tests and CI are in that repository |
 
 ## REST API
 
@@ -127,7 +129,7 @@ Alarms (CloudWatch → SNS): DLQ and scoring DLQ, oldest job age and oldest scor
 
 ## CI/CD
 
-`.github/workflows/ci.yml` — on every PR: `quality` (typecheck, ESLint, unit tests, offline eval), `integration`, `migrations` (schema drift, policy, apply twice), `e2e`, `docker-build` (+Trivy), `terraform-validate` (+Trivy), `secrets-scan`, `promptfoo` (offline prompt-injection and input-guard suite), `llm-eval-pr` (golden set + live promptfoo on the real model, only when the change touches prompts, LLM code, the guard or the evals; MiniMax key only, nothing goes to Langfuse), `terraform-plan` (commented on the PR). Prompts live in Git (`packages/llm/src/prompts.ts`, locked in `prompts/prompts.lock.json`): a PR only checks them (and blocks the merge if a check fails); after the merge, the `publish-prompts` job pushes the prompts that changed to **Langfuse Prompt Management** (new version, label `production` + `sha-<commit>`), only when every gate, the real-model evaluation and the live promptfoo suite are green. After a deliberate prompt change: bump `PROMPT_VERSION`, run `pnpm prompts:lock`.
+`.github/workflows/ci.yml` — on every PR: `quality` (typecheck, ESLint, unit tests, offline eval), `integration`, `migrations` (schema drift, policy, apply twice), `e2e` (checks out the front end at `web.ref` into `web/`, builds it and starts it with the API and worker), `docker-build` (+Trivy; the `web` image is built from `web/` at `web.ref`), `terraform-validate` (+Trivy), `secrets-scan`, `promptfoo` (offline prompt-injection and input-guard suite), `llm-eval-pr` (golden set + live promptfoo on the real model, only when the change touches prompts, LLM code, the guard or the evals; MiniMax key only, nothing goes to Langfuse), `terraform-plan` (commented on the PR). Prompts live in Git (`packages/llm/src/prompts.ts`, locked in `prompts/prompts.lock.json`): a PR only checks them (and blocks the merge if a check fails); after the merge, the `publish-prompts` job pushes the prompts that changed to **Langfuse Prompt Management** (new version, label `production` + `sha-<commit>`), only when every gate, the real-model evaluation and the live promptfoo suite are green. After a deliberate prompt change: bump `PROMPT_VERSION`, run `pnpm prompts:lock`.
 `main` is protected by a ruleset (`infra/github`): no direct pushes, PR + **all checks green**, linear history, no bypass. After merge a real-model **`llm-eval` gate** (again) (golden set on MiniMax, logged as a Langfuse experiment; fails if grounding, lint, judge score, prompt-injection resistance or language drop below the thresholds) joins the checks; the `deploy` job **needs every check including it**, waits for approval, builds arm64 images, runs the **migration as a one-off task before the new code**, applies Terraform, and smoke-tests through CloudFront. `drift.yml` (infrastructure drift) and `eval.yml` (model/provider drift) run nightly. Every workflow runs `bash -eo pipefail`, so a failure can never be hidden behind a pipe.
 
 ### First deployment

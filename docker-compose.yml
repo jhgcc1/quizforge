@@ -98,7 +98,8 @@ services:
 
   web:
     profiles: ["app"]
-    build: { context: ., dockerfile: apps/web/Dockerfile }
+    # the front end is its own repository: run scripts/web.sh first (it checks out ./web at the commit pinned in web.ref)
+    build: { context: ./web }
     image: quizforge-web:local
     environment:
       AUTH_MODE: local
