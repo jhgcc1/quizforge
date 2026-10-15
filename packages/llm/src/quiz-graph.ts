@@ -257,7 +257,7 @@ export function buildQuizGraph(deps: QuizGraphDeps, checkpointer?: BaseCheckpoin
     const issues: Record<number, string[]> = {};
     const add = (i: number, msg: string) => (issues[i] = [...(issues[i] ?? []), msg]);
     const grounding = checkGrounding({ questions: s.questions }, s.input.sourceText);
-    for (const i of grounding.ungrounded) add(i, "sourceQuote is not an exact excerpt of the document; copy it verbatim");
+    for (const i of grounding.ungrounded) add(i, "sourceQuote is not an exact excerpt of the document; copy one sentence or line verbatim, without markdown symbols, without joining sentences and without an ellipsis");
     s.questions.forEach((q, i) => lintQuestion(q).forEach((m) => add(i + 1, m)));
     const parsed = GeneratedQuizSchema.safeParse({ questions: s.questions });
     if (!parsed.success) {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { GeneratedQuizSchema, checkGrounding } from "./quiz-schema.js";
+import { readFileSync } from "node:fs";
+import { GeneratedQuizSchema, checkGrounding, visibleText } from "./quiz-schema.js";
 
 const q = (over: Record<string, unknown> = {}) => ({
   prompt: "Which transport does Pipecat use for real-time audio?",
@@ -92,5 +93,52 @@ describe("checkGrounding", () => {
       ),
     });
     expect(checkGrounding(parsed, source)).toEqual({ ok: false, ungrounded: [3] });
+  });
+});
+
+describe("checkGrounding on the real fixtures that failed against the real model", () => {
+  const fixture = (name: string) => readFileSync(new URL(`../../../evals/fixtures/${name}`, import.meta.url), "utf8");
+  const ok = (quote: string, doc: string) => checkGrounding({ questions: [{ sourceQuote: quote }] }, doc).ok;
+  const orbit = fixture("injection-es.md");
+  const supabase = fixture("supabase-es.md");
+  const shortDoc = fixture("short-doc.md");
+
+  const accepted: [string, string, string][] = [
+    ["orbit: truncated mid-word after a sentence join", orbit, "Orbit Scheduler la reintenta hasta cinco veces con espera exponencial. Tras el q..."],
+    ["orbit: two adjacent sentences across a line break", orbit, "Orbit Scheduler la reintenta hasta cinco veces con espera exponencial.\nEl primer reintento ocurre a los treinta segundos"],
+    ["short-doc: truncated after a sentence join", shortDoc, "Zephyr Cache writes a snapshot to disk every five minutes by default. After a cr..."],
+    ["short-doc: adjacent sentences", shortDoc, "every five minutes by default. The snapshot interval can be changed"],
+    ["supabase: checklist items with markers", supabase, "- [x] Autenticación y autorización. - [x] API autogeneradas."],
+    ["supabase: nested checklist without link labels", supabase, "- [x] API autogeneradas.\n  - [x] REST.\n  - [x] GraphQL.\n  - [x] Suscripciones en tiempo real."],
+    ["supabase: checklist with link labels and no markers", supabase, "API autogeneradas. REST. Docs GraphQL. Documentos Suscripciones en tiempo real."],
+    ["unicode quotes, dashes, case", "He said \u201cpinned entries\u2014never evicted\u201d here.", "HE SAID \"pinned entries - never evicted\" here"],
+  ];
+  it.each(accepted)("accepts %s", (_n, doc, quote) => expect(ok(quote, doc)).toBe(true));
+
+  const rejected: [string, string, string][] = [
+    ["fabricated words", orbit, "Orbit Scheduler la reintenta hasta cien veces con espera lineal y avisa por correo"],
+    ["reordered words", orbit, "con espera exponencial hasta cinco veces la reintenta Orbit Scheduler"],
+    ["splice of non-adjacent sentences, no ellipsis", orbit, "Orbit Scheduler la reintenta hasta cinco veces con espera exponencial. Tras el quinto fallo, la tarea se marca como averiada"],
+    ["truncated but prefix too short", orbit, "Orbit Scheduler la reintenta hasta cinco... Tras el quinto fallo la tarea"],
+    ["truncated with a long unverified tail", orbit, "Orbit Scheduler la reintenta hasta cinco veces con espera exponencial y luego envia un correo a todos los administradores..."],
+    ["ellipsis does not rescue a fabricated prefix", orbit, "Orbit Scheduler nunca reintenta ninguna tarea fallida y la descarta de inmediato..."],
+    ["too few words", orbit, "Orbit Scheduler"],
+    ["checklist marker no longer pads a 2-word quote", supabase, "- [x] API autogeneradas."],
+    ["marker-only edits do not invent words", supabase, "[x] API autogeneradas. [x] SOAP. [x] Suscripciones en tiempo real."],
+  ];
+  it.each(rejected)("rejects %s", (_n, doc, quote) => expect(ok(quote, doc)).toBe(false));
+
+  it("visibleText drops task-list markers but keeps ordinary bracketed words", () => {
+    expect(visibleText("- [x] Done\n- [ ] Todo [note] here")).toBe("done todo note here");
+  });
+
+  it("property: any contiguous word window of the document is grounded; shuffling it (when it changes) is not", () => {
+    const words = visibleText(orbit).split(" ");
+    for (let start = 0; start + 6 <= words.length; start += 3) {
+      const win = words.slice(start, start + 6);
+      expect(ok(win.join(" "), orbit)).toBe(true);
+      const rev = [...win].reverse();
+      if (rev.join(" ") !== win.join(" ")) expect(ok(rev.join(" "), orbit)).toBe(false);
+    }
   });
 });
