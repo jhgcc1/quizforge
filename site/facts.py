@@ -32,6 +32,7 @@ from facts_repo import _num  # noqa: E402  (everything read from the infrastruct
 
 BENCH = _json("docs/security/benchmark.json")
 PTES = _json("docs/security/replay-ptes.json")
+DFP = _json("docs/security/detector-fp.json")
 READMES = _json("docs/security/real-readmes-pt-es.json")
 
 
@@ -91,6 +92,14 @@ def _tokens():
         t.update({"deb_en": f"{prev['english']['recallPct']}%", "deb_all": f"{prev['all']['recallPct']}%", "deb_fp": prev["all"]["falsePositives"], "deb_pipecat": prev["pipecatReadme"]})
         worst = {r["name"]: r["score"] for r in BENCH["readmes"]}
         t.update({"pg2_pipecat": worst.get("pipecat.md"), "pg2_injection_md": worst.get("injection.md")})
+    if DFP:
+        sets = DFP["sets"]
+        readme_sets = [v for k, v in sets.items() if "READMEs" in k and "templates" not in k]
+        t.update({
+            "dfp_docs": sum(v["documents"] for v in sets.values()), "dfp_pg2": sum(v["promptGuard2"] for v in sets.values()), "dfp_deb": sum(v["deberta"] for v in sets.values()),
+            "dfp_readmes": sum(v["documents"] for v in readme_sets), "dfp_pg2_readmes": sum(v["promptGuard2"] for v in readme_sets), "dfp_deb_readmes": sum(v["deberta"] for v in readme_sets),
+            "dfp_pg2_max": max(v["maxScorePg2"] for v in readme_sets),
+        })
     if READMES:
         e = READMES["entries"]
         t.update({"readmes_pt": len([x for x in e if x["language"] == "pt"]), "readmes_es": len([x for x in e if x["language"] == "es"]), "readmes_words": sum(x["proseWords"] for x in e)})

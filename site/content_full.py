@@ -419,13 +419,13 @@ def guardrails():
     ], widths=["32%", "17%", "17%", "16%", "18%"]) + table(["What was measured", "Result"], [
         ["The data", "500 samples (seed 1) of deepset/prompt-injections (Apache-2.0; chatbot-style attacks): [[all_inj]] injections and [[all_ben]] benign overall, [[en_inj]] injections and [[en_ben]] benign in English. The numbers of this table are read from <code>docs/security/benchmark.json</code>"],
         ["The scores", "Almost binary: explicit attacks score 0.99 or more, the rest less than 0.1. So 0.5 sits in an empty gap"],
-        ["Real documents", "The worst window of a real README scored [[pg2_pipecat]] (Pipecat). The planted attack in <code>evals/fixtures/injection.md</code> scored [[pg2_injection_md]]"],
+        ["Real documents", "The worst window of a real README scored [[pg2_pipecat]] (Pipecat). The planted attack in <code>evals/fixtures/injection.md</code> scored [[pg2_injection_md]]. On [[dfp_readmes]] real pt/es and English READMEs it flagged [[dfp_pg2_readmes]] (highest score [[dfp_pg2_max]]); the previous DeBERTa model flagged [[dfp_deb_readmes]] of the same files (<code>docs/security/detector-fp.md</code>)"],
         ["Where to read more", "<code>docs/security/benchmark.html</code>"],
     ], widths=["24%", "76%"])
     body += table(["Decision", "Why"], [
         ["Mode <code>flag</code>, not <code>block</code>", "It sees injection-like text, not intent: a security tutorial that quotes an attack can score high, and it misses subtle attacks. A flag is logged and counted (<code>InjectionDetected</code>); only <code>INJECTION_DETECTOR=block</code> rejects a document"],
         ["Keywords, classifier and guard are layers", "The keyword rules are deterministic and explain themselves; the classifier reads meaning in several languages; the guard catches what neither can read (encodings)"],
-        ["Threshold 0.5", "The scores are almost binary, so 0.5 recalls the most with 0 false positives on the benchmark. It is raised with <code>INJECTION_DETECTOR_THRESHOLD</code> before using block mode"],
+        ["Threshold 0.5", "The scores are almost binary, so 0.5 recalls the most with 0 false positives on the benign benchmark rows. It is not zero on real READMEs ([[dfp_pg2_readmes]] of [[dfp_readmes]] were flagged), which is one reason it only flags. It is raised with <code>INJECTION_DETECTOR_THRESHOLD</code> before using block mode"],
         ["Baked into the worker image", "The model is a build step of the worker image (target <code>runtime-detector</code>), checksummed, so no task downloads 1.1 GB and the worker works with no network for it"],
     ], widths=["34%", "66%"])
     body += guard_html.flag_only(True)
@@ -1099,7 +1099,7 @@ def improvements():
         ["Reliability", "Checkpoints in Redis (or Valkey) with a native TTL, if the volume grows", "The checkpoints live in Postgres with a two-rule retention (delete on success, sweep after 24 h), which costs nothing extra. A Redis saver would take the write load of a checkpoint after every node off the main database and expire by itself, but it adds a service (a managed service that costs extra, one more thing to secure and pause) and needs the Redis modules the saver requires. Worth it only when the checkpoint writes are visible in the database metrics", "Medium, a new service"],
         ["Reliability", "Multi-AZ database, one NAT per zone", "A zone outage does not stop the app", "Config flags, about +$[[cost_multiaz]] a month by the price list"],
         ["Quality", "Widen the language policy (en, pt and es are accepted)", "Needs keyword rules, tests and a judge rubric for each new language; the detector already declares fr, de, hi, it and th as well", "Medium"],
-        ["Security", "Raise the recall of the semantic layer (it flags [[all_pg2_pct]] of the injections in the benchmark, [[en_pg2_pct]] in English, with 0 false positives)", "More attacks caught before the model; any candidate is measured on the same benchmark, false positives included", "Medium"],
+        ["Security", "Raise the recall of the semantic layer (it flags [[all_pg2_pct]] of the injections in the benchmark, [[en_pg2_pct]] in English, with 0 false positives on the benign benchmark rows and [[dfp_pg2_readmes]] of [[dfp_readmes]] real READMEs flagged)", "More attacks caught before the model; any candidate is measured on the same benchmark, false positives included", "Medium"],
         ["Quality", "More golden documents and 3+ repetitions in the comparison", "Smaller differences stop being noise", "Small, costs a few dollars"],
         ["Quality", "Human review of the reference questions; calibrate the judge on hand-labelled quizzes", "The score means what we think it means", "Medium"],
         ["Quality", "Embeddings in production instead of TF-IDF", "Catches paraphrased duplicates", "Medium"],
@@ -1340,7 +1340,7 @@ def limits():
         ["Only [[golden_n]] golden documents", "Small differences between variants are noise. [[golden_langs]]."],
         ["Language detection is statistical", "Very short or mixed texts can be misjudged; under 40 letters of prose the language is \"unknown\" and is let through."],
         ["Hidden-text guard is a heuristic", "It blocks the techniques in the attack corpus and close variants; a new encoding is only stopped by the model's own resistance. See \"Guardrails in execution\"."],
-        ["Semantic detector recall", "Llama Prompt Guard 2 flags explicit attacks: [[all_pg2_pct]] of the injections in the benchmark ([[en_pg2_pct]] in English), 0 false positives. It is one layer, and only flags unless <code>INJECTION_DETECTOR=block</code>."],
+        ["Semantic detector recall", "Llama Prompt Guard 2 flags explicit attacks: [[all_pg2_pct]] of the injections in the benchmark ([[en_pg2_pct]] in English), 0 false positives on the benign benchmark rows, [[dfp_pg2_readmes]] of [[dfp_readmes]] real READMEs flagged. It is one layer, and only flags unless <code>INJECTION_DETECTOR=block</code>."],
         ["Only three languages", "Documents in any other language are rejected before the model; the keyword rules, the detector tests and the red-team sample are written for English, Portuguese and Spanish."],
         ["Alarm e-mail", "Nothing is delivered until the AWS subscription e-mail has been confirmed."],
         ["Pause and resume scripts", "They pass the api image tag only (not the web tag) and do not read the social login secrets."],
