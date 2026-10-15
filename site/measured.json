@@ -1,0 +1,36 @@
+{
+  "measuredOn": "2026-10-15",
+  "commit": "c32d8f2",
+  "command": "scripts/measure-facts.sh",
+  "tests": {
+    "total": 1265,
+    "passed": 1261,
+    "skipped": 4,
+    "failed": 0,
+    "files": 221
+  },
+  "coverage": {
+    "statements": 99.58,
+    "lines": 99.58,
+    "functions": 97.92,
+    "branches": 95.02,
+    "statementsByPackage": {
+      "apps/api": 100,
+      "apps/worker": 98.8,
+      "evals": 97.88,
+      "packages/contract": 100,
+      "packages/core": 100,
+      "packages/db": 100,
+      "packages/detector": 100,
+      "packages/llm": 100
+    }
+  },
+  "promptfoo": {
+    "offline": 83,
+    "live": 20
+  },
+  "web": {
+    "tests": 85,
+    "passed": 85
+  }
+}
