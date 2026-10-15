@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { MemorySaver } from "@langchain/langgraph";
-import { createDb, createQuizIdempotent, eq, getPublicQuestions, migrate, schema } from "@quizforge/db";
+import { createDb, createQuizIdempotent, eq, getPublicQuestions, migrate, schema, setQuizPhase } from "@quizforge/db";
 import { JobBudget, QualityGateError, SourceError, createFakeLlm, type LlmClient } from "@quizforge/llm";
 import { createLogger } from "./log.js";
 import { processQuizJob, type ProcessDeps } from "./processor.js";
@@ -327,5 +327,76 @@ describe("non-Error failures", () => {
     const throwsString = (async () => { throw "plain string failure"; }) as never;
     const out = await processQuizJob(deps({ generateQuiz: throwsString }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
     expect(out).toEqual({ kind: "retry", error: "plain string failure" });
+  });
+});
+
+describe("generation progress (the phase the user sees)", () => {
+  // A trigger logs every distinct phase the row goes through, so the test sees what the database really held, in order.
+  beforeAll(async () => {
+    await ctx.pool.query(`create table phase_log (n serial primary key, quiz_id uuid, phase text, step int, total int, detail text, status text)`);
+    await ctx.pool.query(`create function log_phase() returns trigger language plpgsql as $$ begin
+      if new.phase is distinct from old.phase or new.phase_step is distinct from old.phase_step or new.phase_detail is distinct from old.phase_detail then
+        insert into phase_log (quiz_id, phase, step, total, detail, status) values (new.id, new.phase, new.phase_step, new.phase_total, new.phase_detail, new.status);
+      end if; return new; end $$`);
+    await ctx.pool.query(`create trigger quiz_phase_log after update on quizzes for each row execute function log_phase()`);
+  });
+  const history = async (quizId: string) =>
+    (await ctx.pool.query(`select phase, step, total, detail, status from phase_log where quiz_id = $1 order by n`, [quizId])).rows as { phase: string | null; step: number | null; total: number | null; detail: string | null; status: string }[];
+
+  it("a job moves through the phases in order, steps never go down, and ready clears the progress", async () => {
+    const quiz = await newQuiz({ critique: true });
+    expect((await status(quiz.id)).phase).toBeNull();
+    const out = await processQuizJob(deps(), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
+    expect(out.kind).toBe("done");
+    const h = (await history(quiz.id)).filter((r) => r.phase);
+    const seen = h.map((r) => r.phase);
+    expect(seen.slice(0, 3)).toEqual(["reading_document", "writing_questions", "checking"]);
+    expect(seen.at(-1)).toBe("saving");
+    expect(seen).toContain("reviewing"); // critique was on
+    const steps = h.map((r) => r.step!);
+    expect(steps).toEqual([...steps].sort((a, b) => a - b));
+    expect(h.every((r) => r.status === "generating" && r.total! >= r.step!)).toBe(true);
+    expect(await status(quiz.id)).toMatchObject({ status: "ready", phase: null, phaseStep: null, phaseTotal: null, phaseDetail: null, phaseUpdatedAt: null });
+  });
+
+  it("map-reduce reports the section being written", async () => {
+    const quiz = await newQuiz({ strategy: "section-map-reduce", critique: false });
+    const text = Array.from({ length: 6 }, (_, i) => `## Part ${i + 1}\n${Array.from({ length: 6 }, (_, j) => `Part ${i + 1} sentence ${j + 1} explains one more detail about the framework in depth.`).join(" ")}`).join("\n\n");
+    const sectioned = (async (url: string) => ({ url, rawUrl: url, text, sha256: randomUUID().replace(/-/g, "").padEnd(64, "0") })) as never;
+    expect((await processQuizJob(deps({ fetchMarkdown: sectioned }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 })).kind).toBe("done");
+    const details = (await history(quiz.id)).map((r) => r.detail).filter(Boolean);
+    expect(details[0]).toMatch(/^section 1 of \d+$/);
+  });
+
+  it("a failed job has no progress, and a late phase write cannot bring it back", async () => {
+    const quiz = await newQuiz();
+    const boom = (async (p: { onProgress?: (x: unknown) => void }) => {
+      p.onProgress?.({ phase: "writing_questions", step: 2, totalSteps: 5 });
+      throw new SourceError("bad", "invalid_url");
+    }) as never;
+    const out = await processQuizJob(deps({ generateQuiz: boom }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
+    expect(out.kind).toBe("failed");
+    expect(await status(quiz.id)).toMatchObject({ status: "failed", phase: null, phaseStep: null });
+    expect((await history(quiz.id)).map((r) => r.phase)).toEqual(["reading_document", "writing_questions", null]);
+    await setQuizPhase(ctx.db, quiz.id, { phase: "saving", step: 5, totalSteps: 5 });
+    expect((await status(quiz.id)).phase).toBeNull();
+  });
+
+  it("a database that refuses the phase writes never fails the job", async () => {
+    await ctx.pool.query(`create function refuse_phase() returns trigger language plpgsql as $$ begin
+      if new.phase is not null then raise exception 'phase writes are refused'; end if; return new; end $$`);
+    await ctx.pool.query(`create trigger quiz_phase_refuse before update on quizzes for each row execute function refuse_phase()`);
+    try {
+      const quiz = await newQuiz();
+      const warn = vi.fn();
+      const quiet = createLogger("error");
+      const log = { ...quiet, warn, child: () => ({ ...quiet, warn }) } as never;
+      const out = await processQuizJob(deps({ log }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
+      expect(out).toEqual({ kind: "done" });
+      expect((await status(quiz.id)).status).toBe("ready");
+      expect(warn).toHaveBeenCalledWith(expect.objectContaining({ phase: "reading_document" }), "could not record the generation phase");
+    } finally {
+      await ctx.pool.query(`drop trigger quiz_phase_refuse on quizzes`);
+    }
   });
 });

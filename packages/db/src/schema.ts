@@ -60,6 +60,15 @@ export const quizzes = pgTable(
     critique: boolean("critique").notNull().default(true),
     status: quizStatus("status").notNull().default("queued"),
     error: text("error"),
+    /**
+     * Generation progress while status = generating (null otherwise): the phase name, the 1-based step, the number of steps known
+     * now (it can change) and an optional detail. Plain text, not an enum, so a new phase never needs a migration. Best effort.
+     */
+    phase: text("phase"),
+    phaseStep: smallint("phase_step"),
+    phaseTotal: smallint("phase_total"),
+    phaseDetail: text("phase_detail"),
+    phaseUpdatedAt: timestamp("phase_updated_at", { withTimezone: true }),
     idempotencyKey: text("idempotency_key").notNull(),
     /** sha256 of the normalized request body; same key + different hash => 422. */
     requestHash: text("request_hash").notNull(),

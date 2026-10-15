@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import {
   AttemptListSchema, AttemptResultSchema, AttemptWithAnswersSchema, CatalogResponseSchema, CreateQuizBodySchema, ErrorBodySchema,
-  IdempotencyKeySchema, QuizListSchema, QuizWithQuestionsSchema, SaveAnswerBodySchema, SaveAnswerResponseSchema, STRATEGIES, SubmitResponseSchema, TopicSchema,
+  GENERATION_PHASES, IdempotencyKeySchema, QuizListSchema, QuizSummarySchema, QuizWithQuestionsSchema, SaveAnswerBodySchema, SaveAnswerResponseSchema, STRATEGIES, SubmitResponseSchema, TopicSchema,
 } from "./index";
 
 const id = "6f1d1e0c-9a0b-4c43-8a6e-1f2d3c4b5a69";
@@ -84,6 +85,20 @@ describe("response schemas", () => {
     expect(SubmitResponseSchema.safeParse({ replayed: false, result }).success).toBe(true);
     expect(ErrorBodySchema.safeParse({ error: { code: "x", message: "m" } }).success).toBe(true);
     expect(ErrorBodySchema.safeParse({ error: "x" }).success).toBe(false);
+  });
+
+  it("generationProgress is backward compatible: absent (old server), null, or a step with an optional detail; an unknown phase is still accepted", () => {
+    const quiz = (extra: object) => QuizWithQuestionsSchema.safeParse({ quiz: { ...summary, status: "generating", ...extra }, questions: [] });
+    expect(quiz({}).success).toBe(true); // a server older than 1.1.0
+    expect(quiz({ generationProgress: null }).success).toBe(true);
+    expect(quiz({ generationProgress: { phase: "reviewing", step: 4, totalSteps: 5, detail: "round 1 of 2" } }).success).toBe(true);
+    expect(quiz({ generationProgress: { phase: "a-phase-added-later", step: 1, totalSteps: 6 } }).success).toBe(true);
+    expect(quiz({ generationProgress: { phase: "checking", step: 0, totalSteps: 5 } }).success).toBe(false);
+    expect(quiz({ generationProgress: { phase: "checking", step: 1 } }).success).toBe(false);
+    // a client that predates 1.1.0 (the schema without the field) still parses what a 1.1.0 server sends: zod strips unknown keys
+    const { generationProgress: _omitted, ...oldShape } = QuizSummarySchema.shape;
+    expect(z.object(oldShape).safeParse({ ...summary, generationProgress: { phase: "saving", step: 5, totalSteps: 5 } }).success).toBe(true);
+    expect(GENERATION_PHASES).toEqual(["reading_document", "planning", "writing_questions", "checking", "reviewing", "saving"]);
   });
 
   it("CatalogResponse validates entries", () => {

@@ -81,7 +81,14 @@ function summary(q: QuizRow) {
     critique: q.critique,
     error: q.status === "failed" ? userFacingError(q.error) : null, // raw detail stays in the database and logs
     createdAt: q.createdAt,
+    generationProgress: generationProgress(q),
   };
+}
+
+/** Only while the worker is generating and has reported a phase; null for queued, ready and failed quizzes. */
+function generationProgress(q: QuizRow) {
+  if (q.status !== "generating" || q.phase === null || q.phaseStep === null || q.phaseTotal === null) return null;
+  return { phase: q.phase, step: q.phaseStep, totalSteps: q.phaseTotal, ...(q.phaseDetail ? { detail: q.phaseDetail } : {}) };
 }
 
 export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
