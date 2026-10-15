@@ -104,7 +104,9 @@ jobs:
           url=$(terraform output -raw app_url)
           expect() { local what=$1 want=$2; shift 2; local got; got=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$@" || true)
             [[ "$got" =~ ^($want)$ ]] || { echo "::error::$what: expected $want, got $got"; exit 1; }; echo "ok  $what ($got)"; }
-          expect "web landing page"            200 "$url/"
+          expect "entry page sends visitors to the login" 307 "$url/"
+          expect "sign-in error page is shown"        200 "$url/?error=login_denied"
+          expect "login goes to the Cognito Hosted UI" 307 "$url/auth/login"
           expect "BFF refuses anonymous calls" 401 "$url/bff/v1/quizzes"
           expect "app pages need a session"    307 "$url/app"
           expect "API still requires a token"  401 "$url/v1/quizzes"
