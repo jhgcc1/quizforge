@@ -37,14 +37,14 @@
   "red-team run (attacks of one nightly run)": {
    "cases": 640,
    "old": 324,
-   "withPolite": 458,
+   "withPolite": 470,
    "leakedBefore": 24,
    "leakedStillUnflagged": 1
   },
   "nightly intents (120 texts)": {
    "cases": 120,
    "old": 49,
-   "withPolite": 74
+   "withPolite": 79
   },
   "frozen sample (50)": {
    "cases": 50,
