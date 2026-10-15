@@ -18,11 +18,12 @@ def _json(rel):
     return json.loads(p.read_text(encoding="utf8")) if p.exists() else None
 
 
-_rules = (ROOT / "packages/core/src/injection-rules.ts").read_text(encoding="utf8")
+_rules = "\n".join((ROOT / f"packages/core/src/{f}.ts").read_text(encoding="utf8") for f in ("injection-rules", "injection-rules-polite"))  # the polite forms live in their own file
 _ids = re.findall(r'^  R\("([a-z]+-[a-z0-9-]+)"', _rules, re.M)
 RULES_TOTAL = len(_ids)
 RULES_PER_LANGUAGE = len([i for i in _ids if i.startswith("en-")])
 RULES_LANGUAGE_FREE = len([i for i in _ids if i.startswith("all-")])
+RULES_POLITE = len([i for i in _ids if "-polite-" in i])
 RULES_IMPERATIVE = len([i for i in _ids if not re.search(r"-system-prompt$|-what-are-your-instructions$", i)])
 assert RULES_TOTAL == 3 * RULES_PER_LANGUAGE + RULES_LANGUAGE_FREE
 
@@ -50,7 +51,7 @@ def bench_row(key):
 
 
 def _tokens():
-    t = {"rules_total": RULES_TOTAL, "rules_per_lang": RULES_PER_LANGUAGE, "rules_imp": RULES_IMPERATIVE, "pf_offline": PF_OFFLINE, "pf_live": PF_LIVE,
+    t = {"rules_polite": RULES_POLITE, "rules_total": RULES_TOTAL, "rules_per_lang": RULES_PER_LANGUAGE, "rules_imp": RULES_IMPERATIVE, "pf_offline": PF_OFFLINE, "pf_live": PF_LIVE,
          "pf_nightly": PF_NIGHTLY_TESTS, "pf_nightly_intents": PF_NIGHTLY_INTENTS}
     ci_pr = len(CI_PR_JOBS)
     t.update({

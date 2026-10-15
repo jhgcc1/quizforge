@@ -1,3 +1,4 @@
+import { flaggedSegments } from "@quizforge/core";
 import type { Usage } from "./budget.js";
 import type { ChatMessage, CompleteOptions, LlmClient, LlmResponse } from "./llm.js";
 
@@ -20,7 +21,10 @@ function makeQuestions(doc: string, n: number) {
   // Link-heavy sections have few full sentences: relax the minimum length until there is enough material.
   let sents: string[] = [];
   for (const minWords of [6, 4, 3]) {
-    sents = [...new Set(sentencesOf(doc, minWords))];
+    // like a sane model, the stand-in does not build a question from a sentence that gives it an order
+    const all = [...new Set(sentencesOf(doc, minWords))];
+    const clean = all.filter((x) => flaggedSegments(x).length === 0);
+    sents = clean.length >= n ? clean : all;
     if (sents.length >= n) break;
   }
   if (sents.length < n) throw new Error(`fake llm: document has only ${sents.length} usable sentences`);

@@ -1083,7 +1083,7 @@ def guard_layers():
         if i:
             b += arrow(x - 15, top + 50, x, top + 50)
     y = top + 140
-    b += text(10, y, "Not covered by design: a paraphrased attack that matches no rule and scores under the threshold is met only by layers 7, 9, 10 and the model resisting.", "note")
+    b += text(10, y, "Polite rules and the planted-words rail close polite requests that ask for a token. Not covered by design: a paraphrase that matches no rule, scores under the threshold and asks for no token is met only by layers 7, 9, 10 and the model resisting.", "note")
     b += text(10, y + 20, "The classifier flags and never blocks (INJECTION_DETECTOR=block is not set). Images are not read. The agent has no tools: a hijack is only a bad quiz.", "note")
     b += text(10, y + 40, "Each layer is tested by code: unit tests, the promptfoo attack corpus (one file for vitest and promptfoo) and the red team (next section).", "note")
     return svg(1100, y + 56, b, "LLM guard in layers: from the edge to the model call and back out, with what each layer does when it triggers")

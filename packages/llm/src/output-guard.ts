@@ -13,6 +13,7 @@ import { CRITIQUE_SYSTEM, GENERATION_SYSTEM, JUDGE_SYSTEM, PLAN_SYSTEM, REVISE_S
  *   markup          no script, iframe, event handler, chat-template token (unless the document itself has it)
  *   links           no link to a site that is not in the document; STRICT when the document had a flag (see `trustedText`)
  *   echoed attack   no instruction-like sentence that is not in the document
+ *   planted words   when the document has a flagged line, no word that ONLY that line contains (a canary, a token an instruction asks for)
  *   looks like a quiz  most prompts are questions or "complete / select" tasks
  *
  * The first problem list goes back to the model for ONE repair round (see structured.ts, `check`); anything left after the
@@ -81,11 +82,48 @@ export interface LinkTrust {
   strict: boolean;
   /** The document text links are checked against (lower case). */
   trusted: string;
-  /** Words that appear only in flagged segments. */
+  /** Words that appear only in flagged segments (checked inside URLs). */
   planted: Set<string>;
+  /**
+   * Words the QUIZ may not contain at all: the words that appear only in a line a keyword rule flagged (every word), or only in an
+   * excerpt of the semantic detector (only the canary-like ones: a word with a digit such as "ZX9-XRAY", because the detector also
+   * flags ordinary paragraphs now and then, and their words are legitimate quiz material). Without the quiz vocabulary and the
+   * common words of en, pt and es (see EXEMPT_WORDS), which every quiz uses.
+   */
+  plantedWords: Set<string>;
 }
 
 const TOKEN = /[\p{L}\p{N}]{3,}/gu;
+/** A compound of letters AND digits ("zx9-xray", "ab12"): how a canary or a marker token looks; its parts count as planted. Plain numbers do not ("10000"). */
+const COMPOUND = /[\p{L}\p{N}]+(?:-[\p{L}\p{N}]+)*/gu;
+const canaryParts = (text: string): string[] => (text.match(COMPOUND) ?? []).filter((w) => /\p{L}/u.test(w) && /\p{N}/u.test(w)).flatMap((w) => [...tokensOf(w)]);
+
+/**
+ * Words a quiz uses whatever the document is: the words of our own prompts (the quiz task), the vocabulary of a quiz in en, pt and es,
+ * and the function words of the three languages. They can never be "planted": a README that is short, or that has no "answer" or
+ * "option" in it, must not stop the model from writing "the correct option".
+ */
+const COMMON = `the and for are but not you all any can had her was one our out has his how its may who did get let say she too use way why
+this that with from have they will what when which their there been were would about after again also because before being between both
+could does doing each every other over such than then them these those through under very while your into only same some most more many much
+document text readme quiz question questions answer answers option options choice choices correct incorrect explanation explanations true false
+following statement statements according states says described describes shown must should whether first second third last none
+para com que uma uns umas por como mais mas dos das nos nas seu sua seus suas ele ela eles elas isso este esta esse essa aquele quando onde
+qual quais quem pelo pela pelos pelas entre sobre ser foi são está estão tem têm muito também apenas cada todo toda todos todas outro outra
+documento texto pergunta perguntas questão questões resposta respostas opção opções alternativa alternativas correta correto incorreta
+incorreto explicação explicações verdadeiro falso seguinte segundo conforme afirma indica descreve primeira primeiro última último nenhuma
+los las una unos unas por con para que del como más pero sus este esta ese esa aquel cuando donde cual cuales quien entre sobre ser fue son
+está están tiene tienen muy también solo cada todo toda todos todas otro otra pregunta preguntas cuestión cuestiones respuesta respuestas
+opción opciones alternativa alternativas correcta correcto incorrecta incorrecto explicación explicaciones verdadero falso siguiente
+según afirma indica describe primera primero última último ninguna`.split(/\s+/);
+let exemptWords: Set<string> | undefined;
+function exempt(): Set<string> {
+  if (!exemptWords) {
+    exemptWords = new Set(COMMON.map((w) => w.toLowerCase()));
+    for (const p of [GENERATION_SYSTEM, CRITIQUE_SYSTEM, REVISE_SYSTEM, PLAN_SYSTEM, JUDGE_SYSTEM]) for (const w of tokensOf(p)) exemptWords.add(w);
+  }
+  return exemptWords;
+}
 const tokensOf = (t: string): Set<string> => new Set(t.toLowerCase().match(TOKEN) ?? []);
 const URL_NOISE = new Set(["http", "https", "www"]);
 
@@ -93,15 +131,20 @@ let trustCache: { key: string; extra: string; trust: LinkTrust } | undefined;
 export function linkTrust(sourceText: string, extraFlagged?: readonly string[]): LinkTrust {
   const extraKey = extraFlagged ? JSON.stringify(extraFlagged) : "";
   if (trustCache && trustCache.key === sourceText && trustCache.extra === extraKey) return trustCache.trust;
-  const segments = [...flaggedSegments(sourceText), ...(extraFlagged ?? []).map((x) => x.trim()).filter(Boolean)];
+  const ruleSegments = flaggedSegments(sourceText);
+  const excerpts = (extraFlagged ?? []).map((x) => x.trim()).filter(Boolean);
+  const segments = [...ruleSegments, ...excerpts];
   let trust: LinkTrust;
-  if (segments.length === 0 && !extraFlagged?.length) trust = { strict: false, trusted: sourceText.toLowerCase(), planted: new Set() };
+  if (segments.length === 0 && !extraFlagged?.length) trust = { strict: false, trusted: sourceText.toLowerCase(), planted: new Set(), plantedWords: new Set() };
   else {
     let clean = sourceText;
     for (const seg of segments) clean = clean.split(seg).join(" ");
     const cleanTokens = tokensOf(clean);
     const planted = new Set([...tokensOf(segments.join(" "))].filter((t) => !cleanTokens.has(t)));
-    trust = { strict: true, trusted: clean.toLowerCase(), planted };
+    // the quiz may not use these at all: every word of a rule-flagged line, the canary-like words of a detector excerpt
+    const skip = exempt();
+    const plantedWords = new Set([...tokensOf(ruleSegments.join(" ")), ...excerpts.flatMap(canaryParts)].filter((t) => !cleanTokens.has(t) && !skip.has(t)));
+    trust = { strict: true, trusted: clean.toLowerCase(), planted, plantedWords };
   }
   trustCache = { key: sourceText, extra: extraKey, trust };
   return trust;
@@ -120,6 +163,13 @@ export function quizOutputProblems(questions: readonly GeneratedQuestion[], ctx:
     for (const text of [...fieldsOf(q), q.sourceQuote]) {
       const leak = leakedPromptText(text);
       if (leak) problems.push(`question ${n} repeats the assistant's own instructions ("${leak.slice(0, 40)}…"); write only the quiz`);
+    }
+    // a word that only an instruction of the document contains (a canary, a token it asks for) must not be in ANY field of the quiz
+    // (the source quote too: a quote of the instruction itself is not a quote of the document the quiz is about)
+    if (trust.plantedWords.size) {
+      const found = new Set<string>();
+      for (const text of [...fieldsOf(q), q.sourceQuote]) for (const t of tokensOf(text)) if (trust.plantedWords.has(t)) found.add(t);
+      if (found.size) problems.push(`question ${n} contains ${[...found].slice(0, 3).map((w) => `"${w.slice(0, 30)}"`).join(", ")}, which only an instruction of the document uses (it is not part of the real content); remove it and ask about the real content only`);
     }
     for (const text of fieldsOf(q)) {
       for (const m of text.matchAll(MARKUP)) {
