@@ -24,8 +24,8 @@ Where the detector is described to people (documentation, security report), it c
 
 ## Test documents (`evals/fixtures`)
 
-The golden set of the LLM evaluation (`evals/src/golden.ts`) contains pinned, **unmodified snapshots** of the README files of four open-source
-projects (two of them in a Portuguese and a Spanish translation each), so the hand-written reference questions stay valid when upstream changes.
+The golden set of the LLM evaluation (`evals/src/golden.ts`) contains pinned, **unmodified snapshots** of the README files of five open-source
+projects (some of them translations), so the hand-written reference questions stay valid when upstream changes.
 The snapshots are test data only: they are not part of the application and are never shipped in a runtime image. Each one is kept under the
 licence of its project; the licence texts are in the linked `LICENSE` files.
 
@@ -35,8 +35,8 @@ licence of its project; the licence texts are in the linked `LICENSE` files.
 | `mastra.md` | en | <https://github.com/mastra-ai/mastra/blob/main/README.md> | Apache-2.0 (the project's `LICENSE.md` reserves only its `ee/` directories for an enterprise licence; the README is outside them) | 2026-10-08 |
 | `wails-pt.md` | pt | `README.pt-br.md` of <https://github.com/wailsapp/wails> at commit `6b767b48336dc3f0737957d8206958abf5f77492` ([LICENSE](https://github.com/wailsapp/wails/blob/6b767b48336dc3f0737957d8206958abf5f77492/LICENSE)) | MIT, Copyright (c) 2018-Present Lea Anthony | 2026-10-14 |
 | `wails-es.md` | es | `README.es.md` of the same repository and commit | MIT, Copyright (c) 2018-Present Lea Anthony | 2026-10-14 |
-| `supabase-pt.md` | pt | `i18n/README.pt-br.md` of <https://github.com/supabase/supabase> at commit `f20277377bc7626da5fccbe125b8db33d92109cc` ([LICENSE](https://github.com/supabase/supabase/blob/f20277377bc7626da5fccbe125b8db33d92109cc/LICENSE)) | Apache-2.0 | 2026-10-14 |
-| `supabase-es.md` | es | `i18n/README.es.md` of the same repository and commit | Apache-2.0 | 2026-10-14 |
+| `brazilian-utils-pt.md` | pt | `README.pt-br.md` of <https://github.com/brazilian-utils/javascript> at commit `0f0f9a1539d7263a08e245e9b03f8f7dffc7cd9e` ([LICENSE](https://github.com/brazilian-utils/javascript/blob/0f0f9a1539d7263a08e245e9b03f8f7dffc7cd9e/LICENSE)); native Portuguese README | MIT, Copyright (c) 2018 Hyan Mandian | 2026-10-14 |
+| `supabase-es.md` | es | `i18n/README.es.md` of <https://github.com/supabase/supabase> at commit `f20277377bc7626da5fccbe125b8db33d92109cc` ([LICENSE](https://github.com/supabase/supabase/blob/f20277377bc7626da5fccbe125b8db33d92109cc/LICENSE)) | Apache-2.0 | 2026-10-14 |
 
 The other documents in `evals/fixtures` (`short-doc.md`, `portuguese.md`, `spanish.md`, `injection.md`, `injection-pt.md`, `injection-es.md`,
 `code-heavy.md`, `minimal.md`, `multi-answer.md`) were written for this repository; the products they describe (Zephyr Cache, Biblioteca Aurora,

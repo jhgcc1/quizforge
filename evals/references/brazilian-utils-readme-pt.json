@@ -1,0 +1,51 @@
+{
+ "id": "brazilian-utils-readme-pt",
+ "authoredBy": "Claude (draft written from the pinned document; a human review is recommended)",
+ "questions": [
+  {
+   "prompt": "O que é o Brazilian Utils?",
+   "answer": "Uma biblioteca de utilitários, sem dependências, para quem desenvolve software para o Brasil: validar, formatar, interpretar e gerar CPF, CNPJ, CEP, boleto, Pix e mais.",
+   "sourceQuote": "Brazilian Utils é uma biblioteca de utilitários, sem dependências, para os problemas do dia a dia"
+  },
+  {
+   "prompt": "O que significa dizer que a biblioteca tem zero dependências de runtime?",
+   "answer": "Nada além da biblioteca entra no node_modules nem no bundle do projeto.",
+   "sourceQuote": "Zero dependências de runtime"
+  },
+  {
+   "prompt": "Quanto custa importar uma função como isValidCpf?",
+   "answer": "Cerca de 0,5 KB minificado (0,3 KB com gzip).",
+   "sourceQuote": "custa cerca de 0,5 KB minificado"
+  },
+  {
+   "prompt": "Em quais ambientes a biblioteca roda e é testada?",
+   "answer": "Em Node.js, Bun, Deno e navegadores modernos, todos testados no CI.",
+   "sourceQuote": "Roda em qualquer lugar"
+  },
+  {
+   "prompt": "Como são fornecidos os tipos TypeScript?",
+   "answer": "Os tipos vêm no próprio pacote, e cada pull request é comparado com a última versão publicada para que a API pública não mude em silêncio.",
+   "sourceQuote": "Os tipos vêm no pacote"
+  },
+  {
+   "prompt": "Como os validadores são fundamentados nas regras oficiais?",
+   "answer": "Cada validador cita a especificação, lei ou base de dados que implementa, e os testes passam por mutation testing.",
+   "sourceQuote": "Cada validador cita a especificação, lei ou base de dados que implementa"
+  },
+  {
+   "prompt": "Em quais idiomas a documentação está disponível?",
+   "answer": "Em inglês e português, com um llms.txt para assistentes de IA.",
+   "sourceQuote": "Documentada em inglês e português"
+  },
+  {
+   "prompt": "Com quais gerenciadores de pacotes o pacote funciona?",
+   "answer": "Com npm, yarn, pnpm e bun.",
+   "sourceQuote": "O mesmo pacote funciona com"
+  },
+  {
+   "prompt": "Qual ferramenta o repositório usa localmente para o desenvolvimento?",
+   "answer": "O Vite+, instalado como dependência.",
+   "sourceQuote": "Este repositório usa o Vite+ como ferramenta local"
+  }
+ ]
+}
