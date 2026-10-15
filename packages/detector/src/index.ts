@@ -24,7 +24,7 @@ export { chunkProse } from "./chunk.js";
 export const DEFAULT_MODEL = "gravitee-io/Llama-Prompt-Guard-2-86M-onnx";
 /** The languages Llama Prompt Guard 2 was trained for. Our language policy accepts en, pt and es, all of them covered. */
 export const DETECTOR_LANGUAGES = ["en", "fr", "de", "hi", "it", "pt", "es", "th"] as const;
-/** The model's own decision boundary. Chosen from the benchmark (docs/security/benchmark.html): scores are almost binary (blatant attacks 0.99+, everything else under 0.1; the worst legitimate README scored 0.098), so 0.5 sits in an empty gap and recalls the most with 0 false positives. Raise it with INJECTION_DETECTOR_THRESHOLD before using block mode. */
+/** The model's own decision boundary. Chosen from the benchmark (docs/security/benchmark.html): scores are almost binary (blatant attacks 0.99+), so 0.5 recalls the most. On the benign benchmark rows and the test documents it has 0 false positives, but it flags a few real READMEs (docs/security/detector-fp.md: 5 of 98, scores up to 0.99), which is why the default mode is flag and never block. Raise it with INJECTION_DETECTOR_THRESHOLD before using block mode. */
 export const DEFAULT_THRESHOLD = 0.5;
 
 type Classify = (texts: string[]) => Promise<{ label: string; score: number }[]>;

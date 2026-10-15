@@ -18,6 +18,7 @@ export type FindingKind =
   | "control_characters"
   | "hidden_unicode_text"
   | "html_comment"
+  | "inline_image_data"
   | "hidden_html"
   | "encoded_payload"
   | "obfuscated_instruction"
@@ -158,6 +159,8 @@ export function decodeCandidates(text: string): [string, string][] {
 /* ------------------------------------------------------------------ the inspection */
 
 const COMMENT = /<!--[\s\S]*?-->/g;
+/** An image embedded in the text (a badge, a logo, a diagram): `data:image/...;base64,<bytes>`. Group 1 is the base64 payload. */
+const INLINE_IMAGE = /data:image\/[a-z0-9.+-]+(?:;[a-z0-9=._+-]+)*;base64,([A-Za-z0-9+/_-]+={0,2})/gi;
 const HIDDEN_ELEMENT = /<([a-z][a-z0-9]*)\b[^>]*(?:\bhidden\b|aria-hidden\s*=\s*["']?true|style\s*=\s*["'][^"']*(?:display\s*:\s*none|visibility\s*:\s*hidden|font-size\s*:\s*0|opacity\s*:\s*0|color\s*:\s*(?:white|#fff(?:fff)?))[^"']*["'])[^>]*>([\s\S]*?)<\/\1>/gi;
 
 export interface InspectOptions {
@@ -200,6 +203,21 @@ export function inspectText(input: string, _opts: InspectOptions = {}): InspectR
     text = text.replace(COMMENT, "");
     add({ kind: "html_comment", severity: "sanitize", detail: "HTML comment(s) removed" });
   }
+
+  // 3b. inline images: the quiz does not need the bytes and the model never sees them. An SVG is text, so decoding it looks like a
+  // "readable sentence hidden in base64": a README with an embedded logo must not be rejected for that. An instruction INSIDE the image
+  // is still an attack (block); otherwise the blob is replaced by a marker.
+  let images = 0;
+  text = text.replace(INLINE_IMAGE, (_blob: string, payload: string) => {
+    images++;
+    const decoded = fromBase64(payload);
+    // an SVG is markup (<text>, </g>, ...): look at its text content, not at the tags
+    if (decoded && (hasInjection(decoded.replace(/<[^>]*>/g, " ")) || MODEL_MARKUP.test(decoded))) {
+      add({ kind: "encoded_payload", severity: "block", detail: "an instruction is hidden in an inline image", sample: excerpt(decoded) });
+    }
+    return "[inline image]";
+  });
+  if (images) add({ kind: "inline_image_data", severity: "sanitize", detail: `${images} inline image(s) removed (data URI)` });
 
   // 4. elements made invisible with HTML/CSS
   for (const m of text.matchAll(HIDDEN_ELEMENT)) {
