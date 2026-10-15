@@ -1,0 +1,51 @@
+{
+ "id": "supabase-readme-es",
+ "authoredBy": "Claude (draft written from the pinned document; a human review is recommended)",
+ "questions": [
+  {
+   "prompt": "¿Qué es Supabase?",
+   "answer": "Una alternativa de código abierto a Firebase.",
+   "sourceQuote": "es una alternativa de código abierto a Firebase"
+  },
+  {
+   "prompt": "¿Qué hace Supabase cuando ya existe una herramienta de código abierto adecuada, y cuando no existe?",
+   "answer": "Si existe, con licencia abierta (MIT, Apache 2 o equivalente), la usa y le da soporte; si no existe, la construye y la desarrolla el propio equipo.",
+   "sourceQuote": "con una licencia abierta MIT, Apache 2 o equivalente, utilizaremos y daremos soporte a esa herramienta"
+  },
+  {
+   "prompt": "¿Es Supabase un mapeo directo de Firebase?",
+   "answer": "No, no es un mapeo 1 a 1; busca ofrecer una experiencia similar con herramientas de código abierto.",
+   "sourceQuote": "Supabase no es un mapeo 1 a 1 de Firebase"
+  },
+  {
+   "prompt": "¿Qué permite hacer Realtime?",
+   "answer": "Escuchar las inserciones, actualizaciones y eliminaciones de PostgreSQL utilizando websockets.",
+   "sourceQuote": "es un servidor Elixir que te permite escuchar las inserciones, actualizaciones y eliminaciones de PostgreSQL utilizando websockets"
+  },
+  {
+   "prompt": "¿Qué hace PostgREST con la base de datos?",
+   "answer": "Convierte la base de datos PostgreSQL directamente en una API RESTful.",
+   "sourceQuote": "es un servidor web que convierte su base de datos PostgreSQL directamente en una API RESTful"
+  },
+  {
+   "prompt": "¿Qué interfaz proporciona Storage y cómo se gestionan los permisos?",
+   "answer": "Una interfaz RESTful para archivos almacenados en S3, usando Postgres para gestionar permisos.",
+   "sourceQuote": "proporciona una interfaz RESTful para gestionar archivos almacenados en S3, usando Postgres para gestionar permisos"
+  },
+  {
+   "prompt": "¿Hace falta instalar algo para empezar a usar Supabase?",
+   "answer": "No: basta con registrarse en la plataforma alojada.",
+   "sourceQuote": "Puedes registrarte y empezar a usar Supabase sin instalar nada"
+  },
+  {
+   "prompt": "¿En qué etapa de desarrollo se encuentra Supabase actualmente?",
+   "answer": "En Beta Pública.",
+   "sourceQuote": "Actualmente estamos en Beta Pública"
+  },
+  {
+   "prompt": "¿Cómo es el enfoque de Supabase para las bibliotecas cliente?",
+   "answer": "Modular: cada sublibrería es una implementación independiente para un único sistema externo.",
+   "sourceQuote": "Nuestro enfoque para las bibliotecas cliente es modular"
+  }
+ ]
+}

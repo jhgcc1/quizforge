@@ -1,0 +1,51 @@
+{
+ "id": "wails-readme-es",
+ "authoredBy": "Claude (draft written from the pinned document; a human review is recommended)",
+ "questions": [
+  {
+   "prompt": "¿Cuál es el método tradicional para proveer una interfaz web en programas hechos con Go?",
+   "answer": "A través del servidor web incorporado.",
+   "sourceQuote": "El método tradicional para proveer una interfaz web en programas hechos con Go es a través del servidor web incorporado"
+  },
+  {
+   "prompt": "¿Qué enfoque diferente ofrece Wails?",
+   "answer": "Combinar el código hecho en Go con un frontend web en un solo archivo binario.",
+   "sourceQuote": "permitir combinar el código hecho en Go con un frontend web en un solo archivo binario"
+  },
+  {
+   "prompt": "¿Qué tecnología frontend se puede usar para construir la interfaz de usuario?",
+   "answer": "Cualquier tecnología frontend con la que ya se esté familiarizado.",
+   "sourceQuote": "Utiliza cualquier tecnología frontend con la que ya estés familiarizado para construir tu interfaz de usuario"
+  },
+  {
+   "prompt": "¿Qué se genera automáticamente para los structs y métodos de Go?",
+   "answer": "Definiciones de Typescript.",
+   "sourceQuote": "Definiciones de Typescript generadas automáticamente para tus structs y métodos de Go"
+  },
+  {
+   "prompt": "¿Incluye Wails un navegador integrado?",
+   "answer": "No: usa motores de renderizado nativos, sin navegador integrado.",
+   "sourceQuote": "Usa motores de renderizado nativos"
+  },
+  {
+   "prompt": "¿Dónde se puede encontrar el plan de trabajo y cuándo conviene consultarlo?",
+   "answer": "En una discusión del repositorio; se debe consultar antes de abrir una solicitud de mejora.",
+   "sourceQuote": "El plan de trabajo se puede encontrar"
+  },
+  {
+   "prompt": "¿Por qué Wails podría considerarse una alternativa liviana a Electron?",
+   "answer": "Porque ofrece elementos nativos como menús y diálogos.",
+   "sourceQuote": "Wails ofrece elementos nativos como menús y diálogos, por lo que podría considerarse una alternativa liviana a Electron"
+  },
+  {
+   "prompt": "¿A quién está dirigido el proyecto?",
+   "answer": "A programadores de Go que desean integrar una interfaz HTML/JS/CSS en sus aplicaciones, sin crear un servidor.",
+   "sourceQuote": "El proyecto esta dirigido a programadores de Go que desean integrar una interfaz HMTL/JS/CSS en sus aplicaciones"
+  },
+  {
+   "prompt": "¿De dónde viene el nombre Wails?",
+   "answer": "Inicialmente fue un juego de palabras (WebView en Rails), y además es homófono del nombre en inglés del país del autor.",
+   "sourceQuote": "inicialmente fue un juego de palabras (WebView en Rails)"
+  }
+ ]
+}

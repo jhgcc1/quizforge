@@ -128,7 +128,7 @@ async function readmes() {
   const out = [];
   for (const f of files) {
     const r = await probe.detect(f.text);
-    out.push({ name: f.name, expectedMalicious: f.name === "injection.md", score: Math.round(r.score * 1000) / 1000, windows: r.scanned, ms: r.ms, worstWindow: (r.excerpt ?? "").replace(/\s+/g, " ") });
+    out.push({ name: f.name, expectedMalicious: f.name.startsWith("injection"), score: Math.round(r.score * 1000) / 1000, windows: r.scanned, ms: r.ms, worstWindow: (r.excerpt ?? "").replace(/\s+/g, " ") });
   }
   return out;
 }

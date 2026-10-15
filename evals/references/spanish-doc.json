@@ -1,0 +1,46 @@
+{
+ "id": "spanish-doc",
+ "authoredBy": "Claude (draft written from the pinned document; a human review is recommended)",
+ "questions": [
+  {
+   "prompt": "¿Con qué licencia se distribuye Brisa Notebook?",
+   "answer": "Con la licencia Apache 2.0.",
+   "sourceQuote": "se distribuye con la licencia Apache 2.0"
+  },
+  {
+   "prompt": "¿Dónde se guardan primero las notas y cuándo se sincronizan?",
+   "answer": "Primero en el dispositivo, y se sincronizan cuando vuelve la conexión.",
+   "sourceQuote": "Las notas se guardan primero en el dispositivo y se sincronizan cuando vuelve la conexión"
+  },
+  {
+   "prompt": "¿Qué hace Brisa si dos dispositivos editan la misma nota?",
+   "answer": "Conserva ambas versiones y pide al usuario que elija una.",
+   "sourceQuote": "Brisa conserva ambas versiones y pide al usuario que elija una"
+  },
+  {
+   "prompt": "¿Por qué el servidor nunca puede leer el contenido de las notas?",
+   "answer": "Porque la sincronización usa cifrado de extremo a extremo.",
+   "sourceQuote": "La sincronización usa cifrado de extremo a extremo"
+  },
+  {
+   "prompt": "¿Qué formatos de archivo puede importar Brisa Notebook?",
+   "answer": "Markdown, texto plano y listas de tareas en formato JSON.",
+   "sourceQuote": "puede importar archivos Markdown, texto plano y listas de tareas en formato JSON"
+  },
+  {
+   "prompt": "¿Qué incluye el formato PDF al exportar?",
+   "answer": "Un índice generado automáticamente.",
+   "sourceQuote": "el formato PDF incluye un índice generado automáticamente"
+  },
+  {
+   "prompt": "¿Cuánto tarda la búsqueda en devolver resultados?",
+   "answer": "Menos de cien milisegundos, sobre un índice local.",
+   "sourceQuote": "devuelve resultados en menos de cien milisegundos"
+  },
+  {
+   "prompt": "¿Cuándo se reconstruye el índice de búsqueda?",
+   "answer": "En segundo plano, cada vez que se importa una carpeta grande de notas.",
+   "sourceQuote": "El índice se reconstruye en segundo plano"
+  }
+ ]
+}
