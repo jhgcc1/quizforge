@@ -1,0 +1,51 @@
+{
+ "id": "wails-readme-pt",
+ "authoredBy": "Claude (draft written from the pinned document; a human review is recommended)",
+ "questions": [
+  {
+   "prompt": "Qual é o método tradicional de fornecer interfaces da Web para programas Go?",
+   "answer": "Por meio de um servidor da Web integrado.",
+   "sourceQuote": "O método tradicional de fornecer interfaces da Web para programas Go é por meio de um servidor da Web integrado"
+  },
+  {
+   "prompt": "Que abordagem diferente o Wails oferece?",
+   "answer": "Agrupar o código Go e um front-end da Web em um único binário.",
+   "sourceQuote": "agrupar o código Go e um front-end da Web em um único binário"
+  },
+  {
+   "prompt": "Qual tecnologia de front-end pode ser usada para criar a interface do usuário?",
+   "answer": "Qualquer tecnologia de front-end com a qual a pessoa já esteja familiarizada.",
+   "sourceQuote": "Use qualquer tecnologia de front-end com a qual você já esteja familiarizado para criar sua interface do usuário"
+  },
+  {
+   "prompt": "O que é gerado automaticamente para as estruturas e métodos Go?",
+   "answer": "Definições TypeScript.",
+   "sourceQuote": "Definições TypeScript geradas automaticamente para suas estruturas e métodos Go"
+  },
+  {
+   "prompt": "O Wails incorpora um navegador ao aplicativo?",
+   "answer": "Não: usa os mecanismos de renderização nativos, sem navegador incorporado.",
+   "sourceQuote": "Usa mecanismos de renderização nativos"
+  },
+  {
+   "prompt": "Onde pode ser encontrado o plano de trabalho do projeto e quando consultá-lo?",
+   "answer": "Em uma discussão do repositório; deve ser consultado antes de abrir um pedido de melhoria.",
+   "sourceQuote": "O plano de trabalho do projeto pode ser encontrado"
+  },
+  {
+   "prompt": "Por que o Wails pode ser considerado uma alternativa leve ao Electron?",
+   "answer": "Porque oferece elementos nativos, como menus e diálogos.",
+   "sourceQuote": "O Wails oferece elementos nativos, como menus"
+  },
+  {
+   "prompt": "A quem se destina o Wails?",
+   "answer": "A programadores Go que desejam agrupar um front-end HTML/JS/CSS com seus aplicativos, sem criar um servidor.",
+   "sourceQuote": "Programadores Go que desejam agrupar um front-end HTML/JS/CSS com seus aplicativos"
+  },
+  {
+   "prompt": "Qual é a origem do nome Wails?",
+   "answer": "Inicialmente era um jogo de palavras (WebView on Rails), e também é homófono do nome em inglês do país de origem do autor.",
+   "sourceQuote": "inicialmente era um jogo de palavras (WebView on Rails)"
+  }
+ ]
+}

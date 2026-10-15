@@ -70,7 +70,7 @@ describe("keyword rules for instructions aimed at a model", () => {
 
   it("ordinary documents are NOT flagged (false-positive check on hand-written fixtures)", () => {
     expect(inspectText(benignDocument()).findings).toEqual([]);
-    for (const f of readdirSync(FIXTURES).filter((x) => x.endsWith(".md") && x !== "injection.md")) {
+    for (const f of readdirSync(FIXTURES).filter((x) => x.endsWith(".md") && !x.startsWith("injection"))) {
       const r = inspectText(readFileSync(join(FIXTURES, f), "utf8"));
       // a document ABOUT an AI framework may mention "the system prompt" (a harmless mention rule); it must never trip an order
       const orders = r.findings.filter((x) => x.kind === "injection_phrase" && !/-system-prompt$|-what-are-your-instructions$/.test(x.rule ?? ""));
@@ -80,7 +80,7 @@ describe("keyword rules for instructions aimed at a model", () => {
   });
 
   it("the sample READMEs (pipecat, mastra, fastify) and every fixture have no order in any line", () => {
-    for (const f of readdirSync(FIXTURES).filter((x) => x.endsWith(".md") && x !== "injection.md")) {
+    for (const f of readdirSync(FIXTURES).filter((x) => x.endsWith(".md") && !x.startsWith("injection"))) {
       for (const line of readFileSync(join(FIXTURES, f), "utf8").split("\n")) {
         const hit = matchingRules(line.toLowerCase()).filter((r) => !/-system-prompt$|-what-are-your-instructions$/.test(r.id));
         expect(hit.map((r) => r.id), `${f}: ${line.slice(0, 80)}`).toEqual([]);

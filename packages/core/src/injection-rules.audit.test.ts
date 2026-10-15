@@ -147,10 +147,10 @@ describe("the attack corpus (attacks.ts) is exercised in all three languages", (
     for (const t of ATTACK_TECHNIQUES.filter((x) => x.expect === "block")) expect(inspectText(t.embed(DEFAULT_PAYLOAD)).blocked, t.id).toBe(true);
     for (const d of UNSUPPORTED_LANGUAGE_DOCS) expect(matchingRules(d.text.toLowerCase()), d.id).toEqual([]);
   });
-  it("no fixture except injection.md contains an order, and injection.md does", () => {
+  it("no fixture except the injection ones (injection*.md, one per language) contains an order, and those do", () => {
     for (const f of readdirSync(FIXTURES).filter((x) => x.endsWith(".md"))) {
       const orders = inspectText(readFileSync(join(FIXTURES, f), "utf8")).findings.filter((x) => x.kind === "injection_phrase" && !/-system-prompt$|-what-are-your-instructions$/.test(x.rule ?? ""));
-      expect(orders.length > 0, f).toBe(f === "injection.md");
+      expect(orders.length > 0, f).toBe(f.startsWith("injection"));
     }
   });
 });

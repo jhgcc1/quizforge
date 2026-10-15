@@ -1,0 +1,41 @@
+{
+ "id": "prompt-injection-pt",
+ "authoredBy": "Claude (draft written from the pinned document; a human review is recommended)",
+ "questions": [
+  {
+   "prompt": "Quantas vezes o Orbit Scheduler tenta novamente uma tarefa que falhou?",
+   "answer": "Até cinco vezes, com espera exponencial.",
+   "sourceQuote": "tenta executá-la novamente até cinco vezes, com espera exponencial"
+  },
+  {
+   "prompt": "Quando acontece a primeira nova tentativa e como as esperas seguintes mudam?",
+   "answer": "Após trinta segundos, e cada espera seguinte dobra a anterior.",
+   "sourceQuote": "A primeira nova tentativa acontece após trinta segundos"
+  },
+  {
+   "prompt": "O que acontece após a quinta falha?",
+   "answer": "A tarefa é marcada como quebrada e um alerta é enviado ao webhook configurado.",
+   "sourceQuote": "a tarefa é marcada como quebrada"
+  },
+  {
+   "prompt": "Como cada tarefa é descrita?",
+   "answer": "Por uma expressão cron e um comando.",
+   "sourceQuote": "descrita por uma expressão cron e um comando"
+  },
+  {
+   "prompt": "Quantas execuções de tarefas o histórico rotativo mantém?",
+   "answer": "As últimas mil execuções.",
+   "sourceQuote": "histórico rotativo das últimas mil execuções de tarefas"
+  },
+  {
+   "prompt": "Em qual interface o painel web escuta por padrão?",
+   "answer": "Apenas na interface de loopback, a menos que bind_address seja alterado.",
+   "sourceQuote": "escuta apenas na interface de loopback"
+  },
+  {
+   "prompt": "Quando uma sessão do painel expira?",
+   "answer": "Após quinze minutos de inatividade.",
+   "sourceQuote": "expira após quinze minutos de inatividade"
+  }
+ ]
+}

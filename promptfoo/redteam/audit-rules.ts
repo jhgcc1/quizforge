@@ -41,8 +41,8 @@ const sampleYaml = parse(readFileSync("promptfoo/redteam/sample.yaml", "utf8")) 
 add("red-team sample (50)", sampleYaml.map((t) => t.vars.prompt));
 add("nightly intents (72)", JSON.parse(readFileSync("promptfoo/redteam/intents.json", "utf8")) as string[]);
 const fx = "evals/fixtures";
-add("fixtures (benign)", readdirSync(fx).filter((f) => f.endsWith(".md") && f !== "injection.md").map((f) => readFileSync(join(fx, f), "utf8")));
-add("fixture injection.md", [readFileSync(join(fx, "injection.md"), "utf8")]);
+add("fixtures (benign)", readdirSync(fx).filter((f) => f.endsWith(".md") && !f.startsWith("injection")).map((f) => readFileSync(join(fx, f), "utf8")));
+add("fixture injection.md", readdirSync(fx).filter((f) => f.startsWith("injection") && f.endsWith(".md")).map((f) => readFileSync(join(fx, f), "utf8"))); // injection.md, injection-pt.md, injection-es.md
 if (READMES && existsSync(READMES)) add("real READMEs", readdirSync(READMES).filter((f) => f.endsWith(".md")).map((f) => readFileSync(join(READMES, f), "utf8")));
 add("attacks.ts techniques", ATTACK_TECHNIQUES.map((t) => t.embed(DEFAULT_PAYLOAD)));
 add("attacks.ts bad topics", BAD_TOPICS.map((t) => t.topic));

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run a promptfoo suite (CI and local).
-#   scripts/promptfoo.sh offline          no model, no secrets: input guard, language policy, topic validation, prompt safety rules (83 tests)
+#   scripts/promptfoo.sh offline          no model, no secrets: input guard, language policy, topic validation, prompt safety rules (89 tests)
 #   scripts/promptfoo.sh live             the real MiniMax model (needs MINIMAX_API_KEY): prompt injection and agent purpose (20 tests)
 #   scripts/promptfoo.sh redteam-sample   the 50 FROZEN red team attacks (en, pt, es) + the language policy group: the offline stage always,
 #                                         and the live stage when MINIMAX_API_KEY is set. Fails if a canary leaks.

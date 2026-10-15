@@ -1,0 +1,51 @@
+{
+ "id": "supabase-readme-pt",
+ "authoredBy": "Claude (draft written from the pinned document; a human review is recommended)",
+ "questions": [
+  {
+   "prompt": "O que é o Supabase?",
+   "answer": "Uma alternativa de código aberto ao Firebase.",
+   "sourceQuote": "é uma alternativa de código aberto ao Firebase"
+  },
+  {
+   "prompt": "O que o Supabase faz quando uma ferramenta de código aberto adequada já existe, e quando não existe?",
+   "answer": "Se existir, com licença aberta (MIT, Apache 2 ou equivalente), usa e dá suporte a ela; se não existir, a equipe a cria e abre o código-fonte.",
+   "sourceQuote": "com uma licença aberta MIT, Apache 2 ou equivalente, usaremos e daremos suporte a essa ferramenta"
+  },
+  {
+   "prompt": "O Supabase é um mapeamento direto do Firebase?",
+   "answer": "Não, não é um mapeamento 1 para 1; o objetivo é oferecer uma experiência semelhante usando ferramentas de código aberto.",
+   "sourceQuote": "Supabase não é um mapeamento 1 para 1 do Firebase"
+  },
+  {
+   "prompt": "O que o Realtime permite fazer?",
+   "answer": "Ouvir inserções, atualizações e exclusões do PostgreSQL usando websockets.",
+   "sourceQuote": "é um servidor Elixir que permite que você ouça inserções, atualizações e exclusões do PostgreSQL usando websockets"
+  },
+  {
+   "prompt": "O que o PostgREST faz com o banco de dados?",
+   "answer": "Transforma o banco de dados PostgreSQL diretamente em uma API RESTful.",
+   "sourceQuote": "é um servidor da Web que transforma seu banco de dados PostgreSQL diretamente em uma API RESTful"
+  },
+  {
+   "prompt": "Que interface o Storage fornece e como as permissões são gerenciadas?",
+   "answer": "Uma interface RESTful para arquivos armazenados no S3, usando o Postgres para gerenciar permissões.",
+   "sourceQuote": "fornece uma interface RESTful para gerenciar arquivos armazenados no S3, usando o Postgres para gerenciar permissões"
+  },
+  {
+   "prompt": "É preciso instalar algo para começar a usar o Supabase?",
+   "answer": "Não: basta se registrar na plataforma hospedada.",
+   "sourceQuote": "Você pode se registrar e começar a usar o Supabase sem instalar nada"
+  },
+  {
+   "prompt": "Há quanto tempo o PostgreSQL está em desenvolvimento ativo?",
+   "answer": "Mais de 30 anos.",
+   "sourceQuote": "um sistema de banco de dados objeto-relacional com mais de 30 anos de desenvolvimento ativo"
+  },
+  {
+   "prompt": "Como é a abordagem do Supabase para as bibliotecas de clientes?",
+   "answer": "Modular: cada sub-biblioteca é uma implementação autônoma para um único sistema externo.",
+   "sourceQuote": "Nossa abordagem para bibliotecas de clientes é modular"
+  }
+ ]
+}

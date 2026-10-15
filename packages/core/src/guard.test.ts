@@ -50,11 +50,11 @@ describe("inspectText: normal documents are left alone", () => {
     expect(inspectText(benignDocument()).findings).toEqual([]);
   });
 
-  it("the real fixtures are never blocked; the injection fixture is flagged, not blocked", () => {
+  it("the real fixtures are never blocked; the injection fixtures (en, pt, es) are flagged, not blocked", () => {
     for (const f of readdirSync(FIXTURES).filter((x) => x.endsWith(".md"))) {
       const r = inspectText(readFileSync(join(FIXTURES, f), "utf8"));
       expect(r.blocked, `${f}: ${JSON.stringify(r.findings)}`).toBe(false);
-      if (f === "injection.md") expect(r.findings.map((x) => x.kind)).toContain("injection_phrase");
+      if (f.startsWith("injection")) expect(r.findings.map((x) => x.kind)).toContain("injection_phrase");
     }
   });
 
