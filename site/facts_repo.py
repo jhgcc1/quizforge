@@ -294,3 +294,25 @@ for _p in _src_files:
         else:
             SQL_CALL_DYNAMIC += 1
 assert SQL_RAW_OR_CALLED == 0 and SQL_CALL_DYNAMIC == 0, "string-built SQL found: the section 'Who is the user on every request' must be reviewed"
+
+
+# ---- the strategy router (`auto`): every number is read from the code, the examples are measured by scripts/measure-facts.sh
+_router_src, _graph_src, _source_src = _text("packages/llm/src/router.ts"), _text("packages/llm/src/quiz-graph.ts"), _text("packages/llm/src/source.ts")
+
+
+def _int(pattern, text):
+    m = re.search(pattern, text)
+    assert m, f"strategy router fact not found: {pattern}"
+    return int(next(g for g in m.groups() if g).replace("_", ""))
+
+
+ROUTER_MAX_TOKENS = _int(r"SINGLE_SHOT_MAX_TOKENS = ([\d_]+)", _router_src)
+ROUTER_MIN_SECTIONS = _int(r"MIN_SECTIONS_FOR_MAP_REDUCE = (\d+)", _router_src)
+ROUTER_SECTION_MIN_TOKENS = _int(r"filter\(\(s\) => s\.tokens >= (\d+)\)", _router_src)
+MAP_SECTIONS = _int(r"deps\.mapSections \?\? (\d+)", _graph_src)
+MAP_CONCURRENCY = _int(r"deps\.concurrency \?\? (\d+)", _graph_src)
+MAP_CANDIDATES_PER_SECTION = _int(r"sectionUser\(\{[^}]*n: (\d+)", _graph_src)
+MAX_SINGLE_SHOT_CHARS = _int(r"MAX_SINGLE_SHOT_CHARS = ([\d_]+)", _graph_src)
+CHARS_PER_TOKEN = _int(r"Math\.ceil\(s\.length / (\d+)\)", _source_src)
+HEADING_MAX_LEVEL = _int(r"\^\(#\{1,(\d)\}\)", _source_src)
+ROUTER_ROWS = MEASURED.get("router") or []
