@@ -183,32 +183,32 @@ def repos():
     b += box(26, 50, 368, 56, "Next.js front end + BFF", "login with Cognito · error boundary · POST /bff/client-log", "compute", small=True)
     b += box(26, 120, 368, 56, "Own CI: no AWS role, no Terraform", f"quality ({F.WEB_TESTS} tests) · build · docker-build + Trivy · secrets-scan", "ci", small=True)
     b += box(26, 190, 368, 56, "Dockerfile", "builds the web image from this repository alone", "mgd", small=True)
-    b += group(540, 10, 640, 250, "github.com/jhgcc1/quizforge (back end, infrastructure, deploy)", "grp")
+    b += group(540, 10, 640, 250, "github.com/jhgcc1/quizforge (back end)", "grp")
     b += box(556, 50, 200, 56, "api · worker · scorer", "Fastify · LangGraph · judge", "compute", small=True)
     b += box(772, 50, 190, 56, "packages", "contract · core · db · llm · detector", "data", small=True)
     b += box(978, 50, 186, 56, "tests", "unit · integration · e2e · promptfoo", "ci", small=True)
-    b += box(556, 120, 200, 56, "infra (Terraform)", "AWS · GitHub rules · bootstrap", "sec", small=True)
-    b += box(772, 120, 392, 56, "CI/CD", f"{len(F.CI_PR_JOBS)} jobs on a PR ({len(F.CI_REQUIRED)} required) · two deploy paths · one approval", "ci", small=True)
-    b += box(556, 190, 608, 56, "web.ref", "the front end commit that the e2e test and both deploys build (a PR in this repository changes it)", "edge", small=True)
+    b += box(556, 120, 200, 56, "images to ECR", "publish job · push-only role", "sec", small=True)
+    b += box(772, 120, 392, 56, "CI/CD", f"{len(F.CI_PR_JOBS)} jobs on a PR ({len(F.CI_REQUIRED)} required) · publishes images · deploys nothing", "ci", small=True)
+    b += box(556, 190, 608, 56, "web.ref", "the front end commit that the e2e test builds (a PR in this repository changes it)", "edge", small=True)
     b += arrow(540, 80, 394, 80, "", dash=True)
     b += text(404, 40, "API contract", "note", "middle")
     b += text(404, 56, "(tarball of a", "note", "middle")
     b += text(404, 70, "GitHub Release)", "note", "middle")
     b += arrow(410, 218, 540, 218)
     b += text(475, 208, "pinned", "note", "middle")
-    b += group(10, 290, 575, 230, "A · Full deploy: push to main (ci.yml, job deploy)", "grp")
-    for i, s in enumerate(["1 · build api, worker, web and redteam images, push to ECR", "     web tag = web-<front end commit>; the others = the commit sha", "2 · drift check, then the migration BEFORE the new code",
-                           "3 · ONE terraform apply (rolling, circuit breaker)", "4 · ONE approval: environment production (OIDC role)", f"5 · smoke test through CloudFront ({F.SMOKE_FULL} checks)", "Runs after every gate, on main only; refused while paused"]):
+    b += group(10, 290, 575, 230, "A · Publish: push to main (ci.yml, job publish)", "grp")
+    for i, s in enumerate(["1 · every gate is green on the commit (main only)", "2 · build ARM64 images: api, worker, redteam", "3 · push to ECR, tag = commit sha (immutable)",
+                           "4 · OIDC role: ECR push only, nothing else", "5 · nothing is deployed from this repository", "The front end does the same: tag web-<12 chars of its commit>", "Then: Deploy, in quizforge-infra"]):
         b += text(28, 326 + i * 26, s, "note")
-    b += group(605, 290, 575, 230, "B · Front-end-only deploy: manual (deploy-web.yml)", "grp")
-    for i, s in enumerate(["Same approval and OIDC role · refused while paused", "Needs quality, e2e and docker-build green on the commit",
-                           "Builds ONLY the web image, at the commit in web.ref", "Reads the image tag the api runs now (nothing else changes)",
-                           "Targeted apply: aws_ecs_task_definition.web + aws_ecs_service.web", "Refuses a plan that deletes anything but an old task definition", f"Smoke test ({F.SMOKE_WEB} checks)"]):
+    b += group(605, 290, 575, 230, "B · Deploy: quizforge-infra, manual (deploy.yml)", "grp")
+    for i, s in enumerate(["One approval: environment production (OIDC role)", "Refused while paused; images verified in ECR first",
+                           "scope all: newest green commit, or the tags you give", "Drift check, migration BEFORE the new code, one apply",
+                           "scope web-only: targeted apply of the web service only", "web-only refuses a plan that deletes anything but a revision", f"Smoke test ({F.SMOKE_FULL} checks, {F.SMOKE_WEB} for web only)"]):
         b += text(623, 326 + i * 26, s, "note")
     b += arrow(700, 246, 400, 290)
     b += arrow(1000, 246, 880, 290)
-    b += text(20, 548, "Terraform lives only in the back end repository: the front end repository has no Terraform and no AWS role.", "note")
-    b += text(20, 568, "Google and Facebook login credentials are read from AWS Secrets Manager (quizforge/prod/google-login, facebook-login) by the deploy jobs, masked; none is a GitHub secret.", "note")
+    b += text(20, 548, "Terraform lives only in the infrastructure repository (quizforge-infra): the back end and front end repositories hold only an ECR-push role.", "note")
+    b += text(20, 568, "Google and Facebook login credentials are read from AWS Secrets Manager (quizforge/prod/google-login, facebook-login) by the deploy workflow, masked; none is a GitHub secret.", "note")
     b += text(20, 588, "The front end and the back end share only the API contract. Each service keeps its own image and its own ECS service.", "note")
     return svg(1190, 604, b, "Two repositories and two deploy paths: what lives where and how a front end change reaches production")
 
@@ -412,7 +412,7 @@ def cicd():
     b = ""
     b += group(10, 10, 1160, 230, "Pull request (never deploys)", "grp")
     gates = [("quality", "typecheck · lint · tests · eval"), ("integration", "real Postgres"), ("migrations", "drift · policy · applies twice"), ("e2e", "Playwright + Chrome"),
-             ("docker-build", "build + Trivy"), ("terraform-validate", "fmt · validate · Trivy"), ("secrets-scan", "gitleaks"), ("promptfoo", f"guard + prompt rules, {F.PF_OFFLINE} tests"), ("terraform-plan", "plan on the PR (informational)"), ("llm-eval-pr + redteam-sample", "real model: golden set, 50 attacks")]
+             ("docker-build", "build + Trivy"), ("secrets-scan", "gitleaks"), ("promptfoo", f"guard + prompt rules, {F.PF_OFFLINE} tests"), ("llm-eval-pr + redteam-sample", "real model: golden set, 50 attacks")]
     for i, (n, s) in enumerate(gates):
         x = 30 + (i % 5) * 226; y = 48 + (i // 5) * 88
         b += box(x, y, 206, 66, n, s, "ci", small=True)
@@ -420,19 +420,19 @@ def cicd():
     b += group(10, 270, 1160, 240, "merge to main (ruleset: PR + required checks + linear history + no bypass) → pipeline runs again", "grp")
     b += box(30, 318, 230, 66, "the same jobs", "", "ci", small=True)
     b += box(290, 318, 230, 66, "llm-eval (real model gate)", "golden set + promptfoo live", "ai", small=True)
-    b += box(550, 318, 190, 66, "human approval", "environment: production", "sec", small=True)
+    b += box(550, 318, 190, 66, "publish (main only)", "ECR push, no deploy", "sec", small=True)
     b += arrow(260, 351, 290, 351); b += arrow(520, 351, 550, 351)
-    steps = [("build arm64", "tags: sha · web = front end commit"), ("drift check", "plan -refresh-only"), ("migration", "Fargate task BEFORE the code"), ("terraform apply", "rolling + circuit breaker"), ("smoke test", "through CloudFront · 7 asserts")]
+    steps = [("build arm64", "api · worker · redteam: tag = sha"), ("push to ECR", "immutable · push-only OIDC role"), ("then, in quizforge-infra", "Deploy (manual, approval)"), ("drift · migration · apply", "migration BEFORE the code"), ("smoke test", "through CloudFront · 7 asserts")]
     for i, (n, s) in enumerate(steps):
         x = 30 + i * 226
         b += box(x, 428, 206, 60, n, s, "compute", small=True)
         if i: b += arrow(x - 20, 458, x, 458)
     b += arrow(645, 384, 645, 408, "")
     b += path("M645 408 L 130 408 L 130 428", "", 0, 0)
-    b += text(750, 345, "deploy: needs every gate · push to main only", "note")
-    b += text(750, 365, "AWS deploy role: only environment `production` (main only)", "note")
-    b += group(10, 512, 1160, 92, "Front-end-only deploy (manual, deploy-web.yml): same approval and role, refused while paused, needs quality + e2e + docker-build green", "grp")
-    fe = [("build web only", "image tag web-<front end commit>"), ("read the running tag", "the api keeps its image"), ("targeted terraform apply", "web task definition + service"), ("plan guard", "no delete except an old revision"), ("smoke test", "4 checks through CloudFront")]
+    b += text(750, 345, "publish: needs every gate · push to main only", "note")
+    b += text(750, 365, "publish role: ECR push only, `main` only", "note")
+    b += group(10, 512, 1160, 92, "Front end repository: publish on main, then a web-only Deploy in quizforge-infra (approval, refused while paused)", "grp")
+    fe = [("quality · build", "own CI, no AWS role"), ("docker-build + Trivy", "own CI"), ("publish (main)", "web-<12 chars of the commit>"), ("Deploy, scope web-only", "web_tag · no delete except a revision"), ("smoke test", "4 checks through CloudFront")]
     for i, (n, s) in enumerate(fe):
         x = 30 + i * 226
         b += box(x, 540, 206, 52, n, s, "compute", small=True)
@@ -442,9 +442,9 @@ def cicd():
 
 def state_diagram():
     b = ""
-    b += box(30, 130, 250, 100, "infra/bootstrap", "state bucket · ECR · OIDC roles", "ci")
-    b += box(30, 250, 250, 100, "infra/terraform  (prod)", "VPC · RDS · ECS · SQS · Cognito…", "compute")
-    b += box(30, 10, 250, 100, "infra/github", "ruleset · environments · variables", "mgd")
+    b += box(30, 130, 250, 100, "bootstrap/ (quizforge-infra)", "state bucket · ECR · OIDC roles", "ci")
+    b += box(30, 250, 250, 100, "terraform/ (quizforge-infra)", "VPC · RDS · ECS · SQS · Cognito…", "compute")
+    b += box(30, 10, 250, 100, "github/ (quizforge-infra)", "ruleset · environments · variables", "mgd")
     b += group(380, 20, 360, 340, "S3  quizforge-tfstate-<account-id>-us-east-2", "grp mgd")
     b += text(396, 62, "quizforge/bootstrap/terraform.tfstate", "note")
     b += text(396, 86, "quizforge/github/terraform.tfstate", "note")
@@ -876,11 +876,11 @@ def pipeline_overview():
     b += text(10, 24, "1 · Pull request: nothing reaches AWS, nothing is deployed", "t")
     b += box(10, 40, 130, 96, "push a branch", "open a PR", "ext", small=True)
     b += box(170, 40, 460, 96, "", "", "ci", small=True)
-    b += text(400, 62, "11 jobs in parallel (the two real-model jobs use only the model key)", "t-s", "middle")
+    b += text(400, 62, f"{len(F.CI_PR_JOBS)} jobs in parallel (the two real-model jobs use only the model key)", "t-s", "middle")
     b += text(400, 86, "quality (typecheck, lint, tests, offline eval) · integration · migrations", "note", "middle")
-    b += text(400, 104, "e2e · docker-build · terraform-validate · secrets-scan", "note", "middle")
-    b += text(400, 122, f"llm-eval-pr · redteam-sample · terraform-plan · promptfoo OFFLINE ({F.PF_OFFLINE} tests)", "note", "middle")
-    b += box(660, 40, 190, 96, "9 required checks", "green + linear history", "sec", small=True)
+    b += text(400, 104, "e2e · docker-build · secrets-scan", "note", "middle")
+    b += text(400, 122, f"llm-eval-pr · redteam-sample · promptfoo OFFLINE ({F.PF_OFFLINE} tests)", "note", "middle")
+    b += box(660, 40, 190, 96, f"{len(F.CI_REQUIRED)} required checks", "green + linear history", "sec", small=True)
     b += box(880, 40, 130, 96, "squash merge", "no bypass", "data", small=True)
     for x1, x2 in ((140, 170), (630, 660), (850, 880)):
         b += arrow(x1, 88, x2, 88)
@@ -899,7 +899,7 @@ def pipeline_overview():
 
     b += text(10, 350, "3 · Always on: nobody has to push", "t")
     b += box(10, 366, 280, 70, "nightly eval.yml (05:43 UTC)", "golden set + promptfoo LIVE: model or provider drift", "ai", small=True)
-    b += box(310, 366, 250, 70, "nightly drift.yml (06:17 UTC)", "terraform vs the real account → issue", "ci", small=True)
+    b += box(310, 366, 250, 70, "infra repo: drift.yml (06:17 UTC)", "terraform vs the real account → issue", "ci", small=True)
     b += box(580, 366, 280, 70, "manual: compare structures", "9 variants × 5 documents → HTML report", "mgd", small=True)
     b += box(880, 366, 290, 70, "production, every quiz", "worker + scorer → traces and scores", "data", small=True)
     b += box(10, 456, 280, 46, "Langfuse: experiment run", "", "ext", small=True)
@@ -927,11 +927,11 @@ def repo_structure():
     b += panel(10, 180, 300, 190, "packages/  (shared code)", "ai", [("core", f"schemas, guard, {F.RULES_TOTAL} rules, scoring (browser-safe)"), ("llm", "graph, prompts, guardLlm, output rails, quality"), ("db", "Drizzle schema, migrations, repositories"), ("detector", "Prompt Guard 2 (ONNX, en · pt · es), flag only")])
     b += panel(330, 10, 300, 150, "tests and quality gates", "ci", [("evals/", "golden set, comparison, reports, publish-prompts"), ("promptfoo/", f"{F.PF_OFFLINE} offline + {F.PF_LIVE} live tests, provider, assertions"), ("e2e/", "Playwright in real Chrome (4 local services)")])
     b += panel(330, 180, 300, 190, "data of the agent", "data", [("prompts/", "prompts.lock.json: hash of every prompt"), ("evals/fixtures/", "test READMEs (dropdown + golden set)"), ("evals/references/", "hand-written reference questions"), ("docker/ · docker-compose", "local Postgres + SQS emulator")])
-    b += panel(650, 10, 300, 150, "infra/  (Terraform)", "sec", [("bootstrap/", "state bucket, ECR (4 repos), OIDC roles (by hand)"), ("terraform/", "the platform: VPC, ECS, RDS, SQS, edge, alarms"), ("github/", "ruleset, environments, variables (by hand)")])
-    b += panel(650, 180, 300, 190, "operations and docs", "mgd", [(".github/workflows/", "ci · deploy-web · eval · drift · compare · release"), ("scripts/", "pause · resume · audit-aws · promptfoo · red team · reports"), ("docs/", "the committed reports (HTML)"), ("site/", "generator of the architecture report")])
+    b += panel(650, 10, 300, 150, "quizforge-infra  (separate repository)", "sec", [("bootstrap/", "state bucket, ECR (4 repos), OIDC roles (by hand)"), ("terraform/", "the platform: VPC, ECS, RDS, SQS, edge, alarms"), ("github/", "ruleset, environments, variables (by hand)")])
+    b += panel(650, 180, 300, 190, "operations and docs", "mgd", [(".github/workflows/", "ci · eval · compare · release"), ("scripts/", "promptfoo · red team · reports · local stack"), ("docs/", "the committed reports (HTML)"), ("site/", "generator of the architecture report")])
     # dependencies
     b += arrow(160, 160, 160, 180, "imports")
-    b += text(10, 398, "apps import packages; evals, promptfoo and e2e test the same code the services run (they import packages, never the apps); infra is separate and only knows image tags.", "note")
+    b += text(10, 398, "apps import packages; evals, promptfoo and e2e test the same code the services run (they import packages, never the apps); the infrastructure is in its own repository and only knows image tags.", "note")
     b += text(10, 418, "One image for the worker, scorer and sweeper (apps/worker); the migration task uses the api image; web (own repository) and redteam (docker/redteam) have their own.", "note")
     return svg(970, 438, b, "Where things live in the repository")
 
@@ -1112,6 +1112,6 @@ def eval_ladder():
     b += box(cx + cw / 2 - 230, 10 + step_y * (n - 1) + 48, 460, 44, "Graded by plain code with canary tokens", "a canary in the reply = the model obeyed; no model judges a model", "sec", small=True)
     y = 10 + inner_h + (n - 1) * (step_y + 14) + 28
     b += text(10, y, "Outside to inside: it runs less often and costs more (nothing, a few cents, a night of Fargate and model calls). Sources: ci.yml, eval.yml, redteam.tf.", "note")
-    b += text(10, y + 20, "Manual only: eval-compare.yml compares generation structures (never part of the gate). drift.yml is a nightly Terraform drift check of the AWS account, not an AI test.", "note")
+    b += text(10, y + 20, "Manual only: eval-compare.yml compares generation structures (never part of the gate). drift.yml (infrastructure repository) is a nightly Terraform drift check of the AWS account, not an AI test.", "note")
     b += text(10, y + 40, "Not covered: the live suites are small samples (one run per case) and the nightly run finds a model that obeys often, not one that obeys rarely. A pass is not a proof.", "note")
     return svg(1100, y + 56, b, "AI tests across CI/CD: layers by when they run and what they cost")

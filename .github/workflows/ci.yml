@@ -18,9 +18,6 @@ env:
   NODE_VERSION: "22"
   # promptfoo needs Node >= 22.22; the version is pinned so a new release cannot change the gate by itself
   PROMPTFOO_VERSION: "0.124.1"
-  # terraform reads TF_VAR_*: the pipeline never "resumes" a paused environment by accident
-  TF_VAR_alarm_email: ${{ vars.ALARM_EMAIL }} # who receives the CloudWatch alarms (repository variable; empty = nobody is subscribed)
-  TF_VAR_paused: ${{ vars.PAUSED || 'false' }}
 
 # `shell: bash` makes GitHub run `bash -eo pipefail`: a failure on the left of a pipe can never be masked
 defaults:
@@ -28,7 +25,6 @@ defaults:
     shell: bash
 
 jobs:
-  # ---------------------------------------------------------------- quality
   quality:
     name: quality
     runs-on: ubuntu-24.04
@@ -209,26 +205,6 @@ jobs:
               aquasec/trivy:0.58.1 image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --ignorefile /.trivyignore quizforge-$s:ci
           done
 
-  # ---------------------------------------------------------------- terraform static checks
-  terraform-validate:
-    name: terraform-validate
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with: { terraform_version: "1.x" }
-      - name: fmt, init, validate (bootstrap, platform, github)
-        run: |
-          terraform fmt -check -recursive infra
-          for d in infra/bootstrap infra/terraform infra/github; do
-            (cd $d && terraform init -backend=false -input=false >/dev/null && terraform validate)
-          done
-      - name: Security scan of the infrastructure code
-        run: |
-          docker run --rm -v "$PWD:/src" aquasec/trivy:0.58.1 config --severity HIGH,CRITICAL --exit-code 1 \
-            --ignorefile /src/.trivyignore /src/infra
-
   # ---------------------------------------------------------------- secrets
   secrets-scan:
     name: secrets-scan
@@ -390,7 +366,7 @@ jobs:
   publish-prompts:
     name: publish-prompts
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [quality, integration, migrations, e2e, docker-build, terraform-validate, secrets-scan, promptfoo, llm-eval]
+    needs: [quality, integration, migrations, e2e, docker-build, secrets-scan, promptfoo, llm-eval]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: llm-eval # holds the Langfuse keys; only main may use it
@@ -408,181 +384,13 @@ jobs:
           GITHUB_SHA: ${{ github.sha }}
         run: pnpm prompts:publish
 
-  # ---------------------------------------------------------------- terraform plan on PRs (comment)
-  terraform-plan:
-    name: terraform-plan
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    permissions:
-      id-token: write # OIDC: short-lived read-only credentials
-      contents: read
-      pull-requests: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with: { terraform_version: "1.x", terraform_wrapper: false }
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION }}
-      - name: terraform plan (read-only role, no lock)
-        working-directory: infra/terraform
-        run: |
-          terraform init -input=false \
-            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" -backend-config="key=quizforge/prod/terraform.tfstate" \
-            -backend-config="region=${{ vars.AWS_REGION }}" -backend-config="use_lockfile=true" -backend-config="encrypt=true"
-          set +e
-          terraform plan -input=false -lock=false -no-color -detailed-exitcode -var "image_tag=pr-${{ github.event.pull_request.number }}" -out=tfplan > plan.txt 2>&1
-          echo "code=$?" >> "$GITHUB_OUTPUT"
-        id: plan
-      - name: Comment the plan on the PR
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            let plan = fs.readFileSync('infra/terraform/plan.txt', 'utf8');
-            if (plan.length > 60000) plan = plan.slice(0, 60000) + '\n... (truncated, see the job log)';
-            const code = '${{ steps.plan.outputs.code }}';
-            const status = code === '0' ? 'No changes' : code === '2' ? 'Changes pending' : 'Plan FAILED';
-            const body = `### Terraform plan: ${status}\n<details><summary>Show plan</summary>\n\n\`\`\`\n${plan}\n\`\`\`\n</details>`;
-            await github.rest.issues.createComment({ ...context.repo, issue_number: context.issue.number, body });
-      - name: Fail the check if the plan errored
-        if: steps.plan.outputs.code == '1'
-        run: exit 1
-
-  # ---------------------------------------------------------------- deploy (main only, after EVERY gate)
-  deploy:
-    name: deploy
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [quality, integration, migrations, e2e, docker-build, terraform-validate, secrets-scan, promptfoo, llm-eval]
-    runs-on: ubuntu-24.04-arm # native arm64 images for Graviton Fargate
-    timeout-minutes: 60
-    environment: production # manual approval + the only context the deploy IAM role trusts
-    concurrency: { group: deploy-production, cancel-in-progress: false }
-    permissions:
-      id-token: write
-      contents: read
-    env:
-      TAG: ${{ github.sha }}
-    steps:
-      - name: Refuse to deploy while the environment is paused
-        run: |
-          if [ "${{ vars.PAUSED }}" = "true" ]; then
-            echo "::error::The environment is PAUSED (database stopped, no NAT, services at 0). Run scripts/resume.sh first, then re-run this workflow."
-            exit 1
-          fi
-      - uses: actions/checkout@v4
-      - name: Read the pinned front end commit (web.ref)
-        id: webref
-        run: echo "sha=$(tr -d '[:space:]' < web.ref)" >> "$GITHUB_OUTPUT"
-      - name: Check out the front end (jhgcc1/quizforge-web at web.ref) into web/
-        uses: actions/checkout@v4
-        with:
-          repository: jhgcc1/quizforge-web
-          ref: ${{ steps.webref.outputs.sha }}
-          path: web
-      - uses: hashicorp/setup-terraform@v3
-        with: { terraform_version: "1.x", terraform_wrapper: false }
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION }}
-      - uses: aws-actions/amazon-ecr-login@v2
-        id: ecr
-      - uses: docker/setup-buildx-action@v3
-      - name: Social login credentials from AWS Secrets Manager
-        uses: ./.github/actions/social-secrets
-      - name: "The web image is tagged with the front end commit (a front-end-only deploy reuses it)"
-        run: echo "WEB_TAG=web-$(cut -c1-12 <<< '${{ steps.webref.outputs.sha }}')" >> "$GITHUB_ENV"
-
-      - name: "Build and push images (api and worker tagged with the commit sha, web with the front end commit; immutable)"
-        run: |
-          for s in api worker web redteam; do
-            repo="${{ steps.ecr.outputs.registry }}/quizforge/$s"
-            t=$TAG; [ "$s" = web ] && t=$WEB_TAG
-            if aws ecr describe-images --repository-name "quizforge/$s" --image-ids imageTag=$t >/dev/null 2>&1; then
-              echo "$s:$t already in ECR, skipping"; continue
-            fi
-            if [ "$s" = web ]; then dockerfile=web/Dockerfile; ctx=web; elif [ "$s" = redteam ]; then dockerfile=docker/redteam/Dockerfile; ctx=.; else dockerfile=apps/$s/Dockerfile; ctx=.; fi
-            T=""; [ "$s" = worker ] && T="--target runtime-detector" # the worker image carries the Llama Prompt Guard 2 model
-            [ "$s" = redteam ] && T="--build-arg GIT_SHA=$TAG" # the red team report names the commit
-            docker buildx build -f $dockerfile $T -t "$repo:$t" --push \
-              --cache-from type=gha,scope=$s-arm --cache-to type=gha,scope=$s-arm,mode=max $ctx
-          done
-
-      - name: terraform init (remote state, native S3 locking)
-        working-directory: infra/terraform
-        run: |
-          terraform init -input=false \
-            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" -backend-config="key=quizforge/prod/terraform.tfstate" \
-            -backend-config="region=${{ vars.AWS_REGION }}" -backend-config="use_lockfile=true" -backend-config="encrypt=true"
-
-      - name: Drift check (state vs reality) before changing anything
-        working-directory: infra/terraform
-        run: |
-          set +e
-          terraform plan -input=false -no-color -detailed-exitcode -refresh-only -var "image_tag=$TAG" -var "web_image_tag=$WEB_TAG" > drift.txt 2>&1
-          code=$?
-          cat drift.txt | tail -40
-          if [ $code -eq 1 ]; then echo "::error::terraform could not read the state/infrastructure"; exit 1; fi
-          if [ $code -eq 2 ]; then echo "::warning::out-of-band changes detected (see the log); the apply below will reconcile them"; fi
-
-      - name: Database migration BEFORE the new code (expand/contract keeps the old code working)
-        id: premigrate
-        working-directory: infra/terraform
-        run: |
-          if terraform state show aws_ecs_task_definition.migrate >/dev/null 2>&1; then
-            terraform apply -input=false -auto-approve -var "image_tag=$TAG" -var "web_image_tag=$WEB_TAG" -target=aws_ecs_task_definition.migrate
-            ../../scripts/run-migration.sh
-            echo "first=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "first deployment: the migration runs right after the infrastructure exists"
-            echo "first=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: terraform apply (rolling deploy with circuit breaker; waits for steady state)
-        working-directory: infra/terraform
-        run: terraform apply -input=false -auto-approve -var "image_tag=$TAG" -var "web_image_tag=$WEB_TAG"
-
-      - name: "Database migration (first deployment only, the database did not exist before the apply)"
-        if: steps.premigrate.outputs.first == 'true'
-        working-directory: infra/terraform
-        run: ../../scripts/run-migration.sh
-
-      - name: Smoke test through CloudFront
-        working-directory: infra/terraform
-        run: |
-          url=$(terraform output -raw app_url)
-          echo "app: $url"
-          expect() { # <description> <allowed http codes, regex> <curl args...>
-            local what=$1 want=$2; shift 2
-            local got; got=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$@" || true)
-            if ! [[ "$got" =~ ^($want)$ ]]; then echo "::error::$what: expected HTTP $want, got $got"; exit 1; fi
-            echo "ok  $what ($got)"
-          }
-          expect "entry page sends visitors to the login" 307 "$url/"
-          expect "sign-in error page is shown"        200 "$url/?error=login_denied"
-          expect "login goes to the Cognito Hosted UI" 307 "$url/auth/login"
-          expect "API spec is served"          200 "$url/openapi.json"
-          expect "API requires a token"        401 "$url/v1/quizzes"
-          expect "bad token is rejected"       401 -H "Authorization: Bearer not.a.jwt" "$url/v1/quizzes"
-          expect "BFF refuses anonymous calls" 401 "$url/bff/v1/quizzes"
-          expect "app pages need a session"    307 "$url/app"
-          # the ALB must not be reachable around CloudFront: its security group drops the connection (000)
-          # and, even past that, the listener answers 403 without the secret header
-          alb_ip=$(getent ahostsv4 "$(terraform output -raw alb_dns)" | awk '{print $1; exit}')
-          expect "ALB cannot be reached around CloudFront" "000|403" --connect-timeout 6 "http://$alb_ip/"
-          echo "### Deployed \`${TAG::7}\` to $url" >> "$GITHUB_STEP_SUMMARY"
-
   # ---------------------------------------------------------------- publish images to ECR (main only, after EVERY gate)
-  # Builds and pushes the images the infra repository (jhgcc1/quizforge-infra) deploys. It deploys NOTHING: the role can only push to ECR.
-  # Tags are immutable (tag = commit sha) and an existing tag is skipped. Until the cutover the `deploy` job above still builds and pushes the
-  # same images (it skips whichever tag is already in ECR), and stays the production path.
+  # Builds and pushes the images that jhgcc1/quizforge-infra deploys (workflow Deploy, manual, with approval). This job deploys NOTHING: its
+  # role can only push to ECR. Tags are immutable (tag = commit sha); an existing tag is skipped.
   publish:
     name: publish
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [quality, integration, migrations, e2e, docker-build, terraform-validate, secrets-scan, promptfoo, llm-eval]
+    needs: [quality, integration, migrations, e2e, docker-build, secrets-scan, promptfoo, llm-eval]
     runs-on: ubuntu-24.04-arm # native arm64 images for Graviton Fargate
     timeout-minutes: 45
     concurrency: { group: publish-images, cancel-in-progress: false }

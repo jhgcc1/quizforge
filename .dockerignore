@@ -9,7 +9,6 @@
 playwright-report
 test-results
 e2e
-infra
 docs
 **/*.test.ts
 **/dist

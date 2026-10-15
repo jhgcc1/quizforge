@@ -13,9 +13,8 @@ echo "=== 2. gitleaks (history + working tree)"
 docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.21.2 detect --source /repo --redact 2>&1 | tail -6
 echo "GATE2 exit=${PIPESTATUS[0]}"
 
-echo "=== 3. trivy config (terraform)"
-docker run --rm -v "$PWD:/src" aquasec/trivy:0.58.1 config --severity HIGH,CRITICAL --ignorefile /src/.trivyignore /src/infra 2>&1 | tail -80
-echo "GATE3 done"
+echo "=== 3. (infrastructure config scan moved to jhgcc1/quizforge-infra)"
+echo "GATE3 skipped"
 
 echo "=== 4. trivy images"
 for s in api worker web; do
