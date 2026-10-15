@@ -81,8 +81,28 @@ export const openApiDocument = {
           },
         },
       },
-      QuizEnvelope: { type: "object", properties: { quiz: { type: "object" } } },
-      QuizWithQuestions: { type: "object", properties: { quiz: { type: "object" }, questions: { type: "array", items: { type: "object" } } } },
+      GenerationProgress: {
+        type: ["object", "null"],
+        required: ["phase", "step", "totalSteps"],
+        description:
+          "Where a running generation is, in discrete steps (not a percentage). Non-null only while status is generating and the worker has reported a phase. totalSteps is what is known now and can change while the job runs (a review step can appear), so draw step/totalSteps from the latest response; step does not go down.",
+        properties: {
+          phase: { type: "string", description: "reading_document, planning (plan-then-write only), writing_questions, checking, reviewing, saving. New phases may be added: treat an unknown one as working." },
+          step: { type: "integer", minimum: 1 },
+          totalSteps: { type: "integer", minimum: 1 },
+          detail: { type: "string", description: "Sub-progress in plain English, e.g. \"section 2 of 5\" or \"round 1 of 2\"" },
+        },
+      },
+      QuizSummary: {
+        type: "object",
+        properties: {
+          id: { type: "string", format: "uuid" },
+          status: { type: "string", enum: ["queued", "generating", "ready", "failed"] },
+          generationProgress: { $ref: "#/components/schemas/GenerationProgress" },
+        },
+      },
+      QuizEnvelope: { type: "object", properties: { quiz: { $ref: "#/components/schemas/QuizSummary" } } },
+      QuizWithQuestions: { type: "object", properties: { quiz: { $ref: "#/components/schemas/QuizSummary" }, questions: { type: "array", items: { type: "object" } } } },
     },
   },
 } as const;

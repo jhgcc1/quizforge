@@ -55,6 +55,24 @@ export const IdempotencyKeySchema = z.string().regex(/^[A-Za-z0-9_\-:.]{8,128}$/
 const iso = z.string();
 const status = z.enum(["queued", "generating", "ready", "failed"]);
 
+/** The phases of a generation, in order (see packages/llm/src/progress.ts for what each one is). The list may grow; see GenerationProgressSchema. */
+export const GENERATION_PHASES = ["reading_document", "planning", "writing_questions", "checking", "reviewing", "saving"] as const;
+
+/**
+ * Where a running generation is, as discrete steps (never a percentage). `totalSteps` is what is known now and can change while the job
+ * runs (e.g. a review step appears when the checks find something to fix even though critique was off): draw step/totalSteps from the
+ * latest response, the bar may re-scale, `step` does not go down. `phase` is a plain string, not a closed enum, so a phase added
+ * later cannot make an older browser reject the whole response: treat an unknown one as "working" and still draw the bar.
+ */
+export const GenerationProgressSchema = z.object({
+  phase: z.string(),
+  step: z.number().int().min(1),
+  totalSteps: z.number().int().min(1),
+  /** Sub-progress in plain English: "section 2 of 5", "round 1 of 2". */
+  detail: z.string().optional(),
+});
+export type GenerationProgress = z.output<typeof GenerationProgressSchema>;
+
 export const QuizSummarySchema = z.object({
   id: z.string().uuid(),
   status,
@@ -66,6 +84,12 @@ export const QuizSummarySchema = z.object({
   critique: z.boolean(),
   error: z.string().nullable(),
   createdAt: iso,
+  /**
+   * Added in contract 1.1.0: optional AND nullable, so old clients and old servers keep working. Present (not null) only while
+   * status is "generating" and the worker has reported a phase; null otherwise (queued, ready, failed). Named apart from the history
+   * list's `progress` (what the user did with a quiz).
+   */
+  generationProgress: GenerationProgressSchema.nullable().optional(),
 });
 export type QuizSummary = z.output<typeof QuizSummarySchema>;
 

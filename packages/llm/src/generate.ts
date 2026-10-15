@@ -11,6 +11,7 @@ import { scoreTrace, traced } from "./observability.js";
 import { PROMPT_VERSION } from "./prompts.js";
 import { runQuizGraph, type QuizGraphInput } from "./quiz-graph.js";
 import type { Strategy } from "./router.js";
+import type { ProgressListener } from "./progress.js";
 import type { BaseCheckpointSaver } from "@langchain/langgraph";
 
 export interface GenerateQuizParams {
@@ -35,6 +36,8 @@ export interface GenerateQuizParams {
   trace?: { sessionId?: string; userId?: string; requestId?: string; tags?: string[] };
   threadId?: string;
   checkpointer?: BaseCheckpointSaver;
+  /** Told which phase the generation is in (see progress.ts). Best effort: errors thrown by it are ignored. */
+  onProgress?: ProgressListener;
 }
 
 export interface GeneratedQuizResult {
@@ -75,7 +78,7 @@ export async function generateQuiz(params: GenerateQuizParams): Promise<Generate
     },
     async (ctx) => {
       const budget = new JobBudget(undefined, p.budgetState);
-      const run = await runQuizGraph({ llm: p.llm, budget }, p.input, {
+      const run = await runQuizGraph({ llm: p.llm, budget, ...(p.onProgress ? { onProgress: p.onProgress } : {}) }, p.input, {
         ...(p.threadId ? { threadId: p.threadId } : {}),
         ...(p.checkpointer ? { checkpointer: p.checkpointer } : {}),
         ...(ctx.callbacks.length ? { callbacks: ctx.callbacks } : {}),

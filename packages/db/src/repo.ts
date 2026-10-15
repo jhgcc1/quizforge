@@ -340,6 +340,26 @@ export async function claimQuiz(
   });
 }
 
+export interface QuizPhase {
+  phase: string;
+  step: number;
+  totalSteps: number;
+  detail?: string | undefined;
+}
+
+/**
+ * Record which phase a running generation is in (one cheap UPDATE). Only while the quiz is `generating`, so a late write can
+ * never resurrect progress on a quiz that is already ready or failed. Does not touch updated_at (the sweeper's clock).
+ */
+export async function setQuizPhase(db: Db, quizId: string, p: QuizPhase): Promise<void> {
+  await db
+    .update(t.quizzes)
+    .set({ phase: p.phase, phaseStep: p.step, phaseTotal: p.totalSteps, phaseDetail: p.detail ?? null, phaseUpdatedAt: new Date() })
+    .where(and(eq(t.quizzes.id, quizId), eq(t.quizzes.status, "generating")));
+}
+
+const NO_PHASE = { phase: null, phaseStep: null, phaseTotal: null, phaseDetail: null, phaseUpdatedAt: null } as const;
+
 export async function saveJobBudget(db: Db, jobId: string, budgetState: unknown): Promise<void> {
   await db.update(t.generationJobs).set({ budgetState }).where(eq(t.generationJobs.id, jobId));
 }
@@ -388,7 +408,7 @@ export async function completeQuiz(db: Db, p: CompleteQuizInput): Promise<void> 
     }
     await tx
       .update(t.quizzes)
-      .set({ status: "ready", numQuestions: p.questions.length, sourceId: p.sourceId, strategyUsed: p.strategyUsed, language: p.language ?? null, error: null, updatedAt: new Date() })
+      .set({ status: "ready", numQuestions: p.questions.length, sourceId: p.sourceId, strategyUsed: p.strategyUsed, language: p.language ?? null, error: null, updatedAt: new Date(), ...NO_PHASE })
       .where(eq(t.quizzes.id, p.quizId));
     await tx
       .update(t.generationJobs)
@@ -413,7 +433,7 @@ export async function completeQuiz(db: Db, p: CompleteQuizInput): Promise<void> 
 
 export async function failQuiz(db: Db, p: { quizId: string; jobId?: string | undefined; error: string }): Promise<void> {
   await db.transaction(async (tx) => {
-    await tx.update(t.quizzes).set({ status: "failed", error: p.error.slice(0, 1000), updatedAt: new Date() }).where(eq(t.quizzes.id, p.quizId));
+    await tx.update(t.quizzes).set({ status: "failed", error: p.error.slice(0, 1000), updatedAt: new Date(), ...NO_PHASE }).where(eq(t.quizzes.id, p.quizId));
     if (p.jobId) {
       await tx.update(t.generationJobs).set({ status: "failed", error: p.error.slice(0, 1000), finishedAt: new Date() }).where(eq(t.generationJobs.id, p.jobId));
     }

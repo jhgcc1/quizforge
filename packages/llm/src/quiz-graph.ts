@@ -23,6 +23,7 @@ import {
   writeUser,
   type PromptVariant,
 } from "./prompts.js";
+import { progressFor, type GenerationPhase, type ProgressListener } from "./progress.js";
 import { chooseStrategy, type Strategy } from "./router.js";
 import { lintQuestion } from "./lint.js";
 import { pickSections, selectQuestions, sortByDifficulty } from "./select.js";
@@ -65,6 +66,11 @@ export interface QuizGraphDeps {
   concurrency?: number;
   /** Sections sampled by map-reduce (each yields 2 candidates). */
   mapSections?: number;
+  /**
+   * Told which phase the run is entering (see progress.ts). Fire and forget: it is called synchronously at the start of a node,
+   * and a listener that throws is ignored, so reporting progress can never fail a run.
+   */
+  onProgress?: ProgressListener;
 }
 
 /** Quality gate failed even after revisions (e.g. a quote that is not in the document). Retryable at job level. */
@@ -133,6 +139,14 @@ export function buildQuizGraph(deps: QuizGraphDeps, checkpointer?: BaseCheckpoin
   const maxRounds = deps.maxRounds ?? 2;
   const track = (u: Usage, s: S) => ({ usage: addUsage(s.usage, u), budget: deps.budget.snapshot() });
 
+  const say = (s: S, phase: GenerationPhase, detail?: string, revised = s.round > 0) => {
+    try {
+      deps.onProgress?.(progressFor(phase, { critique: Boolean(s.input.critique), planFirst: Boolean(s.input.planFirst), revised }, detail));
+    } catch {
+      /* progress is best effort */
+    }
+  };
+
   const route = async (s: S): Promise<Partial<S>> => {
     const requested = s.input.strategy ?? "auto";
     if (requested !== "auto") {
@@ -147,6 +161,8 @@ export function buildQuizGraph(deps: QuizGraphDeps, checkpointer?: BaseCheckpoin
     if (s.strategy === "section-map-reduce") {
       const sections = pickSections(splitSections(sourceText), deps.mapSections ?? 5, topic);
       if (sections.length === 0) throw new NonRetryableError("document has no usable sections");
+      let done = 0;
+      say(s, "writing_questions", `section 1 of ${sections.length}`);
       const Candidates = z.object({ questions: z.array(GeneratedQuestionSchema).min(1).max(4) });
       let usage = emptyUsage();
       let repairs = 0;
@@ -162,6 +178,8 @@ export function buildQuizGraph(deps: QuizGraphDeps, checkpointer?: BaseCheckpoin
         });
         usage = addUsage(usage, r.usage);
         repairs += r.repairs;
+        done += 1;
+        if (done < sections.length) say(s, "writing_questions", `section ${done + 1} of ${sections.length}`);
         return r.value.questions;
       });
       const chosen = selectQuestions(results, n);
@@ -174,6 +192,7 @@ export function buildQuizGraph(deps: QuizGraphDeps, checkpointer?: BaseCheckpoin
         trail: [...s.trail, `generate:map-reduce(${sections.length} sections)`],
       };
     }
+    say(s, "writing_questions");
     const doc = sourceText.length > MAX_SINGLE_SHOT_CHARS ? sourceText.slice(0, MAX_SINGLE_SHOT_CHARS) : sourceText;
     const Quiz = z.object({ questions: z.array(GeneratedQuestionSchema).length(n) });
     const r = await generateStructured({
@@ -197,6 +216,7 @@ export function buildQuizGraph(deps: QuizGraphDeps, checkpointer?: BaseCheckpoin
   /** plan-then-write, step 1: choose the facts to test; facts whose quote is not in the document are dropped here. */
   const plan = async (s: S): Promise<Partial<S>> => {
     const { sourceText, numQuestions: n, topic } = s.input;
+    say(s, "planning");
     const doc = sourceText.length > MAX_SINGLE_SHOT_CHARS ? sourceText.slice(0, MAX_SINGLE_SHOT_CHARS) : sourceText;
     const Plan = z.object({ facts: z.array(z.object({ topic: z.string().min(1), quote: z.string().min(1), angle: z.string().min(1) })).min(n) });
     const r = await generateStructured({
@@ -216,6 +236,7 @@ export function buildQuizGraph(deps: QuizGraphDeps, checkpointer?: BaseCheckpoin
 
   /** plan-then-write, step 2: one question per planned fact. */
   const write = async (s: S): Promise<Partial<S>> => {
+    say(s, "writing_questions");
     const Quiz = z.object({ questions: z.array(GeneratedQuestionSchema).length(s.facts.length) });
     const r = await generateStructured({
       llm: deps.llm,
@@ -231,6 +252,8 @@ export function buildQuizGraph(deps: QuizGraphDeps, checkpointer?: BaseCheckpoin
 
   /** Deterministic gate: duplicates and verbatim grounding. Resets deterministic issues each pass. */
   const check = async (s: S): Promise<Partial<S>> => {
+    // Only the first pass is its own step; the re-checks after a revise belong to the `reviewing` step.
+    if (s.round === 0 && s.trail.every((t) => !t.startsWith("critique"))) say(s, "checking");
     const issues: Record<number, string[]> = {};
     const add = (i: number, msg: string) => (issues[i] = [...(issues[i] ?? []), msg]);
     const grounding = checkGrounding({ questions: s.questions }, s.input.sourceText);
@@ -247,6 +270,7 @@ export function buildQuizGraph(deps: QuizGraphDeps, checkpointer?: BaseCheckpoin
   };
 
   const critique = async (s: S): Promise<Partial<S>> => {
+    say(s, "reviewing", `round 1 of ${maxRounds}`);
     const r = await generateStructured({
       llm: deps.llm,
       budget: deps.budget,
@@ -265,6 +289,7 @@ export function buildQuizGraph(deps: QuizGraphDeps, checkpointer?: BaseCheckpoin
   };
 
   const revise = async (s: S): Promise<Partial<S>> => {
+    say(s, "reviewing", `round ${s.round + 1} of ${maxRounds}`, true);
     const indexes = Object.keys(s.issues).map(Number).sort((a, b) => a - b);
     const flagged = indexes.map((index) => ({ index, question: toReview(s.questions[index - 1]!), issues: s.issues[index]! }));
     const Revised = z.object({ questions: z.array(GeneratedQuestionSchema).length(flagged.length) });

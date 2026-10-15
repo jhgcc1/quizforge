@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import { JobBudget } from "./budget.js";
 import { BudgetExceededError } from "./errors.js";
 import type { ChatMessage, CompleteOptions, LlmClient } from "./llm.js";
-import { QualityGateError, runQuizGraph } from "./quiz-graph.js";
+import type { GenerationProgress } from "./progress.js";
+import { QualityGateError, runQuizGraph, type QuizGraphDeps, type QuizGraphInput } from "./quiz-graph.js";
 
 const usage = { promptTokens: 100, completionTokens: 50, cachedTokens: 0 };
 
@@ -275,5 +276,81 @@ describe("plan-then-write structure and prompt variants", () => {
     const f = scripted({ "generate:single-shot": (m) => ((system = m.find((x) => x.role === "system")!.content), ok(...five)) });
     await runQuizGraph({ llm: f.llm, budget: new JobBudget() }, { sourceText: SHORT_DOC, numQuestions: 5, strategy: "single-shot", promptVariant: "conceptual" });
     expect(system).toContain("understanding over trivia");
+  });
+});
+
+describe("progress reporting (onProgress)", () => {
+  const shown = (events: GenerationProgress[]) => events.map((e) => `${e.step}/${e.totalSteps} ${e.phase}${e.detail ? ` (${e.detail})` : ""}`);
+  const run = async (f: ReturnType<typeof scripted>, input: Partial<QuizGraphInput>, extra: Partial<QuizGraphDeps> = {}) => {
+    const events: GenerationProgress[] = [];
+    await runQuizGraph({ llm: f.llm, budget: new JobBudget(), onProgress: (p) => events.push(p), ...extra }, { sourceText: SHORT_DOC, numQuestions: 5, strategy: "single-shot", ...input });
+    return events;
+  };
+
+  it("single-shot without critique: writing, then checking (reading and saving, done by the worker, complete the 4 steps)", async () => {
+    expect(shown(await run(scripted({ "generate:single-shot": ok(...five) }), {}))).toEqual(["2/4 writing_questions", "3/4 checking"]);
+  });
+
+  it("with critique: writing, checking, reviewing round 1 of 2 (the step is already counted)", async () => {
+    const f = scripted({
+      "generate:single-shot": ok(...five),
+      critique: JSON.stringify({ verdicts: five.map((_, i) => ({ index: i + 1, ok: true, issues: [] })) }),
+    });
+    expect(shown(await run(f, { critique: true }))).toEqual(["2/5 writing_questions", "3/5 checking", "4/5 reviewing (round 1 of 2)"]);
+  });
+
+  it("critique then two revise rounds: the re-checks add no steps, the rounds are named", async () => {
+    const bad = [...five];
+    bad[0] = q(0, { sourceQuote: "totally made up quote here" });
+    const f = scripted({
+      "generate:single-shot": ok(...bad),
+      critique: JSON.stringify({ verdicts: [] }),
+      revise: ok(q(0, { sourceQuote: "still made up quote" })),
+    });
+    const events: GenerationProgress[] = [];
+    await runQuizGraph({ llm: f.llm, budget: new JobBudget(), onProgress: (p) => events.push(p) }, { sourceText: SHORT_DOC, numQuestions: 5, strategy: "single-shot", critique: true }).catch(() => undefined);
+    expect(shown(events)).toEqual(["2/5 writing_questions", "3/5 checking", "4/5 reviewing (round 1 of 2)", "4/5 reviewing (round 1 of 2)", "4/5 reviewing (round 2 of 2)"]);
+  });
+
+  it("without critique, a revise forced by the checks adds a reviewing step: the total grows, the step never goes down", async () => {
+    const bad = [...five];
+    bad[2] = q(2, { sourceQuote: "this sentence does not exist in the document" });
+    const f = scripted({ "generate:single-shot": ok(...bad), "revise:round-1": ok(q(2)) });
+    const events = await run(f, {});
+    expect(shown(events)).toEqual(["2/4 writing_questions", "3/4 checking", "4/5 reviewing (round 1 of 2)"]);
+    const steps = events.map((e) => e.step);
+    expect(steps).toEqual([...steps].sort((a, b) => a - b));
+  });
+
+  it("plan-then-write has its own planning step", async () => {
+    const facts = JSON.stringify({ facts: Array.from({ length: 7 }, (_, i) => ({ topic: `t${i}`, quote: quoteOf(i), angle: "a" })) });
+    const f = scripted({ plan: facts, "generate:write": ok(...five) });
+    expect(shown(await run(f, { planFirst: true }))).toEqual(["2/5 planning", "3/5 writing_questions", "4/5 checking"]);
+  });
+
+  it("map-reduce reports which section is being written", async () => {
+    const f = scripted({
+      "generate:section": (m) => {
+        const num = /<document section="Topic (\d+)">/.exec(m.at(-1)!.content)?.[1];
+        const i = num ? Number(num) - 1 : 7;
+        return ok(q(i, { prompt: `Question one about topic ${i + 1} please?` }), q(i, { prompt: `Question two about topic ${i + 1} please?`, difficulty: "hard" }));
+      },
+    });
+    const long = DOC + "\n\n## Extra\n" + "More padding text to make the document long. ".repeat(500);
+    const events = await run(f, { sourceText: long, numQuestions: 6, strategy: "auto" }, { mapSections: 5, concurrency: 1 });
+    expect(shown(events)).toEqual([
+      "2/4 writing_questions (section 1 of 5)",
+      "2/4 writing_questions (section 2 of 5)",
+      "2/4 writing_questions (section 3 of 5)",
+      "2/4 writing_questions (section 4 of 5)",
+      "2/4 writing_questions (section 5 of 5)",
+      "3/4 checking",
+    ]);
+  });
+
+  it("a listener that throws never fails the run", async () => {
+    const f = scripted({ "generate:single-shot": ok(...five) });
+    const r = await runQuizGraph({ llm: f.llm, budget: new JobBudget(), onProgress: () => { throw new Error("db down"); } }, { sourceText: SHORT_DOC, numQuestions: 5, strategy: "single-shot" });
+    expect(r.questions).toHaveLength(5);
   });
 });

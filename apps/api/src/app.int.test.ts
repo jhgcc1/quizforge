@@ -4,14 +4,15 @@ import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { SignJWT } from "jose";
 import type { FastifyInstance } from "fastify";
-import { claimQuiz, completeQuiz, createDb, failQuiz, migrate, upsertSource } from "@quizforge/db";
+import { claimQuiz, completeQuiz, createDb, failQuiz, migrate, setQuizPhase, upsertSource } from "@quizforge/db";
+import { GENERATION_PHASES as WORKER_PHASES } from "@quizforge/llm";
 import { buildApp } from "./app.js";
 import { LOCAL_AUDIENCE, LOCAL_ISSUER, localVerifier, signLocalToken } from "./auth.js";
 import { loadConfig } from "./config.js";
 import { MemoryQuizQueue } from "./queue.js";
 import { openApiDocument } from "./openapi.js";
 import {
-  AttemptListSchema, AttemptResultSchema, AttemptWithAnswersSchema, CatalogResponseSchema, CreateQuizBodySchema, ErrorBodySchema, QuizEnvelopeSchema, QuizListSchema,
+  GENERATION_PHASES, GenerationProgressSchema, AttemptListSchema, AttemptResultSchema, AttemptWithAnswersSchema, CatalogResponseSchema, CreateQuizBodySchema, ErrorBodySchema, QuizEnvelopeSchema, QuizListSchema,
   QuizWithQuestionsSchema, SAMPLE_CATALOG, SaveAnswerResponseSchema, SubmitResponseSchema,
 } from "@quizforge/core";
 import type { ZodTypeAny } from "zod";
@@ -295,6 +296,65 @@ describe("full quiz flow", () => {
     expect((await put({ optionIds: [q.options[0].id, q.options[1].id], revision: 1 })).status).toBe(422); // single-answer question
     expect((await put({ optionIds: [randomUUID()], revision: 1 })).status).toBe(422);
     expect((await put({ optionIds: [q.options[0].id], revision: 1, extra: true })).status).toBe(400);
+  });
+});
+
+describe("generation progress (generationProgress on the quiz)", () => {
+  const fetchQuiz = async (sub: string, id: string) => (await call(sub, "GET", `/v1/quizzes/${id}`)).body.quiz;
+
+  it("is null while queued, follows the phase the worker records while generating, and is null again when ready", async () => {
+    const sub = "u-progress";
+    const quizId = (await create(sub, randomUUID())).body.quiz.id as string;
+    shape(QuizEnvelopeSchema, (await call(sub, "GET", `/v1/quizzes/${quizId}`)).body);
+    expect((await fetchQuiz(sub, quizId)).generationProgress).toBeNull();
+
+    const claimed = await claimQuiz(ctx.db, quizId);
+    expect("job" in claimed).toBe(true);
+    expect((await fetchQuiz(sub, quizId)).generationProgress).toBeNull(); // generating, but no phase reported yet
+
+    const seen: unknown[] = [];
+    for (const p of [
+      { phase: "reading_document", step: 1, totalSteps: 5 },
+      { phase: "writing_questions", step: 2, totalSteps: 5, detail: "section 2 of 5" },
+      { phase: "reviewing", step: 4, totalSteps: 5, detail: "round 1 of 2" },
+    ]) {
+      await setQuizPhase(ctx.db, quizId, p);
+      const res = await call(sub, "GET", `/v1/quizzes/${quizId}`);
+      shape(QuizWithQuestionsSchema, res.body);
+      seen.push(res.body.quiz.generationProgress);
+      expect(res.body.questions).toEqual([]);
+      const listed = (await call(sub, "GET", "/v1/quizzes")).body;
+      shape(QuizListSchema, listed);
+      expect(listed.quizzes.find((x: { id: string }) => x.id === quizId).generationProgress).toEqual(res.body.quiz.generationProgress);
+    }
+    expect(seen).toEqual([
+      { phase: "reading_document", step: 1, totalSteps: 5 }, // no detail key at all when there is none
+      { phase: "writing_questions", step: 2, totalSteps: 5, detail: "section 2 of 5" },
+      { phase: "reviewing", step: 4, totalSteps: 5, detail: "round 1 of 2" },
+    ]);
+
+    await finishQuiz(quizId);
+    const ready = await call(sub, "GET", `/v1/quizzes/${quizId}`);
+    expect(ready.body.quiz).toMatchObject({ status: "ready", generationProgress: null });
+    shape(QuizWithQuestionsSchema, ready.body);
+  });
+
+  it("is null for a failed quiz, and a stale phase write cannot show on it", async () => {
+    const sub = "u-progress-failed";
+    const quizId = (await create(sub, randomUUID())).body.quiz.id as string;
+    await claimQuiz(ctx.db, quizId);
+    await setQuizPhase(ctx.db, quizId, { phase: "writing_questions", step: 2, totalSteps: 4 });
+    await failQuiz(ctx.db, { quizId, error: "StructuredOutputError: nope" });
+    await setQuizPhase(ctx.db, quizId, { phase: "saving", step: 4, totalSteps: 4 });
+    const body = (await call(sub, "GET", `/v1/quizzes/${quizId}`)).body;
+    expect(body.quiz).toMatchObject({ status: "failed", generationProgress: null });
+    shape(QuizWithQuestionsSchema, body);
+  });
+
+  it("the phases the worker can report are exactly the phases the contract documents, and the OpenAPI schema describes the field", async () => {
+    expect([...GENERATION_PHASES]).toEqual([...WORKER_PHASES]);
+    expect(Object.keys(openApiDocument.components.schemas.GenerationProgress.properties).sort()).toEqual(Object.keys(GenerationProgressSchema.shape).sort());
+    expect(openApiDocument.components.schemas.QuizSummary.properties.generationProgress).toBeDefined();
   });
 });
 

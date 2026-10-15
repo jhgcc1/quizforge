@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { BaseCheckpointSaver } from "@langchain/langgraph";
 import type { QuizJobMessage, ScoreJobMessage } from "@quizforge/core";
-import { claimQuiz, completeQuiz, failQuiz, saveJobBudget, upsertSource, type Db } from "@quizforge/db";
+import { claimQuiz, completeQuiz, failQuiz, saveJobBudget, setQuizPhase, upsertSource, type Db } from "@quizforge/db";
 import {
   BudgetExceededError,
   NonRetryableError,
@@ -12,6 +12,7 @@ import {
   UnsafeOutputError,
   UnsupportedLanguageError,
   admitDocument,
+  progressFor,
   screenWithDetector,
   fetchMarkdown as defaultFetch,
   generateQuiz as defaultGenerate,
@@ -21,6 +22,7 @@ import {
   type SupportedLanguage,
 } from "@quizforge/llm";
 import { emitMetrics, type Logger } from "./log.js";
+import { createProgressReporter } from "./progress.js";
 
 export type Outcome =
   | { kind: "done" }
@@ -83,6 +85,10 @@ export async function processQuizJob(
   let budgetSnapshot: unknown = job.budgetState ?? undefined;
 
   const threadId = `quiz-${quiz.id}-job-${job.id}`;
+  // The phase the user sees (best effort: a failed write is logged and dropped, see progress.ts).
+  const progress = createProgressReporter((p) => setQuizPhase(d.db, quiz.id, p), log);
+  const plan = { critique: quiz.critique, planFirst: false, revised: false };
+  progress.report(progressFor("reading_document", plan));
   try {
     const fetchSource = d.fetchMarkdown ?? defaultFetch;
     const src = await fetchSource(quiz.sourceUrl, { allowedHosts: d.allowedHosts });
@@ -128,8 +134,11 @@ export async function processQuizJob(
       trace: { sessionId: quiz.id, userId: hashSub(quiz.ownerSub), ...(msg.requestId ? { requestId: msg.requestId } : {}) },
       threadId,
       ...(d.checkpointer ? { checkpointer: d.checkpointer } : {}),
+      onProgress: progress.report,
     });
     budgetSnapshot = result.budget;
+    progress.report(progressFor("saving", { ...plan, revised: result.rounds > 0 }));
+    await progress.flush();
 
     const costUsd = (result.usage.promptTokens * d.pricing.inPerM + result.usage.completionTokens * d.pricing.outPerM) / 1e6;
     await completeQuiz(d.db, {
@@ -176,6 +185,7 @@ export async function processQuizJob(
     return { kind: "done" };
   } catch (err) {
     const message = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+    await progress.flush(); // a late phase write must not land after the failure is recorded (it is also guarded by status = generating)
     if (budgetSnapshot) await saveJobBudget(d.db, job.id, budgetSnapshot).catch(() => undefined);
     const permanent = isPermanent(err);
     // A content failure (the model produced something unusable) is not an infrastructure hiccup: resuming from its
