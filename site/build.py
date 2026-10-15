@@ -91,6 +91,13 @@ def redact(html: str) -> str:
     return html
 
 
+def assert_no_personal_data(html: str) -> None:
+    """The committed pages are public: no e-mail address may appear (example.com placeholders are fine)."""
+    found = {m for m in re.findall(r"[\w.+-]+@[\w-]+\.[\w.-]+", re.sub(r"<[^>]+>", " ", html)) if not m.endswith(("@example.com", "@example.org"))}
+    if found:
+        raise SystemExit(f"refusing to write the page: it contains e-mail addresses ({sorted(found)[:3]})")
+
+
 def assert_no_secrets(html: str) -> None:
     leaked = [v[:4] + "…" for v in secret_values() if v in html]
     if leaked:
@@ -113,6 +120,8 @@ def main():
     html = facts.tok(html)  # [[name]] tokens: numbers read from the repository files
     html = inline_images(html)
     assert_no_secrets(html)
+    if PUBLIC:
+        assert_no_personal_data(html)
     if PUBLIC:
         html = redact(html)
         out = HERE.parent / "docs" / "architecture" / ("quizforge-architecture-full.html" if FULL else "quizforge-architecture.html")

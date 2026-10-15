@@ -177,7 +177,7 @@ def prep_flow():
 
 
 def repos():
-    """The two repositories and the two ways a front end change reaches production."""
+    """The three repositories: two publish images, the infrastructure repository deploys them (full or web-only)."""
     b = ""
     b += group(10, 10, 400, 250, "github.com/jhgcc1/quizforge-web (public)", "grp")
     b += box(26, 50, 368, 56, "Next.js front end + BFF", "login with Cognito · error boundary · POST /bff/client-log", "compute", small=True)
@@ -210,7 +210,7 @@ def repos():
     b += text(20, 548, "Terraform lives only in the infrastructure repository (quizforge-infra): the back end and front end repositories hold only an ECR-push role.", "note")
     b += text(20, 568, "Google and Facebook login credentials are read from AWS Secrets Manager (quizforge/prod/google-login, facebook-login) by the deploy workflow, masked; none is a GitHub secret.", "note")
     b += text(20, 588, "The front end and the back end share only the API contract. Each service keeps its own image and its own ECS service.", "note")
-    return svg(1190, 604, b, "Two repositories and two deploy paths: what lives where and how a front end change reaches production")
+    return svg(1190, 604, b, "Three repositories: the code and the front end publish images, the infrastructure repository deploys them (everything, or the web service alone)")
 
 
 def redteam_nightly():

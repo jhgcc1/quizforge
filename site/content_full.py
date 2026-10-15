@@ -17,7 +17,6 @@ GH = "https://github.com/jhgcc1/quizforge"
 LF = "https://us.cloud.langfuse.com/project/cmuyh1njb00yxad0j2ixxfwnq"
 AWSC = f"https://{R}.console.aws.amazon.com"
 APP = L["app"]
-STATUS = (HERE / "status.txt").read_text().strip().splitlines() if (HERE / "status.txt").exists() else []
 
 
 def sec(id_, title, body, lead=""):
@@ -42,8 +41,6 @@ def overview():
         ["What runs where?", "AWS (Fargate, RDS, SQS, Cognito, CloudFront) built with Terraform, deployed by GitHub Actions. Four services (web, api, worker, scorer) and three one-shot tasks (sweeper, migration, nightly red team). The front end lives in its own repository (<code>quizforge-web</code>) and is deployed either with the back end (the full deploy) or alone (a manual front-end-only deploy)."],
         ["How do we know the AI is good?", "Every quiz is scored by one function and logged to Langfuse. A CI gate and experiments use the same function."],
     ], )
-    if STATUS:
-        body += table(["Right now", ""], [[s.split("|")[0].strip(), s.split("|")[1].strip() if "|" in s else ""] for s in STATUS])
     return sec("summary", "Summary", body)
 
 
