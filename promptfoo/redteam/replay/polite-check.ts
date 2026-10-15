@@ -45,7 +45,7 @@ if (existsSync(ATTACKS)) {
   for (const a of JSON.parse(read(ATTACKS)) as { text: string; lang: string; meta: { intent: string }; ok: boolean }[]) attacks.push({ text: a.text, lang: a.lang, intent: a.meta.intent, leaked: !a.ok });
 }
 const nightly = JSON.parse(read("promptfoo/redteam/intents-nightly.json")) as { text: string; language: string; intent: string }[];
-const sample = parse(read("promptfoo/redteam/sample.yaml")) as { vars: { prompt: string; lang?: string }[] }[];
+const sample = parse(read("promptfoo/redteam/sample.yaml")) as { vars: { prompt: string; lang?: string } }[];
 const sets: Record<string, Atk[]> = {
   "red-team run (attacks of one nightly run)": attacks,
   "nightly intents (120 texts)": nightly.map((n) => ({ text: n.text, lang: n.language, intent: n.intent })),
