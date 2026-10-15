@@ -71,6 +71,11 @@ def _tokens():
         "rules_free": RULES_LANGUAGE_FREE, "rules_langs": 3 * RULES_PER_LANGUAGE, "det_windows": DETECTOR_MAX_WINDOWS, "det_chars": f"{DETECTOR_WINDOW_CHARS:,}", "det_threshold": f"{DETECTOR_THRESHOLD:g}", "det_excerpt": DETECTOR_EXCERPT_CHARS, "flagged_alarm": FLAGGED_ALARM, "rejected_alarm": REJECTED_ALARM,
         "cmp_oneshot": f"{CMP_STRUCT['one-shot']:.3f}", "cmp_plan": f"{CMP_STRUCT['plan-then-write']:.3f}", "cmp_critique": f"{CMP_STRUCT['critique-loop']:.3f}", "cmp_judge_delta": f"{CMP_JUDGE_DELTA:.3f}", "cmp_noise": CMP_NOISE, "pf_version": PF_VERSION, "cost_scorer": round(COST_SCORER), "ag_flag_lang": ATTACK_GROUPS_FLAG[0], "ag_flag_link": ATTACK_GROUPS_FLAG[1], "ag_flag_places": ATTACK_GROUPS_FLAG[2], "pf_nightly_texts": PF_NIGHTLY_TEXTS, "db_tables": DB_TABLES, "pf_strategies": PF_SAMPLE_STRATEGIES, "bad_api_calls": BAD_API_CALLS, "contract_version": CONTRACT_VERSION, "cmp_variants": CMP_VARIANTS, "cmp_items": CMP_ITEMS, "cmp_reps": CMP_REPS, "cmp_runs": (CMP_VARIANTS or 0) * (CMP_REPS or 0), "fixtures_n": FIXTURES_N, "attack_block": ATTACK_BLOCK, "attack_flag": ATTACK_FLAG, "bad_topics_n": BAD_TOPICS_N, "lang_unsupported_n": LANG_UNSUPPORTED_N, "lang_supported_n": LANG_SUPPORTED_N, "output_cases_n": OUTPUT_CASES_N, "ag_encoded": ATTACK_GROUPS_BLOCK[0], "ag_unicode": ATTACK_GROUPS_BLOCK[1], "ag_markup": ATTACK_GROUPS_BLOCK[2], "lang_policy_n": LANG_UNSUPPORTED_N + LANG_SUPPORTED_N, "smoke_full": SMOKE_FULL, "smoke_web": SMOKE_WEB, "cost_multiaz": r5(COST_RDS + COST_NAT), "running_tasks": RUNNING_TASKS, "llm_per_quiz": f"{LLM_PER_QUIZ:.3f}" if LLM_PER_QUIZ else "n/a", "llm_runs": LLM_RUNS,
     })
+    t.update({
+        "eval_time": EVAL_TIME, "redteam_time": REDTEAM_TIME, "api_public_n": len(API_PUBLIC_ROUTES), "api_v1_n": len(API_V1_ROUTES), "api_db_n": len(API_DB_FUNCS),
+        "api_db_scoped": len(API_DB_OWNER_SCOPED), "repo_n": REPO_FUNCS_N, "repo_other_n": REPO_OTHER_FUNCS_N, "drizzle_orm": DRIZZLE_ORM, "drizzle_kit": DRIZZLE_KIT,
+        "drizzle_locked": DRIZZLE_ORM_LOCKED, "pg_locked": PG_LOCKED, "migrations_n": MIGRATIONS_N, "sql_tagged": SQL_TAGGED, "sql_const": SQL_CALL_CONST, "sql_call_tagged": SQL_CALL_TAGGED,
+    })
     if BENCH:
         en, al = bench_row("english"), bench_row("all")
         for p, r in (("en", en), ("all", al)):
