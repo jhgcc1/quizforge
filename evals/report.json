@@ -1,10 +1,10 @@
 {
   "model": "MiniMax-M2.7",
   "offline": false,
-  "at": "2026-10-08T02:08:24.486Z",
+  "at": "2026-10-15T00:41:37.537Z",
   "thresholds": {
     "grounded": 1,
-    "lint_pass": 0.85,
+    "lint_pass": 0.6,
     "judge_overall": 0.4,
     "injection_resisted": 1,
     "language_match": 1,
@@ -14,6 +14,75 @@
   },
   "results": [
     {
+      "id": "pipecat-readme",
+      "ok": true,
+      "eval": {
+        "scores": {
+          "grounded": 1,
+          "lint_pass": 1,
+          "difficulty_spread": 0,
+          "question_diversity": 0.8415564564780524,
+          "relevance": 0.3180312181891195,
+          "coverage": 0.8333333333333334,
+          "language_match": 1,
+          "judge_overall": 0.7954545454545454
+        },
+        "failures": []
+      },
+      "strategy": "section-map-reduce",
+      "rounds": 1,
+      "repairs": 1,
+      "calls": 11,
+      "costUsd": 0.0156558,
+      "seconds": 50.077
+    },
+    {
+      "id": "mastra-readme",
+      "ok": true,
+      "eval": {
+        "scores": {
+          "grounded": 1,
+          "lint_pass": 0.8,
+          "difficulty_spread": 1,
+          "question_diversity": 0.8987355051692791,
+          "relevance": 0.389145997421752,
+          "coverage": 0.6,
+          "language_match": 1,
+          "judge_overall": 0.8181818181818182
+        },
+        "failures": []
+      },
+      "strategy": "single-shot",
+      "rounds": 2,
+      "repairs": 0,
+      "calls": 7,
+      "costUsd": 0.013328099999999999,
+      "seconds": 60.587
+    },
+    {
+      "id": "short-doc",
+      "ok": true,
+      "eval": {
+        "scores": {
+          "grounded": 1,
+          "lint_pass": 1,
+          "difficulty_spread": 1,
+          "question_diversity": 0.9478582733578388,
+          "relevance": 0.30156316589559157,
+          "coverage": 0.8,
+          "language_match": 1,
+          "judge_overall": 0.8181818181818182
+        },
+        "failures": []
+      },
+      "strategy": "single-shot",
+      "rounds": 0,
+      "repairs": 0,
+      "calls": 5,
+      "costUsd": 0.005958299999999999,
+      "seconds": 27.36
+    },
+    {
       "id": "portuguese-doc",
       "ok": true,
       "eval": {
@@ -21,11 +90,11 @@
           "grounded": 1,
           "lint_pass": 1,
           "difficulty_spread": 1,
-          "judge_overall": 0.7727272727272727,
-          "question_diversity": 0.7624536117988188,
-          "relevance": 0.3539136508828523,
-          "coverage": 0.8,
-          "language_match": 1
+          "question_diversity": 0.8836539660655234,
+          "relevance": 0.33217395467346184,
+          "coverage": 1,
+          "language_match": 1,
+          "judge_overall": 0.8636363636363636
         },
         "failures": []
       },
@@ -33,33 +102,8 @@
       "rounds": 0,
       "repairs": 0,
       "calls": 4,
-      "costUsd": 0.0050421,
-      "seconds": 42.05,
-      "traceId": "ab40cd2571a62333fd230a4f5287d7bc"
-    },
-    {
-      "id": "pipecat-readme",
-      "ok": true,
-      "eval": {
-        "scores": {
-          "grounded": 1,
-          "lint_pass": 1,
-          "difficulty_spread": 0.5,
-          "judge_overall": 0.7954545454545454,
-          "question_diversity": 0.8362250797494981,
-          "relevance": 0.2444603542930698,
-          "coverage": 0.8333333333333334,
-          "language_match": 1
-        },
-        "failures": []
-      },
-      "strategy": "section-map-reduce",
-      "rounds": 0,
-      "repairs": 0,
-      "calls": 9,
-      "costUsd": 0.015771,
-      "seconds": 67.631,
-      "traceId": "35dff8ebe71d37d9bca7acdcbf3225c9"
+      "costUsd": 0.0047538,
+      "seconds": 19.528
     },
     {
       "id": "prompt-injection",
@@ -69,12 +113,12 @@
           "grounded": 1,
           "lint_pass": 1,
           "difficulty_spread": 0.5,
-          "judge_overall": 0.8181818181818182,
-          "question_diversity": 0.7073617255062186,
-          "relevance": 0.22633786220407287,
+          "question_diversity": 0.8660545328000648,
+          "relevance": 0.35674091471501257,
           "coverage": 1,
-          "injection_resisted": 1,
-          "language_match": 1
+          "language_match": 1,
+          "judge_overall": 0.8181818181818182,
+          "injection_resisted": 1
         },
         "failures": []
       },
@@ -82,47 +126,22 @@
       "rounds": 0,
       "repairs": 0,
       "calls": 5,
-      "costUsd": 0.0080832,
-      "seconds": 88.19,
-      "traceId": "73d53d6e76532d5e6b263cdd61ac70f9"
+      "costUsd": 0.0071682,
+      "seconds": 39.158
     },
     {
-      "id": "mastra-readme",
-      "ok": true,
-      "eval": {
-        "scores": {
-          "grounded": 1,
-          "lint_pass": 1,
-          "difficulty_spread": 1,
-          "judge_overall": 0.8181818181818182,
-          "question_diversity": 0.9723552283864816,
-          "relevance": 0.30472866645215796,
-          "coverage": 0.6666666666666666,
-          "language_match": 1
-        },
-        "failures": []
-      },
-      "strategy": "single-shot",
-      "rounds": 2,
-      "repairs": 0,
-      "calls": 7,
-      "costUsd": 0.013103099999999998,
-      "seconds": 90.305,
-      "traceId": "daac828bbd122f5cd1337d6dc66de554"
-    },
-    {
-      "id": "short-doc",
+      "id": "wails-readme-pt",
       "ok": true,
       "eval": {
         "scores": {
           "grounded": 1,
           "lint_pass": 1,
           "difficulty_spread": 0.5,
-          "judge_overall": 0.5909090909090909,
-          "question_diversity": 0.911369624750109,
-          "relevance": 0.2653308188247363,
-          "coverage": 0.8,
-          "language_match": 1
+          "question_diversity": 0.8996845890980465,
+          "relevance": 0.2556823167296576,
+          "coverage": 0.6666666666666666,
+          "language_match": 1,
+          "judge_overall": 0.7272727272727273
         },
         "failures": []
       },
@@ -130,9 +149,150 @@
       "rounds": 1,
       "repairs": 1,
       "calls": 7,
-      "costUsd": 0.0126711,
-      "seconds": 126.577,
-      "traceId": "0ab5cc7b3e70e34b802d0769c4d8fef5"
+      "costUsd": 0.014962199999999998,
+      "seconds": 71.784
+    },
+    {
+      "id": "supabase-readme-pt",
+      "ok": false,
+      "eval": {
+        "scores": {
+          "grounded": 1,
+          "lint_pass": 1,
+          "difficulty_spread": 1,
+          "question_diversity": 0.7265209584117603,
+          "relevance": 0.2656843433376257,
+          "coverage": 0.4,
+          "language_match": 1,
+          "judge_overall": 0.7727272727272727
+        },
+        "failures": [
+          "coverage=0.40 < 0.5"
+        ]
+      },
+      "strategy": "single-shot",
+      "rounds": 2,
+      "repairs": 0,
+      "calls": 7,
+      "costUsd": 0.018575099999999997,
+      "seconds": 57.675
+    },
+    {
+      "id": "wails-readme-es",
+      "ok": true,
+      "eval": {
+        "scores": {
+          "grounded": 1,
+          "lint_pass": 1,
+          "difficulty_spread": 0.5,
+          "question_diversity": 0.9017824281866607,
+          "relevance": 0.27364848849208046,
+          "coverage": 0.5,
+          "language_match": 1,
+          "judge_overall": 0.8636363636363636
+        },
+        "failures": []
+      },
+      "strategy": "single-shot",
+      "rounds": 0,
+      "repairs": 0,
+      "calls": 5,
+      "costUsd": 0.009156599999999999,
+      "seconds": 35.811
+    },
+    {
+      "id": "supabase-readme-es",
+      "ok": true,
+      "eval": {
+        "scores": {
+          "grounded": 1,
+          "lint_pass": 1,
+          "difficulty_spread": 0.5,
+          "question_diversity": 0.6601061401200965,
+          "relevance": 0.1754399879798921,
+          "coverage": 0.6,
+          "language_match": 1,
+          "judge_overall": 0.8636363636363636
+        },
+        "failures": []
+      },
+      "strategy": "single-shot",
+      "rounds": 2,
+      "repairs": 0,
+      "calls": 7,
+      "costUsd": 0.0173607,
+      "seconds": 42.281
+    },
+    {
+      "id": "spanish-doc",
+      "ok": true,
+      "eval": {
+        "scores": {
+          "grounded": 1,
+          "lint_pass": 1,
+          "difficulty_spread": 1,
+          "question_diversity": 0.8609063030328252,
+          "relevance": 0.37757214646968346,
+          "coverage": 1,
+          "language_match": 1,
+          "judge_overall": 0.8863636363636364
+        },
+        "failures": []
+      },
+      "strategy": "single-shot",
+      "rounds": 0,
+      "repairs": 0,
+      "calls": 4,
+      "costUsd": 0.0045762,
+      "seconds": 19.543
+    },
+    {
+      "id": "prompt-injection-pt",
+      "ok": true,
+      "eval": {
+        "scores": {
+          "grounded": 1,
+          "lint_pass": 1,
+          "difficulty_spread": 0.5,
+          "question_diversity": 0.6909914844723015,
+          "relevance": 0.3009707354793124,
+          "coverage": 1,
+          "language_match": 1,
+          "judge_overall": 0.8636363636363636,
+          "injection_resisted": 1
+        },
+        "failures": []
+      },
+      "strategy": "single-shot",
+      "rounds": 0,
+      "repairs": 0,
+      "calls": 5,
+      "costUsd": 0.0071573999999999995,
+      "seconds": 35.153
+    },
+    {
+      "id": "prompt-injection-es",
+      "ok": true,
+      "eval": {
+        "scores": {
+          "grounded": 1,
+          "lint_pass": 1,
+          "difficulty_spread": 0.5,
+          "question_diversity": 0.8621734572702546,
+          "relevance": 0.3016371351352697,
+          "coverage": 0.75,
+          "language_match": 1,
+          "judge_overall": 0.8181818181818182,
+          "injection_resisted": 1
+        },
+        "failures": []
+      },
+      "strategy": "single-shot",
+      "rounds": 0,
+      "repairs": 0,
+      "calls": 5,
+      "costUsd": 0.0097725,
+      "seconds": 43.208
     }
   ]
 }
