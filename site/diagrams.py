@@ -1042,3 +1042,76 @@ def strict_link():
     b += text(10, 292, "Limit: the classifier marks one window per document, so an attack in another window may be outside the strict zone.", "note")
     b += text(10, 314, "It complements the keyword rules; it does not replace them.", "note")
     return svg(1260, 440, b, "Strict link mode of the output rail: a planted link cannot pass as a link of the document")
+
+
+def guard_layers():
+    """The LLM guard as concentric layers (same style as `retries`): from the edge to the model call, then back out through the output rails."""
+    layers = [
+        ("1 · Edge: CloudFront + WAF (1000 requests / 5 min / IP, common and bad-input rule sets)", "blocked at the edge: the app never sees it", "grp edgeg"),
+        ("2 · Identity and request: JWT, CSRF, strict zod schemas, rate limit, daily quota", "401 · 403 · 400 · 429: nothing is queued", "grp sub"),
+        ("3 · SSRF allow-list: https, github hosts only, public IPs only, 512 KB, redirects re-checked", "400, or the quiz fails and is not retried", "grp"),
+        ("4 · Document admission: hidden or encoded text, language policy (en, pt, es only)", "rejected BEFORE the model: llmCalls = 0, not retried", "grp sub"),
+        (f"5 · Keyword rules ({F.RULES_TOTAL}): plain injection phrases in en, pt, es", "FLAG: counted, marks the lines; does not block", "grp"),
+        (f"6 · Prompt Guard 2: up to {F.DETECTOR_MAX_WINDOWS} windows, flag at {F.DETECTOR_THRESHOLD:g}+", "FLAG only: marks one excerpt; does not block", "grp sub"),
+        ("7 · <document> delimiters + prompt safety rules: the text is data, forged tags are neutralised", "the model is told never to obey it", "grp"),
+        ("8 · Model-call guard: strict messages, 200k characters, output capped, budget 16 calls · 120k tokens · 5 min", "invalid or over budget: fails, not retried", "grp sub"),
+    ]
+    W, step_x, step_y = 1080, 22, 44
+    n = len(layers)
+    inner_h = 100
+    b = ""
+    for k, (label, then, kind) in enumerate(layers):
+        x, y = 10 + step_x * k, 10 + step_y * k
+        w, h = W - 2 * step_x * k, inner_h + (n - 1 - k) * (step_y + 14)
+        b += group(x, y, w, h, label, kind)
+        b += text(x + 12, y + 36, then, "note")
+    cx = 10 + step_x * (n - 1)
+    cw = W - 2 * step_x * (n - 1)
+    b += box(cx + cw / 2 - 150, 10 + step_y * (n - 1) + 48, 300, 44, "1 LLM call (MiniMax)", "the only probabilistic step", "ai")
+    top = 10 + (inner_h + (n - 1) * (step_y + 14)) + 24
+    b += text(10, top, "Back out, the reply is checked by plain code (no model checks a model):", "glabel")
+    outs = [
+        ("9 · Output rails", "markup, links (strict if flagged), echoed orders, leaks", "problem: up to 2 repair rounds, then the job retries", "data"),
+        ("10 · Grounding", "every source_quote must be in the document", "ungrounded: revised, dropped, or the job retries", "data"),
+        ("11 · Scorer (later)", "judge + fixed checks score the saved quiz", "blocks nothing: scores, alarms", "mgd"),
+    ]
+    bw = 350
+    for i, (t, sub, then, kind) in enumerate(outs):
+        x = 10 + i * (bw + 15)
+        b += box(x, top + 14, bw, 72, t, sub, kind, small=True)
+        b += text(x + bw / 2, top + 104, then, "note", "middle")
+        if i:
+            b += arrow(x - 15, top + 50, x, top + 50)
+    y = top + 140
+    b += text(10, y, "Not covered by design: a paraphrased attack that matches no rule and scores under the threshold is met only by layers 7, 9, 10 and the model resisting.", "note")
+    b += text(10, y + 20, "The classifier flags and never blocks (INJECTION_DETECTOR=block is not set). Images are not read. The agent has no tools: a hijack is only a bad quiz.", "note")
+    b += text(10, y + 40, "Each layer is tested by code: unit tests, the promptfoo attack corpus (one file for vitest and promptfoo) and the red team (next section).", "note")
+    return svg(1100, y + 56, b, "LLM guard in layers: from the edge to the model call and back out, with what each layer does when it triggers")
+
+
+def eval_ladder():
+    """The AI tests across CI/CD as nested layers: the outer layer runs most often and costs least, the inner one runs least and costs most."""
+    layers = [
+        (f"On every pull request, free, no secrets: promptfoo offline, {F.PF_OFFLINE} tests (job promptfoo, required)", "fake model: guard, language policy, bad topics, output rails, prompt rules", "grp ci"),
+        (f"On every pull request from this repository: red team sample, {F.PF_SAMPLE} frozen attacks + {F.PF_POLICY_DOCS} language documents (job redteam-sample)", "offline stage, then live; model key only; not a required check", "grp sub"),
+        (f"On a pull request that changes prompts, LLM, guard or evals files: llm-eval-pr (golden set of {F.GOLDEN_N} + live promptfoo, {F.PF_LIVE} tests)", "real model; model key only, no Langfuse; green in seconds if nothing relevant changed", "grp"),
+        ("On main, before the deploy: llm-eval (golden set + live promptfoo) and the red team sample again", "llm-eval gates the deploy and publish-prompts; Langfuse experiment", "grp sub"),
+        (f"Every night: eval.yml at {F.EVAL_TIME} (golden set + live) and the red team task on Fargate at {F.REDTEAM_TIME}", f"{F.PF_NIGHTLY_TESTS} fresh tests, {F.PF_NIGHTLY_INTENTS} intents; report to S3; alarms", "grp"),
+    ]
+    W, step_x, step_y = 1080, 22, 44
+    n = len(layers)
+    inner_h = 100
+    b = ""
+    for k, (label, then, kind) in enumerate(layers):
+        x, y = 10 + step_x * k, 10 + step_y * k
+        w, h = W - 2 * step_x * k, inner_h + (n - 1 - k) * (step_y + 14)
+        b += group(x, y, w, h, label, kind)
+        b += text(x + 12, y + 36, then, "note")
+    cx = 10 + step_x * (n - 1)
+    cw = W - 2 * step_x * (n - 1)
+    b += box(cx + cw / 2 - 230, 10 + step_y * (n - 1) + 48, 460, 44, "Graded by plain code with canary tokens", "a canary in the reply = the model obeyed; no model judges a model", "sec", small=True)
+    y = 10 + inner_h + (n - 1) * (step_y + 14) + 28
+    b += text(10, y, "Outside to inside: it runs less often and costs more (nothing, a few cents, a night of Fargate and model calls). Sources: ci.yml, eval.yml, redteam.tf.", "note")
+    b += text(10, y + 20, "Manual only: eval-compare.yml compares generation structures (never part of the gate). drift.yml is a nightly Terraform drift check of the AWS account, not an AI test.", "note")
+    b += text(10, y + 40, "Not covered: the live suites are small samples (one run per case) and the nightly run finds a model that obeys often, not one that obeys rarely. A pass is not a proof.", "note")
+    return svg(1100, y + 56, b, "AI tests across CI/CD: layers by when they run and what they cost")

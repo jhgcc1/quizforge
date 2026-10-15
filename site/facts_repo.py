@@ -237,3 +237,50 @@ COV_PARTIAL = {g: v for g, v in COV_BY_PKG.items() if v < 100}
 
 def cov_floor(pkg):
     return COV_FLOORS.get(f"{pkg}/src/**")
+
+
+# ---------------------------------------------------------------- when the AI tests run (eval.yml, variables.tf)
+_ec = re.search(r'cron: "(\d+) (\d+) \* \* \*"', _text(".github/workflows/eval.yml"))
+EVAL_TIME = f"{int(_ec.group(2)):02d}:{int(_ec.group(1)):02d} UTC"
+_rc = re.search(r'variable "redteam_schedule".*?default\s*=\s*"cron\((\d+) (\d+) ', _vars, re.S)
+REDTEAM_TIME = f"{int(_rc.group(2)):02d}:{int(_rc.group(1)):02d} UTC"
+
+# ---------------------------------------------------------------- who is the user on a request, and how the database is queried
+_app = _text("apps/api/src/app.ts")
+API_PUBLIC_ROUTES = [f"{m.upper()} {p}" for m, p in re.findall(r'app\.(get|post|put)\("(/[^"]*)"', _app)]
+API_V1_ROUTES = [f"{m.upper()} /v1{p}" for m, p in re.findall(r'v1\.(get|post|put)(?:<.*?>)?\(\s*"(/[^"]*)"', _app)]
+_repo = _text("packages/db/src/repo.ts")
+_imported = re.search(r'import \{([^}]*)\} from "@quizforge/db";', _app).group(1)
+API_DB_FUNCS = [n.strip() for n in _imported.split(",") if n.strip() and not n.strip().startswith("type ")]
+API_DB_FUNCS = [n for n in API_DB_FUNCS if re.search(rf"export (?:async )?function {n}\b", _repo)]
+_chunks = {m.group(1): m.group(0) for m in re.finditer(r"export (?:async )?function (\w+)\b.*?(?=\n(?:export |/\*\*|/\* ---)|\Z)", _repo, re.S)}
+API_DB_OWNER_SCOPED = [n for n in API_DB_FUNCS if re.search(r"t\.\w+\.(?:ownerSub|userSub)\b|getOwnedAttempt\(db, \w+, (?:userSub|p\.userSub)\)", _chunks[n])]
+API_DB_UNSCOPED = [n for n in API_DB_FUNCS if n not in API_DB_OWNER_SCOPED]
+assert API_DB_UNSCOPED == ["getPublicQuestions"], f"the identity rule of the API changed: unscoped repo functions called by the API are {API_DB_UNSCOPED}; update the section 'Who is the user on every request'"
+assert len(API_V1_ROUTES) == 9 and len(API_PUBLIC_ROUTES) == 4, (API_V1_ROUTES, API_PUBLIC_ROUTES)
+_repo_all = re.findall(r"export (?:async )?function (\w+)\b", _repo)
+REPO_FUNCS_N = len(_repo_all)
+REPO_OTHER_FUNCS_N = len([n for n in _repo_all if n not in API_DB_FUNCS])  # the worker, the scorer and the sweeper
+
+_dbpkg = json.loads(_text("packages/db/package.json"))
+DRIZZLE_ORM = _dbpkg["dependencies"]["drizzle-orm"].lstrip("^")
+DRIZZLE_KIT = _dbpkg["devDependencies"]["drizzle-kit"].lstrip("^")
+_lock = _text("pnpm-lock.yaml")
+DRIZZLE_ORM_LOCKED = re.search(r"^  drizzle-orm@([\d.]+)", _lock, re.M).group(1)
+PG_LOCKED = re.search(r"^  pg@([\d.]+):", _lock, re.M).group(1)
+MIGRATIONS_N = len(list((ROOT / "packages/db/migrations").glob("*.sql")))
+
+_src_files = [p for pat in ("apps/*/src/**/*.ts", "packages/*/src/**/*.ts") for p in ROOT.glob(pat) if ".test." not in p.name and "node_modules" not in p.parts]
+SQL_TAGGED = sum(len(re.findall(r"\bsql`", p.read_text(encoding="utf8"))) for p in _src_files)
+SQL_RAW_OR_CALLED = sum(len(re.findall(r"\bsql\.raw\(|\bsql\(", p.read_text(encoding="utf8"))) for p in _src_files)
+SQL_CALL_TAGGED = SQL_CALL_CONST = SQL_CALL_DYNAMIC = 0
+for _p in _src_files:
+    for _m in re.finditer(r"\.(?:execute|query)\(\s*(sql`|\"[^\"\n]*\"|.)", _p.read_text(encoding="utf8")):
+        _a = _m.group(1)
+        if _a == "sql`":
+            SQL_CALL_TAGGED += 1
+        elif _a.startswith('"') and "+" not in _a and "${" not in _a:
+            SQL_CALL_CONST += 1
+        else:
+            SQL_CALL_DYNAMIC += 1
+assert SQL_RAW_OR_CALLED == 0 and SQL_CALL_DYNAMIC == 0, "string-built SQL found: the section 'Who is the user on every request' must be reviewed"

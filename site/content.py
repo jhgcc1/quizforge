@@ -6,6 +6,7 @@ from pathlib import Path
 
 import diagrams as d
 import guard_html
+import identity_html
 import ptes_html
 import tests_html
 from lib import callout, link, table
@@ -145,6 +146,7 @@ def quality():
 
 def guardrails():
     body = d.guardrail_flow()
+    body += "<h3>The LLM guard as layers</h3>" + d.guard_layers()
     body += table(["", "Deterministic rules (code)", "A model"], [
         ["<b>Input</b> (README and request)", "WAF, JWT, CSRF, strict schemas, quotas · host allow-list and public IPs only · hidden or encoded text · <b>[[rules_total]] keyword rules</b>, the same [[rules_per_lang]] in English, Portuguese and Spanish plus [[rules_free]] language-free · <b>language policy</b>: only English, Portuguese and Spanish are accepted, every other language is rejected before anything else (statistical, no model call) · the model-call guard", "<b>One ML model:</b> <b>Llama Prompt Guard 2 (86M)</b>, a classifier for prompt injection and jailbreaks (English, French, German, Hindi, Italian, Portuguese, Spanish, Thai). It <b>flags</b> a document, never blocks (<code>flag</code> in Terraform and in the local stack)"],
         ["<b>The model call</b>", "The document is sent as data inside <code>&lt;document&gt;</code> tags; budget of 16 calls", "<b>The generation LLM itself</b> is told never to obey the document. This is the only probabilistic defence"],
@@ -162,7 +164,8 @@ def guardrails():
 
 
 def promptfoo():
-    body = table(["Suite", "Runs", "Model", "Tests"], [
+    body = "<h3>The AI tests across CI/CD</h3>" + d.eval_ladder()
+    body += table(["Suite", "Runs", "Model", "Tests"], [
         ["<b>Offline</b>", "Every pull request", "A fake model with fixed answers: free and instant", "[[pf_offline]]: the attack corpus in English, Portuguese and Spanish, the language policy (other languages rejected), bad topics, bad model replies, planted links, prompt safety rules"],
         ["<b>Live</b>", "A pull request that touches prompts or LLM code, every merge to main, every night", "The real MiniMax model, as the thing being tested", "[[pf_live]]: does the real model follow an instruction hidden in a document, write something that is not a quiz, or leave its purpose?"],
         ["<b>Red team sample</b>", "<b>Every pull request and every merge to main</b>", "Offline stage, then the real model", "[[pf_sample]] frozen attacks ([[pf_sample_en]] English, [[pf_sample_pt]] Portuguese, [[pf_sample_es]] Spanish) from [[pf_sample_intents]] intents, each with a canary token, in several forms (plain, tone, jailbreak templates, Base64, ROT13, leetspeak), plus [[pf_policy]] documents in other languages that must be rejected"],
@@ -226,6 +229,10 @@ def nightly():
     return sec("nightly", "Nightly red team on AWS", body, "A denser, separate test of the guardrails that runs while nobody is looking and leaves a timestamped report.")
 
 
+def identity():
+    return sec("identity", "Who is the user, and how the database is queried", identity_html.section(False), "Where the user comes from on every request, and how Drizzle ORM reaches RDS.")
+
+
 def tradeoffs():
     body = table(["Topic", "What we chose", "What would change it"], [
         ["Prompt-injection classifier", F.tok("Llama Prompt Guard 2 (86M, multilingual) instead of the English-only DeBERTa. On the public chatbot-style dataset it catches fewer injections in English ([[en_pg2_pct]] against [[deb_en]]) but has no false positives (the old model flagged the Pipecat README, score [[deb_pipecat]]) and covers our three languages. It only flags"), "The red-team results on our own attacks; a blocking mode only after a threshold is chosen from real data"],
@@ -273,8 +280,8 @@ def links():
 
 
 def all_sections():
-    return [overview(), architecture(), flow(), data(), agent(), guardrails(), promptfoo(), nightly(), quality(), cicd(), cost(), tradeoffs(), links()]
+    return [overview(), architecture(), flow(), data(), agent(), guardrails(), identity(), promptfoo(), nightly(), quality(), cicd(), cost(), tradeoffs(), links()]
 
 
-NAV = [("summary", "What it is"), ("architecture", "Architecture"), ("flow", "End to end"), ("data", "Data model"), ("agent", "Agent and score"), ("guardrails", "Guardrails"), ("promptfoo", "promptfoo"), ("nightly", "Nightly"),
+NAV = [("summary", "What it is"), ("architecture", "Architecture"), ("flow", "End to end"), ("data", "Data model"), ("agent", "Agent and score"), ("guardrails", "Guardrails"), ("identity", "User and database"), ("promptfoo", "promptfoo"), ("nightly", "Nightly"),
        ("quality", "Quality"), ("cicd", "CI/CD"), ("cost", "Cost"), ("tradeoffs", "Trade-offs"), ("links", "Links")]
