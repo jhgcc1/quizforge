@@ -3,6 +3,7 @@ from pathlib import Path
 
 import diagrams as d
 import guard_html
+import identity_html
 import ptes_html
 import tests_html
 import facts as F
@@ -329,6 +330,7 @@ def validation():
 def guardrails():
     body = callout("ok", "The idea", "No single guardrail is trusted. Each one is cheap and tested, and a threat is stopped by the first layer that can see it, with a clear message, before it reaches the model or the database. <b>Rules do the work; a model is used only where a rule cannot decide, and only to flag.</b>")
     body += d.guardrail_flow()
+    body += "<h3>The LLM guard as layers</h3>" + d.guard_layers()
     body += table(["", "Deterministic rules (code)", "A model"], [
         ["<b>Input</b> (README and request)", "WAF, JWT, CSRF, strict schemas, quotas · host allow-list and public IPs only · hidden or encoded text, [[rules_total]] keyword rules (en, pt, es), language policy (en, pt, es; statistical, no model call) · the model-call guard", "<b>One ML model:</b> Llama Prompt Guard 2 86M (Meta, ONNX, multilingual, baked into the worker image) that <b>flags</b> a document, never blocks (mode <code>flag</code>: the Terraform default and the local docker compose)"],
         ["<b>The model call</b>", "The document is sent as data inside <code>&lt;document&gt;</code> tags; budget of 16 calls", "<b>The generation LLM itself</b> is told never to obey the document. This is the only probabilistic defence"],
@@ -464,6 +466,7 @@ def guardrails():
 
 def promptfoo():
     body = callout("ok", "What it is", "promptfoo is a test runner for prompts. Here it runs the <b>real pipeline</b> (guard, prompts, output rails) against one attack corpus. It protects no user: it proves the guardrails before every deploy. <b>Every assertion is plain code</b> (no model judges another model); a model appears only as the system under test in the live suite.")
+    body += "<h3>The AI tests across CI/CD</h3>" + d.eval_ladder()
     body += "<h3>The attack corpus (one file, tested twice)</h3>" + table(["Group", "Techniques", "Result", "Cases"], [
         ["Encoded text", "Base64, URL-safe Base64, Base64 in a code block, Base64 in a data: URI, hex, percent-encoding (full and partial), \\u and \\x escapes, HTML entities, binary, ROT13, reversed text, leetspeak, spaced letters", "<b>Block</b>", "[[ag_encoded]]"],
         ["Hidden Unicode", "Zero-width letters, invisible tag characters (U+E0000), right-to-left override, Cyrillic look-alike letters", "<b>Block</b>", "[[ag_unicode]]"],
@@ -823,6 +826,10 @@ def security():
         ["Open sign-up", "Many accounts created to get more quizzes", "Verified e-mail, 12-character passwords; a quota per user (10 per 24 h), rate limits, WAF 1000 per 5 min per IP, the job budget, the <code>llm-cost-daily</code> alarm and the AWS budget. The quota is per account, so the WAF, the cost alarm and the budget limit the total", "Cognito, API, WAF, worker", "429, or an alarm and an e-mail", "Integration tests"],
     ], widths=["14%", "20%", "22%", "11%", "17%", "16%"])
     return sec("security", "Network and security", body)
+
+
+def identity():
+    return sec("identity", "Who is the user on every request, and how the database is queried", identity_html.section(True), "Where the user comes from on every request, which route filters by it, and how Drizzle ORM reaches RDS.")
 
 
 def resilience():
@@ -1326,10 +1333,10 @@ def limits():
 
 
 def all_sections():
-    return [overview(), links(), architecture(), communication(), flows(), documents(), validation(), guardrails(), promptfoo(), nightly(), agent(), quality(), langfuse(), scoring_arch(), secrets(), data(), security(), resilience(), observability(), evaluation(), cicd(), state(),
+    return [overview(), links(), architecture(), communication(), flows(), documents(), validation(), guardrails(), promptfoo(), nightly(), agent(), quality(), langfuse(), scoring_arch(), secrets(), data(), security(), identity(), resilience(), observability(), evaluation(), cicd(), state(),
             decisions(), bugs(), costs(), evidence(), runbook(), live_state(), limits(), improvements(), glossary(), presentation()]
 
 
 NAV = [("summary", "Summary"), ("links", "Links"), ("architecture", "Architecture"), ("comm", "Communication"), ("flows", "Flows"), ("documents", "Documents"), ("validation", "Validation"), ("guardrails", "Guardrails"), ("promptfoo", "promptfoo"), ("nightly", "Nightly"), ("agent", "Agent"),
-       ("quality", "Quality & alerts"), ("langfuse", "Langfuse"), ("scoringarch", "Scoring service"), ("secrets", "Secrets"), ("data", "Data"), ("security", "Security"), ("resilience", "Resilience"), ("observability", "Observability"), ("evaluation", "Evaluation"),
+       ("quality", "Quality & alerts"), ("langfuse", "Langfuse"), ("scoringarch", "Scoring service"), ("secrets", "Secrets"), ("data", "Data"), ("security", "Security"), ("identity", "User and database"), ("resilience", "Resilience"), ("observability", "Observability"), ("evaluation", "Evaluation"),
        ("cicd", "CI/CD"), ("state", "TF state"), ("decisions", "Decisions"), ("bugs", "Bugs"), ("pause", "Cost & pause"), ("evidence", "Evidence"), ("runbook", "Runbook"), ("live", "Live vs main"), ("limits", "Limits"), ("improve", "Improvements"), ("glossary", "Glossary"), ("standby", "Standby")]
