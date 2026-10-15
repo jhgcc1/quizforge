@@ -574,3 +574,44 @@ jobs:
           alb_ip=$(getent ahostsv4 "$(terraform output -raw alb_dns)" | awk '{print $1; exit}')
           expect "ALB cannot be reached around CloudFront" "000|403" --connect-timeout 6 "http://$alb_ip/"
           echo "### Deployed \`${TAG::7}\` to $url" >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------- publish images to ECR (main only, after EVERY gate)
+  # Builds and pushes the images the infra repository (jhgcc1/quizforge-infra) deploys. It deploys NOTHING: the role can only push to ECR.
+  # Tags are immutable (tag = commit sha) and an existing tag is skipped. Until the cutover the `deploy` job above still builds and pushes the
+  # same images (it skips whichever tag is already in ECR), and stays the production path.
+  publish:
+    name: publish
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [quality, integration, migrations, e2e, docker-build, terraform-validate, secrets-scan, promptfoo, llm-eval]
+    runs-on: ubuntu-24.04-arm # native arm64 images for Graviton Fargate
+    timeout-minutes: 45
+    concurrency: { group: publish-images, cancel-in-progress: false }
+    permissions:
+      id-token: write # OIDC: the ECR push-only role quizforge-gha-publish (trusts refs/heads/main of this repository)
+      contents: read
+    env:
+      TAG: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_PUBLISH_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr
+      - uses: docker/setup-buildx-action@v3
+      - name: "Build and push api, worker and redteam (tagged with the commit sha; immutable; an existing tag is skipped)"
+        run: |
+          for s in api worker redteam; do
+            repo="${{ steps.ecr.outputs.registry }}/quizforge/$s"
+            if aws ecr describe-images --repository-name "quizforge/$s" --image-ids imageTag="$TAG" >/dev/null 2>&1; then
+              echo "$s:$TAG already in ECR, skipping"; continue
+            fi
+            if [ "$s" = redteam ]; then dockerfile=docker/redteam/Dockerfile; else dockerfile="apps/$s/Dockerfile"; fi
+            T=""; [ "$s" = worker ] && T="--target runtime-detector" # the worker image carries the Llama Prompt Guard 2 model
+            [ "$s" = redteam ] && T="--build-arg GIT_SHA=$TAG" # the red team report names the commit
+            docker buildx build -f "$dockerfile" $T -t "$repo:$TAG" --push \
+              --cache-from type=gha,scope="$s"-arm --cache-to type=gha,scope="$s"-arm,mode=max .
+          done
+      - name: Summary
+        run: echo "### Published \`${TAG::12}\` to ECR (api, worker, redteam). Deploy it from jhgcc1/quizforge-infra (workflow Deploy)." >> "$GITHUB_STEP_SUMMARY"
