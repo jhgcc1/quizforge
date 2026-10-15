@@ -76,6 +76,11 @@ def _tokens():
         "api_db_scoped": len(API_DB_OWNER_SCOPED), "repo_n": REPO_FUNCS_N, "repo_other_n": REPO_OTHER_FUNCS_N, "drizzle_orm": DRIZZLE_ORM, "drizzle_kit": DRIZZLE_KIT,
         "drizzle_locked": DRIZZLE_ORM_LOCKED, "pg_locked": PG_LOCKED, "migrations_n": MIGRATIONS_N, "sql_tagged": SQL_TAGGED, "sql_const": SQL_CALL_CONST, "sql_call_tagged": SQL_CALL_TAGGED,
     })
+    t.update({
+        "router_max_tokens": f"{ROUTER_MAX_TOKENS:,}", "router_min_sections": ROUTER_MIN_SECTIONS, "router_section_min_tokens": ROUTER_SECTION_MIN_TOKENS,
+        "map_sections": MAP_SECTIONS, "map_concurrency": MAP_CONCURRENCY, "map_candidates": MAP_CANDIDATES_PER_SECTION,
+        "single_shot_chars": f"{MAX_SINGLE_SHOT_CHARS:,}", "chars_per_token": CHARS_PER_TOKEN, "heading_max_level": HEADING_MAX_LEVEL,
+    })
     if BENCH:
         en, al = bench_row("english"), bench_row("all")
         for p, r in (("en", en), ("all", al)):

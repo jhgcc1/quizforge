@@ -540,11 +540,38 @@ def agent():
         ["<code>section-map-reduce</code>", "The document is split by headings. <b>Map</b>: candidate questions per section (5 sections, 2 candidates each, 3 calls at a time). <b>Reduce</b>: the final set is picked from the candidates", "Long, structured documents: the questions cover the whole document, not only the start"],
         ["<code>critique</code> (true or false, separate)", "An extra “generate, review, revise” stage (up to 2 rounds) on top of <i>either</i> strategy", "Better quality, one more model call per round"],
     ], widths=["22%", "50%", "28%"])
+    body += "<h3>How <code>auto</code> decides</h3>"
+    body += "<p>With <code>strategy: auto</code> (the default) the choice is made by <code>chooseStrategy</code> in <code>packages/llm/src/router.ts</code>: plain code that looks at the <b>size</b> and the <b>structure</b> of the document. It never calls a model, so it costs nothing and gives the same answer for the same document every time.</p>"
+    body += d.strategy_router()
+    body += "<h3>What the router measures</h3>" + table(["Measure", "How it is computed", "Used for"], [
+        ["Tokens", F.tok("An estimate: characters divided by [[chars_per_token]] (not a real tokenizer)"), F.tok("The first question: up to [[router_max_tokens]] tokens is short")],
+        ["Sections", F.tok("The document is split at Markdown headings of level 1 to [[heading_max_level]] (lines inside code fences are ignored; the text before the first heading is its own section, called <code>(intro)</code>). Sections under [[router_section_min_tokens]] tokens do not count"), F.tok("The second question: a long document needs [[router_min_sections]] or more sections to be cut by section")],
+        ["Code ratio", "The share of the document inside code fences", "Only reported with the decision (it does not change the choice)"],
+    ], widths=["16%", "56%", "28%"])
+    body += "<h3>The three outcomes</h3>" + table(["Document", "Chosen strategy", "Reason saved with the quiz"], [
+        [F.tok("[[router_max_tokens]] tokens or fewer"), "<b>single-shot</b>", "short document (about N tokens)"],
+        [F.tok("More than [[router_max_tokens]] tokens and [[router_min_sections]] or more sections"), "<b>section-map-reduce</b>", "long document (about N tokens) with S sections"],
+        [F.tok("More than [[router_max_tokens]] tokens but fewer than [[router_min_sections]] sections"), F.tok("<b>single-shot</b>, on the first [[single_shot_chars]] characters"), "long but unstructured: truncating per section is unsafe"],
+    ], widths=["34%", "30%", "36%"])
+    if F.ROUTER_ROWS:
+        body += "<h3>What it decides for the test documents</h3>" + table(["Document (<code>evals/fixtures</code>)", "Tokens", "Sections", "Code", "Strategy", "Reason"], [
+            [f"<code>{esc(r['fixture'])}</code>", f"{r['tokens']:,}", r["sections"], f"{r['codePct']}%", f"<b>{esc(r['strategy'])}</b>", esc(r["reason"])] for r in F.ROUTER_ROWS
+        ], widths=["26%", "9%", "10%", "8%", "17%", "30%"])
+        n_mr = sum(1 for r in F.ROUTER_ROWS if r["strategy"] == "section-map-reduce")
+        body += f"<p class='muted'>Measured by running the real router on every file of <code>evals/fixtures</code> ({F.TESTS_DATE}, <code>scripts/measure-facts.sh</code>). {n_mr} of the {len(F.ROUTER_ROWS)} documents are long enough for section-map-reduce, so the golden set exercises that strategy with {'one document' if n_mr == 1 else str(n_mr) + ' documents'} and none of the test documents is a long document without headings.</p>"
+    body += "<h3>What happens after the choice</h3>" + table(["Step", "single-shot", "section-map-reduce"], [
+        ["Which text the model reads", F.tok("The whole document, cut at [[single_shot_chars]] characters if it is longer"), F.tok("Only [[map_sections]] sections of the whole document")],
+        ["Which sections", "Not applicable", F.tok("With no topic: [[map_sections]] sections spread evenly along the document (so the questions cover all of it). With a topic: the sections that share the most words with the topic come first; if no section shares a word, the even spread is used")],
+        ["Calls to the model", "One call that returns all the questions", F.tok("One call per section, [[map_concurrency]] at a time, each asking for [[map_candidates]] candidate questions")],
+        ["Final set", "The questions from that call", "<b>Reduce</b> in code: candidates are taken round-robin across the sections (no section can dominate), duplicate questions are skipped, then the set is ordered from easy to hard. If fewer distinct questions than requested exist, the job fails and is retried"],
+        ["Then, for both", "The same fixed checks, the optional review stage (<code>critique</code>) and the output rails apply", "The same"],
+    ], widths=["20%", "36%", "44%"])
+    body += callout("info", "Good to know", F.tok("<ul><li>A strategy chosen by the user (<code>single-shot</code> or <code>section-map-reduce</code>) is used as it is: the router is skipped and the reason says <i>requested</i>.</li><li>The <b>topic</b> does not change the decision. It only changes which sections the map step picks and adds a line to the prompt.</li><li>The estimate uses [[chars_per_token]] characters per token, so a document with a lot of code or many short words can be a little over or under the real size. The limits are far from the model's context window, so a small error does not matter.</li><li>The weak case is a <b>long document with no headings</b>: it is one call on the first [[single_shot_chars]] characters, so questions only come from the beginning. Documents under the size limit of the fetch (512 KB) are accepted, so this can happen.</li><li>The <code>plan-then-write</code> shape from the comparison below is not used by the API.</li></ul>"))
     body += callout("info", "Not to be confused with", "The “structures” compared below (<code>one-shot</code>, <code>critique-loop</code>, <code>plan-then-write</code>) are graph shapes tested in the experiment, not options of the API. <code>critique-loop</code> is the one in production.")
     body += "<h3>Router and settings</h3>" + table(["Setting", "Value"], [
-        ["Router: short document", "Up to 4,500 tokens, or fewer than 4 sections of 40+ tokens → <b>single-shot</b> (1 prompt)"],
-        ["Router: long document", "Otherwise <b>section-map-reduce</b>: samples 5 sections, 2 candidates each, 3 calls at a time"],
-        ["Text limit", "Single-shot, plan, critique and the judge read only the first 60,000 characters; map-reduce samples sections of the whole document"],
+        ["Router: short document", F.tok("Up to [[router_max_tokens]] tokens, or fewer than [[router_min_sections]] sections of [[router_section_min_tokens]]+ tokens → <b>single-shot</b> (1 prompt)")],
+        ["Router: long document", F.tok("Otherwise <b>section-map-reduce</b>: samples [[map_sections]] sections, [[map_candidates]] candidates each, [[map_concurrency]] calls at a time")],
+        ["Text limit", F.tok("Single-shot, plan, critique and the judge read only the first [[single_shot_chars]] characters; map-reduce samples sections of the whole document")],
         ["Temperatures", "Generation 0.4 · plan 0.3 · critique 0 · revise 0.3 · judge 0"],
         ["Score <code>critique_rounds</code>", "The only score the worker sends to Langfuse (it describes the generation); call names get a <code>:repair-n</code> suffix when a repair happens"],
     ], widths=["30%", "70%"])

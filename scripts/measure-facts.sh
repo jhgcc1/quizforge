@@ -18,6 +18,9 @@ pnpm exec vitest run --config vitest.coverage.config.ts --coverage --reporter=js
 # promptfoo suites: the number of cases each one generates
 pf="$(pnpm exec tsx -e 'import { offline, live } from "./promptfoo/tests.ts"; console.log(JSON.stringify({ offline: offline().length, live: live().length }))')"
 
+# the strategy router (chooseStrategy) applied to every test document: what `auto` decides for real files
+router="$(pnpm exec tsx -e 'import { readdirSync, readFileSync } from "node:fs"; import { chooseStrategy } from "./packages/llm/src/router.ts"; const dir = "evals/fixtures"; const rows = readdirSync(dir).filter((f) => f.endsWith(".md")).sort().map((f) => { const d = chooseStrategy(readFileSync(dir + "/" + f, "utf8")); return { fixture: f, strategy: d.strategy, reason: d.reason, tokens: d.stats.tokens, sections: d.stats.sections, codePct: Math.round(d.stats.codeRatio * 100) }; }); console.log(JSON.stringify(rows))')"
+
 web=null
 if [ -n "${WEB_DIR:-}" ]; then
   (cd "$WEB_DIR" && pnpm exec vitest run --reporter=json --outputFile="$tmp/web.json" >"$tmp/web.log" 2>&1) || { tail -20 "$tmp/web.log"; echo "front end tests failed" >&2; exit 1; }
@@ -26,7 +29,7 @@ fi
 
 node -e '
 const fs = require("fs");
-const [tmp, pf, web, sha] = process.argv.slice(1);
+const [tmp, pf, web, sha, router] = process.argv.slice(1);
 const v = JSON.parse(fs.readFileSync(tmp + "/vitest.json", "utf8"));
 const c = JSON.parse(fs.readFileSync("coverage/coverage-summary.json", "utf8")).total;
 const pct = (k) => c[k].pct;
@@ -50,8 +53,9 @@ const out = {
   coverage: { statements: pct("statements"), lines: pct("lines"), functions: pct("functions"), branches: pct("branches"), statementsByPackage: byPackage },
   promptfoo: JSON.parse(pf),
   web: JSON.parse(web),
+  router: JSON.parse(router),
 };
 fs.writeFileSync("site/measured.json", JSON.stringify(out, null, 2) + "\n");
 console.log(JSON.stringify(out, null, 2));
-' "$tmp" "$pf" "$web" "$(git rev-parse --short HEAD)"
+' "$tmp" "$pf" "$web" "$(git rev-parse --short HEAD)" "$router"
 rm -rf "$tmp"
