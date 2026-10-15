@@ -32,6 +32,7 @@ import {
   REVISE_SYSTEM,
   StructuredOutputError,
   UnsafeDocumentError,
+  UnsafeOutputError,
   UnsupportedLanguageError,
   admitDocument,
   createFakeLlm,
@@ -45,6 +46,7 @@ import {
   type LlmClient,
 } from "@quizforge/llm";
 import { longDocument } from "./redteam/nightly-docs.js";
+import { railsFromCalls, type RawLayers } from "./redteam/layers.js";
 import { embedAttack, readmeBlocks } from "./redteam/readme.js";
 
 interface Vars {
@@ -196,17 +198,35 @@ export default class QuizPipelineProvider {
 
     const inner: LlmClient = v.kind === "bad-output" ? { model: "scripted-bad-model", complete: async () => ({ text: badOutput(v.id ?? ""), usage: { promptTokens: 10, completionTokens: 10, cachedTokens: 0 } }) } : this.mode === "live" ? liveClient() : createFakeLlm();
     const seen: ChatMessage[][] = [];
-    const recorder: LlmClient = { model: inner.model, complete: (m, o) => (seen.push(m), inner.complete(m, o)) };
+    const calls: { role: string; content: string }[][] = []; // a snapshot of the messages of each call: `seen` holds the same array that later repair rounds extend
+    const recorder: LlmClient = { model: inner.model, complete: (m, o) => (seen.push(m), calls.push(m.map((x) => ({ role: x.role, content: x.content }))), inner.complete(m, o)) };
+    const found = inspectText(doc).findings;
     const base = {
       kind: v.kind,
       id: v.id,
       technique,
       mode: this.mode,
       language: detectLanguage(doc),
-      findings: inspectText(doc).findings.map((f) => ({ kind: f.kind, severity: f.severity })),
+      findings: found.map((f) => ({ kind: f.kind, severity: f.severity })),
       ...(v.kind === "redteam" ? { canary: v.canary, lang: v.lang, stage: v.stage } : {}),
     };
     let detectorState = "off";
+    let detectorScore: number | null = null;
+    /** Per-layer attribution of a redteam case (promptfoo/redteam/layers.ts): which layer saw the document and which one acted. */
+    const layers = (rejectedBefore: string | null, err?: unknown): { layers: RawLayers } | Record<string, never> => {
+      if (v.kind !== "redteam") return {};
+      const serious = found.filter((f) => f.severity !== "sanitize");
+      const rails = railsFromCalls(calls);
+      return {
+        layers: {
+          rules: { flagged: serious.length > 0, kinds: [...new Set(serious.map((f) => f.kind))], rules: [...new Set(serious.map((f) => f.rule ?? f.kind))] },
+          detector: { state: detectorState, score: detectorScore },
+          rejectedBefore,
+          rails: { ...rails, terminal: err instanceof UnsafeOutputError || err instanceof StructuredOutputError },
+          ...(err instanceof Error ? { error: err.name } : {}),
+        },
+      };
+    };
     try {
       if (v.kind === "redteam") {
         // stage 3 (optional): the semantic detector looks at the document after the guard and the language policy accepted it
@@ -221,7 +241,8 @@ export default class QuizPipelineProvider {
           if (admitted) {
             const s = await screenWithDetector(admitted.text, admitted.language, det.detector, det.mode);
             detectorState = s.status;
-            if (s.status === "blocked") return { ...base, status: "detector_blocked", detector: detectorState, llmCalls: 0, reason: s.finding.detail.slice(0, 200) };
+            if (s.status !== "skipped") detectorScore = s.result.score;
+            if (s.status === "blocked") return { ...base, status: "detector_blocked", detector: detectorState, llmCalls: 0, reason: s.finding.detail.slice(0, 200), ...layers("detector") };
           } else detectorState = "not-reached";
         }
       }
@@ -241,6 +262,7 @@ export default class QuizPipelineProvider {
         promptSeen: user,
         systemSeen: system,
         ...(v.kind === "redteam" ? { detector: detectorState, systemPrompts: [GENERATION_SYSTEM, CRITIQUE_SYSTEM, REVISE_SYSTEM, PLAN_SYSTEM, JUDGE_SYSTEM] } : {}),
+        ...layers(null),
       };
     } catch (err) {
       const user = seen.flat().filter((m) => m.role === "user").map((m) => m.content).join("\n---\n");
@@ -251,7 +273,7 @@ export default class QuizPipelineProvider {
         : err instanceof QualityGateError || err instanceof StructuredOutputError ? "no_quiz"
         : err instanceof Error && err.message.startsWith("fake llm:") ? "fake_limit" /* the offline fake cannot do everything (for example revise) */
         : "error";
-      return { ...base, status, llmCalls: seen.length, reason: err instanceof Error ? err.message.slice(0, 200) : String(err), promptSeen: user, ...(v.kind === "redteam" ? { detector: detectorState } : {}) };
+      return { ...base, status, llmCalls: seen.length, reason: err instanceof Error ? err.message.slice(0, 200) : String(err), promptSeen: user, ...(v.kind === "redteam" ? { detector: detectorState } : {}), ...layers(err instanceof UnsafeDocumentError ? "guard" : err instanceof UnsupportedLanguageError ? "language" : err instanceof InvalidLlmInputError ? "topic" : null, err) };
     }
   }
 }

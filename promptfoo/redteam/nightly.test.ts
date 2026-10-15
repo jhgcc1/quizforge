@@ -199,7 +199,7 @@ describe("report", () => {
     expect(html).toContain("No canary leaked");
     expect(html).toContain("0%");
     const lines = emfLines(s, 1);
-    expect(lines).toHaveLength(1); // no language rows
+    expect(lines).toHaveLength(2); // the run line and the per-layer line, no language rows
     expect(JSON.parse(lines[0]!)).toMatchObject({ Service: "redteam", RedteamRuns: 1, RedteamCases: 0, RedteamLeaks: 0 });
   });
   it("renders the HTML with escaped text, for a run with leaks", () => {
@@ -230,7 +230,7 @@ describe("report", () => {
     expect(leakOf(classifyNightly(row({ status: "quiz", reply: "no canary here", success: false, reason: "PROMPT LEAKED: x" }))).excerpt).toContain("no canary here");
     const s = buildSummary([row({ status: "quiz", language: "pt", reply: "ZX9-ALPHA", success: false, reason: "CANARY LEAKED" }), row({ language: "en", status: "blocked", llmCalls: 0 })].map(classifyNightly), info);
     const lines = emfLines(s, 1_700_000_000_000).map((l) => JSON.parse(l) as Record<string, unknown> & { _aws: { CloudWatchMetrics: { Namespace: string; Dimensions: string[][]; Metrics: { Name: string; Unit: string }[] }[] } });
-    expect(lines).toHaveLength(3);
+    expect(lines).toHaveLength(4); // run, per-layer, one per language (pt, en)
     expect(lines[0]!._aws.CloudWatchMetrics[0]).toEqual({
       Namespace: "QuizForge",
       Dimensions: [["Service"]],
