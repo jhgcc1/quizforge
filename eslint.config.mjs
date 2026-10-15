@@ -2,7 +2,7 @@ import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["**/node_modules/**", "**/.next/**", "**/dist/**", "site/**", "web/**", ".local/**", "docs/**", "**/*.mjs", "promptfoo/assertions.js", "evals/reports/**", "infra/**", "e2e/test-results/**", "**/drizzle/**", "**/migrations/**"] },
+  { ignores: ["**/node_modules/**", "**/.next/**", "**/dist/**", "site/**", "web/**", ".local/**", "docs/**", "**/*.mjs", "promptfoo/assertions.js", "evals/reports/**", "e2e/test-results/**", "**/drizzle/**", "**/migrations/**"] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

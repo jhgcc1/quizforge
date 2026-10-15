@@ -4,14 +4,23 @@ Nothing here is a typed number, with two kinds of exception that are named where
 estimate, and the numbers in site/measured.json, which scripts/measure-facts.sh writes by running the tests.
 """
 import json
+import os
 import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+# The infrastructure (Terraform, the operations scripts, the deploy workflow) is in its own repository, jhgcc1/quizforge-infra.
+# The reports read it from a checkout: INFRA_DIR=/path/to/quizforge-infra (default: a sibling directory called quizforge-infra).
+INFRA_DIR = Path(os.environ.get("INFRA_DIR") or ROOT.parent / "quizforge-infra")
+assert (INFRA_DIR / "terraform" / "ecs.tf").exists(), f"the infrastructure repository is not at {INFRA_DIR}: git clone https://github.com/jhgcc1/quizforge-infra and set INFRA_DIR"
 
 
 def _text(rel):
     return (ROOT / rel).read_text(encoding="utf8")
+
+
+def _itext(rel):  # a file of the infrastructure repository
+    return (INFRA_DIR / rel).read_text(encoding="utf8")
 
 
 def _json(rel):
@@ -145,25 +154,25 @@ def golden_languages_text():
     return t + (f"; no {' or '.join(missing)} item" + (f" (a {' / '.join(missing)} document exists in evals/fixtures but is not in the set)" if FIXTURES_NOT_IN_GOLDEN and "spanish" in FIXTURES_NOT_IN_GOLDEN else "") if missing else "")
 
 
-# ---------------------------------------------------------------- infrastructure (infra/terraform)
-_obs = _text("infra/terraform/observability.tf")
+# ---------------------------------------------------------------- infrastructure (quizforge-infra: terraform/)
+_obs = _itext("terraform/observability.tf")
 _alarm_block = _obs.split("alarms = {")[1].split('resource "aws_cloudwatch_metric_alarm" "app"')[0]
 ALARM_NAMES = re.findall(r"^    ([a-z0-9]+(?:-[a-z0-9]+)+) = \{", _alarm_block, re.M)
 ALARMS_MONITORING = len(ALARM_NAMES)
-ALARMS_SCALING = len(re.findall(r'resource "aws_cloudwatch_metric_alarm"', _text("infra/terraform/ecs.tf")))
-ALARMS_REDTEAM = len(re.findall(r'resource "aws_cloudwatch_metric_alarm"', _text("infra/terraform/redteam.tf")))
+ALARMS_SCALING = len(re.findall(r'resource "aws_cloudwatch_metric_alarm"', _itext("terraform/ecs.tf")))
+ALARMS_REDTEAM = len(re.findall(r'resource "aws_cloudwatch_metric_alarm"', _itext("terraform/redteam.tf")))
 ALARMS_TOTAL = ALARMS_MONITORING + ALARMS_SCALING + ALARMS_REDTEAM
 ALARMS_QUALITY = len([a for a in ALARM_NAMES if a.startswith("quiz-quality") or a == "judge-failing"])
 DASHBOARD_WIDGETS = len(re.findall(r'\{ type = "(?:metric|log)"', _obs))
-_ecs = _text("infra/terraform/ecs.tf")
+_ecs = _itext("terraform/ecs.tf")
 LOG_GROUPS = re.findall(r'"(\w+)"', re.search(r'aws_cloudwatch_log_group" "svc" \{\s*for_each\s*=\s*toset\(\[([^\]]*)\]', _ecs).group(1))
 ECS_SERVICES = re.findall(r'resource "aws_ecs_service" "(\w+)"', _ecs)
-AUDIT_CHECKS = len(re.findall(r"^chk ", _text("scripts/audit-aws.sh"), re.M)) + len(ECS_SERVICES)  # one rollout check per service
+AUDIT_CHECKS = len(re.findall(r"^chk ", _itext("scripts/audit-aws.sh"), re.M)) + len(ECS_SERVICES)  # one rollout check per service
 CATALOG_DOCS = len(re.findall(r'^  \{ id: "', _text("packages/core/src/catalog.ts"), re.M))
 CATALOG_REAL = len(re.findall(r'kind: "readme"', _text("packages/core/src/catalog.ts")))
 PROMPTS_IN_CATALOG = len(re.findall(r'\{ name: "quizforge/', _text("packages/llm/src/prompt-catalog.ts")))
 
-# ---------------------------------------------------------------- CI (.github/workflows/ci.yml, infra/github/main.tf)
+# ---------------------------------------------------------------- CI (.github/workflows/ci.yml; the deploy is quizforge-infra .github/workflows/deploy.yml; github/main.tf)
 _jobs = _text(".github/workflows/ci.yml").split("\njobs:\n")[1]
 CI_JOBS = {}
 for _m in re.finditer(r"^  ([a-z0-9-]+):\n((?:    .*\n|\n)*)", _jobs, re.M):
@@ -172,16 +181,17 @@ for _m in re.finditer(r"^  ([a-z0-9-]+):\n((?:    .*\n|\n)*)", _jobs, re.M):
     _needs = re.search(r"^    needs: \[(.*)\]", _body, re.M)
     CI_JOBS[_m.group(1)] = {"if": _if.group(1) if _if else "", "needs": _needs.group(1).split(", ") if _needs else []}
 CI_PR_JOBS = [j for j, v in CI_JOBS.items() if not v["if"] or "pull_request" in v["if"]]
-CI_REQUIRED = re.findall(r'"([\w-]+)"', re.search(r"required_checks = concat\(\s*\[([^\]]*)\]", _text("infra/github/main.tf")).group(1))
-CI_DEPLOY_NEEDS = CI_JOBS["deploy"]["needs"]
-SMOKE_FULL = len(re.findall(r'^\s+expect "', _text(".github/workflows/ci.yml"), re.M))
-SMOKE_WEB = len(re.findall(r'^\s+expect "', _text(".github/workflows/deploy-web.yml"), re.M))
+CI_REQUIRED = re.findall(r'"([\w-]+)"', re.search(r"required_checks = concat\(\s*\[([^\]]*)\]", _itext("github/main.tf")).group(1))
+CI_DEPLOY_NEEDS = CI_JOBS["publish"]["needs"]  # the gates every image must pass before it is published (and so can be deployed)
+_deploy_yml = _itext(".github/workflows/deploy.yml")
+SMOKE_FULL = len(re.findall(r'^\s+expect "', _deploy_yml, re.M))  # scope all
+SMOKE_WEB = len(re.findall(r'^\s+expect "', _deploy_yml.split("Smoke test through CloudFront")[1].split('if [ "$SCOPE" = all ]; then')[0], re.M))  # the checks both scopes run
 WORKFLOWS = sorted(p.name for p in (ROOT / ".github/workflows").glob("*.yml"))
 
 # ---------------------------------------------------------------- cost estimate
 # Task sizes come from variables.tf. The unit prices are AWS list prices (us-east-2, ARM64 Fargate), typed here: the result is an
 # estimate from the price list, not the bill.
-_vars = _text("infra/terraform/variables.tf")
+_vars = _itext("terraform/variables.tf")
 
 
 def _var(name):
