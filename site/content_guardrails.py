@@ -119,11 +119,18 @@ the <b>sanitized</b> text (what the model will see), a list of <b>findings</b>, 
         ["7", "Obfuscated instructions", "rot13, reversed text, leetspeak, spaced letters, look-alike letters (Cyrillic or Greek inside a Latin word). Also text that becomes readable <i>only</i> after decoding, even when no rule matches it", "<b>block</b>"],
         ["8", "Plain-text instructions", "A keyword rule matches a line of the visible text", "flag"],
     ], widths=["5%", "20%", "60%", "15%"])
-    body += callout("", "Why step 8 only flags",
-                    "A security tutorial, a prompt-engineering README or this very report quote attack sentences. Blocking them would make the "
-                    "product refuse legitimate documents. The plain instruction therefore goes to the model — inside <code>&lt;document&gt;</code> "
-                    "tags, declared as data — and the flag switches the output rails to strict mode. Hidden or encoded instructions are different: "
-                    "there is no honest reason to write one, so they block.")
+    body += callout("", "Why step 8 only flags, when the seven before it block",
+                    T("The difference is not how bad the sentence is, it is the <b>intent to hide</b>. An HTML comment, base64, rot13, invisible "
+                      "characters, a <code>display:none</code> element: none of them has an honest use in a README, so the hiding itself is the "
+                      "signal and the document is refused. Writing <i>“ignore all previous instructions”</i> in plain prose is what every document "
+                      "<i>about</i> the subject does — a security tutorial, a prompt-engineering README, this report. The measurement says what "
+                      "blocking would cost: of [[dp_wide_docs]] real READMEs, <b>[[dp_wide_rules]] ([[dp_wide_rules_pct]]) match a keyword rule</b> "
+                      "and none of them is an attack. Blocking would refuse one real document in twenty.<br><br>"
+                      "The flag is not passive, though: the document reaches the model <b>as delimited data</b> inside "
+                      "<code>&lt;document&gt;</code> tags, the flag arms the output rails (strict links, planted words), and a spike of "
+                      "[[flagged_alarm]] flagged documents in an hour raises an alarm — one flagged README is normal, a hundred is somebody probing. "
+                      "What this accepts is a real risk: a plain-text attack the model obeys <i>and</i> that escapes the rails is a leak. That is "
+                      "what the nightly measures, night after night."))
     body += f"""<h3>What the model finally sees</h3>
 <p>The sanitized text, wrapped in <code>&lt;document&gt;</code> tags, with the flagged excerpts passed alongside it so the output
 rails can use them ({code('packages/llm/src/llm-input.ts')}). The request is validated by a strict schema at the only door to the
