@@ -28,7 +28,7 @@ benign["evals fixtures (not injection)"] = readdirSync("evals/fixtures").filter(
 benign["red-team README templates"] = [benignDocument(), ...["en", "pt", "es"].map((l) => readmeBlocks(l).join("\n\n"))];
 
 const pg2 = createOnnxDetector({ threshold: 0.5 });
-const deberta = createOnnxDetector({ model: "protectai/deberta-v3-base-prompt-injection-v2", ...(process.env.DEBERTA_DIR ? { modelDir: process.env.DEBERTA_DIR } : {}), threshold: 0.5 });
+const deberta = createOnnxDetector({ prepare: (md) => md /* the previous detector as it was run: without the preparation */, model: "protectai/deberta-v3-base-prompt-injection-v2", ...(process.env.DEBERTA_DIR ? { modelDir: process.env.DEBERTA_DIR } : {}), threshold: 0.5 });
 const rules = (t: string): boolean => inspectText(t).findings.some((f) => f.severity !== "sanitize");
 const r3 = (n: number): number => Math.round(n * 1000) / 1000;
 

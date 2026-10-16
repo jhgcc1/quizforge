@@ -27,7 +27,7 @@ export const DETECTOR_LANGUAGES = ["en", "fr", "de", "hi", "it", "pt", "es", "th
 /** The model's own decision boundary. Chosen from the benchmark (docs/security/benchmark.html): scores are almost binary (blatant attacks 0.99+), so 0.5 recalls the most. On the benign benchmark rows and the test documents it has 0 false positives, but it flags a few real READMEs (docs/security/detector-fp.md: 5 of 98, scores up to 0.99), which is why the default mode is flag and never block. Raise it with INJECTION_DETECTOR_THRESHOLD before using block mode. */
 export const DEFAULT_THRESHOLD = 0.5;
 
-type Classify = (texts: string[]) => Promise<{ label: string; score: number }[]>;
+export type Classify = (texts: string[]) => Promise<{ label: string; score: number }[]>;
 
 export interface OnnxDetectorOptions extends ChunkOptions {
   /** Hub id of the model. Default: env INJECTION_DETECTOR_MODEL or DEFAULT_MODEL. */
@@ -43,7 +43,8 @@ export interface OnnxDetectorOptions extends ChunkOptions {
 /** Prompt Guard 2 labels: BENIGN / MALICIOUS (id2label in config.json), or LABEL_0 / LABEL_1 when a conversion has no names. */
 const isMalicious = (label: string): boolean => /malicious|inject|unsafe|^label_1$|^1$/i.test(label);
 
-async function loadClassifier(model: string, modelDir: string | undefined): Promise<Classify> {
+/** The real model as a classify function (exported for the measurement scripts). */
+export async function loadClassifier(model: string, modelDir: string | undefined): Promise<Classify> {
   const { pipeline, env } = await import("@huggingface/transformers");
   let id = model;
   let options: Record<string, unknown> = { dtype: "fp32", subfolder: "" };
