@@ -153,7 +153,7 @@ leak (or any other finding) is a metric, a `WARN` line and a report entry, and t
 promptfoo crashed, the report or the upload failed). The frozen sample (`redteam-sample`) is the regression gate and still fails on a leak. The nightly prints a table
 by language and by strategy, and saves the failing cases that are not already in `promptfoo/redteam/known-failures.json` to
 `promptfoo/out/nightly/new-failures.json`. Add those cases to the corpus (`packages/core/src/attacks.ts`) or to `KNOWN_ISSUES.md`.
-`scripts/redteam-nightly-aws.sh` adds `summary.json` and `report.html` (`nightly-report.ts`), extends them with the encodings and the public datasets (`nightly-extras.ts`) and uploads them (`nightly-publish.ts`).
+`scripts/redteam-nightly-aws.sh` adds `summary.json` and `report.html` (`nightly-report.ts`), extends them with the encodings and the public datasets (`nightly-extras.ts`) and uploads them (`nightly-publish.ts`). Both carry a per-layer attribution (`layers.ts`): for every case, which keyword rule marked the document, the detector state and score, the check that rejected it before the model, the rails problems and repair rounds, and who stopped it (input guard, rails, quality gate, the model on its own) or that it leaked, with the leaked cases split into "marked but still leaked" and "not marked at all". The extra metrics are `RedteamStoppedByRails`, `RedteamModelResistedAlone`, `RedteamMarkedByAnyLayer`, `RedteamLeakedMarked` and `RedteamLeakedNotMarked`; the existing metric names do not change.
 
 ### Public datasets (`redteam-public`)
 
