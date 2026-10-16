@@ -160,7 +160,12 @@ _alarm_block = _obs.split("alarms = {")[1].split('resource "aws_cloudwatch_metri
 ALARM_NAMES = re.findall(r"^    ([a-z0-9]+(?:-[a-z0-9]+)+) = \{", _alarm_block, re.M)
 ALARMS_MONITORING = len(ALARM_NAMES)
 ALARMS_SCALING = len(re.findall(r'resource "aws_cloudwatch_metric_alarm"', _itext("terraform/ecs.tf")))
-ALARMS_REDTEAM = len(re.findall(r'resource "aws_cloudwatch_metric_alarm"', _itext("terraform/redteam.tf")))
+# One of the alarm RESOURCES is a for_each over a map, so counting resource blocks undercounts: count the single alarms plus
+# the entries of that map.
+_rt = _itext("terraform/redteam.tf")
+ALARMS_REDTEAM = len([b for b in re.findall(r'resource "aws_cloudwatch_metric_alarm" "\w+" \{(.*?)\n\}', _rt, re.S) if "for_each" not in b]) + len(
+    re.findall(r'"(redteam-[\w-]+)" = \{', _rt)
+)
 ALARMS_TOTAL = ALARMS_MONITORING + ALARMS_SCALING + ALARMS_REDTEAM
 ALARMS_QUALITY = len([a for a in ALARM_NAMES if a.startswith("quiz-quality") or a == "judge-failing"])
 DASHBOARD_WIDGETS = len(re.findall(r'\{ type = "(?:metric|log)"', _obs))
@@ -248,6 +253,13 @@ COV_PARTIAL = {g: v for g, v in COV_BY_PKG.items() if v < 100}
 def cov_floor(pkg):
     return COV_FLOORS.get(f"{pkg}/src/**")
 
+
+# ---------------------------------------------------------------- is the document text at all (packages/core/src/text.ts)
+_text_src = _text("packages/core/src/text.ts")
+TEXT_MAGIC_N = len(re.findall(r"^  \[/", _text_src, re.M))
+TEXT_SHARE_MAX = float(re.search(r"REPLACEMENT_SHARE_MAX = ([\d.]+)", _text_src).group(1))
+TEXT_MIN_CHARS = int(re.search(r"MIN_CHARS_FOR_RATIO = (\d+)", _text_src).group(1))
+SNIFF_BYTES = int(re.search(r"SNIFF_BYTES = (\d+)", _text("packages/llm/src/source.ts")).group(1))
 
 # ---------------------------------------------------------------- when the AI tests run (eval.yml, variables.tf)
 # eval.yml has no schedule: the golden set runs on every merge to main (job `llm-eval`) and on demand.
