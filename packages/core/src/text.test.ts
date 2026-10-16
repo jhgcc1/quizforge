@@ -58,6 +58,18 @@ describe("binaryLike", () => {
     expect(reason).toMatch(/not valid UTF-8|control characters/);
   });
 
+  it("rejects control characters even when the bytes are valid UTF-8", () => {
+    // a file can be valid UTF-8 and still not be a document: C0 control bytes are text to a decoder and noise to a reader
+    const doc = `${"\u0001\u0002\u0003\u0004".repeat(400)}some words in between\n`;
+    expect(doc).not.toContain("\uFFFD"); // valid UTF-8: it is the control share that decides
+    expect(binaryLike(doc)).toMatch(/control characters/);
+  });
+
+  it("keeps tab, newline and carriage return, which every document has", () => {
+    const doc = `# Title\r\n\n\tindented line\n${"text and more text\n".repeat(60)}`;
+    expect(binaryLike(doc)).toBeUndefined();
+  });
+
   it("does not judge a short document by ratios: a signature still applies", () => {
     expect(binaryLike("���")).toBeUndefined(); // too short to tell
     expect(binaryLike("%PDF-1.4")).toMatch(/PDF/); // a signature needs no length

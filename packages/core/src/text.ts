@@ -42,8 +42,8 @@ const MAGIC: [RegExp, string][] = [
 /** The first bytes as one character each (latin-1), which is how a file signature is written. */
 const headOf = (bytes: Uint8Array): string => Array.from(bytes.slice(0, 64), (b) => String.fromCharCode(b)).join("");
 
-/** Share of `text` matching `re`, as a fraction of its length. */
-const share = (text: string, re: RegExp): number => (text.length ? (text.match(re) ?? []).length / text.length : 0);
+/** Share of `text` matching `re`, as a fraction of its length. Only called on text past MIN_CHARS_FOR_RATIO. */
+const share = (text: string, re: RegExp): number => (text.match(re) ?? []).length / text.length;
 
 export const REPLACEMENT_SHARE_MAX = 0.1;
 export const CONTROL_SHARE_MAX = 0.1;
