@@ -3,9 +3,9 @@
 # The reports read that file (site/facts.py); nothing is typed by hand. Run it before regenerating the reports when code changed:
 #
 #   docker run -d --rm --name qf-pg -e POSTGRES_USER=quizforge -e POSTGRES_PASSWORD=quizforge -e POSTGRES_DB=postgres -p 55432:5432 postgres:16-alpine
-#   TEST_ADMIN_DATABASE_URL=postgres://quizforge:quizforge@localhost:55432/postgres WEB_DIR=/path/to/quizforge-web-at-web.ref scripts/measure-facts.sh
+#   TEST_ADMIN_DATABASE_URL=postgres://quizforge:quizforge@localhost:55432/postgres WEB_DIR=/path/to/quizforge-web scripts/measure-facts.sh
 #
-# WEB_DIR (optional): a checkout of the front end at the commit in web.ref, with its dependencies installed; its unit tests are counted too.
+# WEB_DIR (optional): a checkout of the front end (its main), with its dependencies installed; its unit tests are counted too.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 : "${TEST_ADMIN_DATABASE_URL:?set TEST_ADMIN_DATABASE_URL (a Postgres that tests may create databases in)}"
