@@ -188,9 +188,11 @@ for _m in re.finditer(r"^  ([a-z0-9-]+):\n((?:    .*\n|\n)*)", _jobs, re.M):
 CI_PR_JOBS = [j for j, v in CI_JOBS.items() if not v["if"] or "pull_request" in v["if"]]
 CI_REQUIRED = re.findall(r'"([\w-]+)"', re.search(r"required_checks = concat\(\s*\[([^\]]*)\]", _itext("github/main.tf")).group(1))
 CI_DEPLOY_NEEDS = CI_JOBS["publish"]["needs"]  # the gates every image must pass before it is published (and so can be deployed)
-_deploy_yml = _itext(".github/workflows/deploy.yml")
-SMOKE_FULL = len(re.findall(r'^\s+expect "', _deploy_yml, re.M))  # scope all
-SMOKE_WEB = len(re.findall(r'^\s+expect "', _deploy_yml.split("Smoke test through CloudFront")[1].split('if [ "$SCOPE" = all ]; then')[0], re.M))  # the checks both scopes run
+# The production path (approval, migration, apply, smoke tests) lives in the reusable apply.yml, which both Deploy and
+# Rollback call; deploy.yml only resolves the main of each side.
+_apply_yml = _itext(".github/workflows/apply.yml")
+SMOKE_FULL = len(re.findall(r'^\s+expect "', _apply_yml, re.M))  # scope all or api
+SMOKE_WEB = len(re.findall(r'^\s+expect "', _apply_yml.split("Smoke test through CloudFront")[1].split('if [ "$SCOPE" != web ]; then')[0], re.M))  # the checks every scope runs
 WORKFLOWS = sorted(p.name for p in (ROOT / ".github/workflows").glob("*.yml"))
 
 # ---------------------------------------------------------------- cost estimate

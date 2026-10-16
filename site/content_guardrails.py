@@ -535,7 +535,10 @@ behind the <i>real</i> prompts, still refuses.</p>""")
 deliberately <b>not</b> required (the maintainer decides, because it calls a real model). After the merge, the real-model
 <code>llm-eval</code> joins them, and <code>publish</code> — the job that builds the images — needs every one of them. Nothing in
 this repository deploys: production changes only through the approval-gated <code>Deploy</code> workflow of the
-{link(INFRA, 'infrastructure repository', ext=False)}, which picks the newest green commit whose images are in the registry.</p>""")
+{link(INFRA, 'infrastructure repository', ext=False)}, which resolves <b>each side to the newest commit of its main</b> whose
+required checks are green and whose images are in the registry — there is no tag to type, so a deploy cannot ship a commit that
+skipped these gates. Going back to an older image is a separate workflow (<code>Rollback</code>), which is the only place a tag
+is given by hand.</p>""")
     return sec("promptfoo", "How promptfoo is used", body,
                "Four suites, one rule (no model judges a model), and where each one gates the pipeline.")
 
