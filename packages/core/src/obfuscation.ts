@@ -118,3 +118,25 @@ export function readableAfterDecoding(normalized: string): { encoding: Obfuscati
   }
   return undefined;
 }
+
+/**
+ * The segments of `normalized` that are not ordinary prose (fewer than three in ten words are common words, or the text is too short to
+ * judge), joined by line breaks. The guard looks for an instruction written in rot13, reversed or leetspeak only there: ordinary prose
+ * (the bulk of a README) is skipped, which makes the scan several times cheaper.
+ */
+export function nonProse(normalized: string): string {
+  const out: string[] = [];
+  for (const line of normalized.split("\n")) {
+    if (!/\p{L}/u.test(line)) continue;
+    const words = line.split(/\s+/).filter(Boolean);
+    for (let i = 0; i < words.length || i === 0; i += 20) {
+      const chunk = words.slice(i, i + 20);
+      if (!chunk.length) break;
+      const text = chunk.join(" ");
+      const tokens = chunk.map((w) => w.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "")).filter(Boolean);
+      const stop = tokens.filter((w) => STOP.has(w)).length;
+      if (tokens.length < 5 || stop / tokens.length < 0.3) out.push(text);
+    }
+  }
+  return out.join("\n");
+}

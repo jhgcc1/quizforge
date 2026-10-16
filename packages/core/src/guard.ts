@@ -1,4 +1,4 @@
-import { readableAfterDecoding } from "./obfuscation";
+import { nonProse, readableAfterDecoding } from "./obfuscation";
 import { topicOrder } from "./topic-rules";
 import { IMPERATIVE_RULES, MODEL_MARKUP, matchingRules, type RuleCategory } from "./injection-rules";
 
@@ -251,16 +251,17 @@ export function inspectText(input: string, _opts: InspectOptions = {}): InspectR
 
   // 7. obfuscated instructions in the visible text: rot13, reversed, leetspeak, spaced letters, look-alike letters
   const norm = normalizeForMatching(text);
-  const variants: [string, string][] = [
-    ["rot13", rot13(norm)],
-    ["reversed text", reverse(norm)],
-    ["leetspeak", deLeet(norm)],
-    ["leetspeak", deLeet(norm, "l")],
-    ["spaced letters", collapseSpaced(norm)],
-  ];
+  // the variants are scanned only where the text is NOT ordinary prose (an encoded sentence has no common words): the rules are slow on
+  // a whole README and a README is mostly prose
+  const suspect = nonProse(norm);
+  const variants: [string, string][] = suspect
+    ? [["rot13", rot13(suspect)], ["reversed text", reverse(suspect)], ["leetspeak", deLeet(suspect)], ["leetspeak", deLeet(suspect, "l")]]
+    : [];
+  const spaced = collapseSpaced(norm);
+  if (spaced !== norm) variants.push(["spaced letters", spaced]);
   const seen = new Set<string>();
   for (const [name, v] of variants) {
-    if (!seen.has(name) && hasInjection(v) && !hasInjection(norm)) {
+    if (!seen.has(name) && matches(v) && !hasInjection(norm)) {
       seen.add(name);
       add({ kind: "obfuscated_instruction", severity: "block", detail: `an instruction is written in ${name}` });
     }
