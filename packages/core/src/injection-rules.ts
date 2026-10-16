@@ -25,6 +25,7 @@
  * look-around (JavaScript's \b only knows ASCII letters, so "ignorá" would not end at a word boundary).
  */
 
+import { PASSIVE_RULES } from "./injection-rules-passive.js";
 import { POLITE_RULES } from "./injection-rules-polite.js";
 
 export type RuleCategory =
@@ -481,6 +482,8 @@ const BASE_RULES: readonly InjectionRule[] = [
 
   // ================================================================== polite and indirect forms (injection-rules-polite.ts: en, pt, es together)
   ...POLITE_RULES,
+  // ================================================================== passive and impersonal forms, the jailbreak preamble (injection-rules-passive.ts: en, pt, es together)
+  ...PASSIVE_RULES,
 ];
 
 /**
