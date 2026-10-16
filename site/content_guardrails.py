@@ -280,6 +280,26 @@ rather than serve a quiz that obeyed an attacker.</p>"""
         ["<b>Looks like a quiz</b>", "Prompts that are not questions or “complete / select” tasks", "Format hijacking"],
     ], widths=["14%", "45%", "41%"])
     body += "<h3>Strict link mode, drawn</h3>" + d.strict_link()
+    body += "<h3>What is removed, what is only compared, and what is rejected</h3>"
+    body += T(f"""<p>“The flagged lines are removed” is easy to misread as the system editing the document or the quiz. It does
+neither. Three different things happen in three different places:</p>""")
+    body += table(["Where", "What happens to it", "Does anyone see the result?"], [
+        ["<b>The document</b>, in the input guard",
+         T(f"""Really removed, and only this: invisible and control characters, HTML comments, and the bytes of inline images (they
+         become <code>[inline image]</code>). <b>Links are never removed</b> — the attacker's link stays in the text and the model
+         does see it"""),
+         "Yes: this sanitized text is what reaches the model and what is stored"],
+        ["<b>The copy used by the link rail</b> (<code>clean</code>)",
+         "The document minus the flagged lines and minus the detector excerpt, built in memory to answer one question: does this link of the reply appear in a part of the document that is <i>not</i> giving orders?",
+         "No: it is never sent, never stored, and the model never sees it — by then it has already answered. It is a ruler, not an edit"],
+        ["<b>The quiz</b>, when a rail objects",
+         "Nothing is deleted from the reply. The whole reply goes back to the model with the list of problems for <b>one repair round</b>; if it is still wrong, it is rejected and the job fails",
+         "No quiz with a silently deleted link is ever served — such a quiz would look correct and nobody would know there had been an attack"],
+    ], widths=["22%", "48%", "30%"])
+    body += T("""<p>The one thing that <i>is</i> dropped from a quiz is a different check: a question whose quote is not in the
+document fails the grounding gate and is removed, which is why the generation asks for one spare question — so the user still
+gets the number of questions they asked for.</p>""")
+
     body += "<h3>The planted-words rail had to be made narrow</h3>"
     body += T(f"""<p>The rail rejected ordinary words. The golden item <code>prompt-injection</code> failed because a question used
 “system”, a word that in that README occurs only inside the attack line. The fix is a generated frequency list: a word is never
@@ -393,7 +413,37 @@ others. The same reasoning excludes <code>redteam-encoded-reached-model</code>, 
 guard when those alarms were written. The keyword-rule flag has a <i>spike</i> alarm instead ([[flagged_alarm]] documents in an
 hour), because one flagged README is normal and a hundred is somebody probing. Alerts go to e-mail through SNS; the trace tool
 gets the quality scores, not the flags.</p>""")
+    body += "<h3>What a flagged document leaves behind, and who hears about it</h3>"
+    body += T(f"""<p>A flag is not an alert. Each flagged document leaves <b>two records</b>, and only a <i>pattern</i> of them wakes
+anybody up ({code('apps/worker/src/processor.ts')}):</p>""")
+    body += table(["What the document did", "The record it leaves", "The alert"], [
+        ["A keyword rule matched a line", T("A WARN line in the worker log with the <code>kind</code> and <code>detail</code> of every finding, carrying the <code>quizId</code> and the <code>requestId</code>; and the metric <code>InjectionFlagged</code>"),
+         T("<b>Only a spike</b>: [[flagged_alarm]] flagged documents in an hour")],
+        ["The detector flagged a window", T("A WARN line with the model name and the score; and the metric <code>InjectionDetected</code>"),
+         "<b>None</b>: it flags ordinary READMEs often enough that an alarm would be noise"],
+        ["Hidden or encoded text, or a refused language", T("The document is rejected with a clear message; the metric <code>DocumentRejected</code>"),
+         T("<b>Only a spike</b>: [[rejected_alarm]] rejected documents in 15 minutes")],
+    ], widths=["26%", "48%", "26%"])
+    body += T(f"""<p>The reason for alarming on the pattern and not on the document is the same number as before: a flagged README is
+normal — [[dp_wide_rules]] of [[dp_wide_docs]] real ones match a rule — and a hundred in an hour is somebody probing the guard.</p>
+<p><b>Investigating one afterwards</b> is possible and worth saying exactly how, because the pieces live in two places. The log
+line says <i>which</i> rule matched and for which quiz; the <b>sanitized document itself</b> is in the database, on the source row
+of that quiz. The findings are not stored as data — they exist as the log line and the metric — so the window for this is the log
+retention, <b>[[log_days]] days</b>.</p>""")
+    body += "<h3>From a finding to a rule (or to a narrower one)</h3>"
+    body += T("""<p>A finding can end in three ways, and all three have happened in this repository:</p>
+<ul>
+<li><b>A new rule</b>, when the finding is a real attack shape the rules did not know. The families that leaked night after night
+(answer-key manipulation, topic override in Portuguese, the link in a question) became rules in three languages.</li>
+<li><b>A narrower rule</b>, when the finding is a legitimate document a rule caught. Two real READMEs were blocked by mistake, and
+the fix was to narrow the rule — not to accept the false positive.</li>
+<li><b>Nothing</b>, deliberately. A document that quotes an attack in prose is <i>supposed</i> to be flagged and go on. A finding is
+not a bug report.</li>
+</ul>
+<p>What decides between them is never a hunch: it is the false-positive measurement on the benign corpora, which is why every one
+of those tables exists.</p>""")
     body += "<h3>Promoting a leak into the corpus</h3>"
+
     body += T(f"""<p>A leak is only fixed when it cannot come back. {code('docs/redteam-nightly.md')} is the procedure: read
 <code>new-failures.json</code>, fix the cause (a rule, a prompt or an output rail), then add the attack to the frozen sample or to
 {code('packages/core/src/attacks.ts')} so that every pull request from then on carries it. A known, unfixed case goes to

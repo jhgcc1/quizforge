@@ -316,6 +316,10 @@ INFRA_DIR = Path(os.environ.get("INFRA_DIR", Path.home() / "quizforge-infra"))
 _RT = (INFRA_DIR / "terraform" / "redteam.tf").read_text(encoding="utf8")
 
 
+_ECS = (INFRA_DIR / "terraform" / "ecs.tf").read_text(encoding="utf8")
+LOG_RETENTION_DAYS = int(_re.search(r'resource "aws_cloudwatch_log_group" "svc" \{.*?retention_in_days\s*=\s*(\d+)', _ECS, _re.S).group(1))
+
+
 def nightly_alarms():
     """Every alarm of terraform/redteam.tf, read from the file: the single ones plus the entries of the for_each map.
 
@@ -346,6 +350,7 @@ def all_facts():
     for f in (cost_facts, prep_facts, polite_facts, output_facts, public_facts):
         out.update(f())
     out["rt_alarms"] = len(nightly_alarms())
+    out["log_days"] = LOG_RETENTION_DAYS
     out.update(detector_why_facts())
     return out
 
