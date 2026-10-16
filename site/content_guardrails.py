@@ -446,6 +446,21 @@ others. The same reasoning excludes <code>redteam-encoded-reached-model</code>, 
 guard when those alarms were written. The keyword-rule flag has a <i>spike</i> alarm instead ([[flagged_alarm]] documents in an
 hour), because one flagged README is normal and a hundred is somebody probing. Alerts go to e-mail through SNS; the trace tool
 gets the quality scores, not the flags.</p>""")
+    body += "<h3>Two nightlies, and why one does not replace the other</h3>"
+    body += T("""<p>Seventeen minutes before the red team task, a second nightly runs in GitHub Actions. They look alike on a
+pipeline diagram and they are not interchangeable:</p>""")
+    body += table(["", "GitHub nightly (05:43 UTC)", "Red team nightly (06:00 UTC)"], [
+        ["<b>The question</b>", "Is the quiz still <i>good</i>? Grounding, lint, the judge's score, injection resistance, language — against the golden set, on the real model", "Can anyone <i>hijack</i> the quiz? Fresh attacks with canaries through the whole pipeline"],
+        ["<b>What it would catch</b>", "The provider changing the model behind the same name, a prompt ageing badly, quality drifting while nobody pushed", "A new attack shape, a rule that stopped covering a family, an encoding that now gets through"],
+        ["<b>What it does on a bad result</b>", "<b>Fails</b>: a red run in the repository, visible where the code lives", "<b>Reports</b>: the run stays green and an alarm fires, because a nightly that breaks pipelines gets ignored"],
+        ["<b>Where the result lands</b>", "A Langfuse experiment on the golden dataset, comparable over time", "An HTML report in a private bucket, one folder per run"],
+        ["<b>What it runs against</b>", "The code of <code>main</code>, with the model key and nothing else", "The published image in the real environment, with the classifier loaded"],
+        ["<b>When it does not run</b>", "Only if GitHub Actions is down", "<b>While the environment is paused</b> (<code>redteam_on = redteam_enabled && !paused</code>): the cheap standby mode switches it off"],
+    ], widths=["16%", "42%", "42%"])
+    body += T("""<p>That last row is the practical answer to “isn't one enough”. The red team needs Fargate, a registry and a bucket,
+and the pause mode that keeps the bill near nothing turns it off; the GitHub nightly costs cents, needs only the model key and
+keeps watching. The first row is the honest answer: a guard that holds perfectly while the model quietly gets worse is a product
+that fails without a single alarm from the red team.</p>""")
     body += "<h3>What a flagged document leaves behind, and who hears about it</h3>"
     body += T(f"""<p>A flag is not an alert. Each flagged document leaves <b>two records</b>, and only a <i>pattern</i> of them wakes
 anybody up ({code('apps/worker/src/processor.ts')}):</p>""")
