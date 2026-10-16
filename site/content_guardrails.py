@@ -195,7 +195,12 @@ window is kept as an excerpt of [[det_excerpt]] characters, for the output rails
         ["A link in the reply must occur in the document, or its host must", "<b>Strict link mode</b>: the flagged lines and the detector excerpt are <i>removed</i> from the document first, and the link must occur in what is left — so a link planted inside the instruction no longer counts as “in the document”"],
         ["No planted-words check", "<b>Planted words</b>: a word that occurs only in a flagged line may not appear in the quiz at all. From a detector excerpt, only canary-shaped words count (a letter+digit token such as <code>ZX9-XRAY</code>), precisely because the detector flags ordinary paragraphs now and then and their words are legitimate quiz material"],
         ["The metric <code>InjectionDetected</code> is still written", "The same metric, plus a WARN line with the model and the score. There is no alarm on it (see “Nightly and alerts”)"],
+        ["The generation is traced in Langfuse: the session is the quiz, every model call is nested under it, and the scorer attaches the quality scores", "<b>Exactly the same.</b> The flag is <i>not</i> part of the trace — it lives in the worker log and in CloudWatch. In Langfuse a flagged quiz looks like any other"],
     ], widths=["32%", "68%"])
+    body += T("""<p>That last row is a deliberate split, and it has a cost worth naming: Langfuse holds what the <i>model</i> did
+(the trace, the cost, the quality scores) and CloudWatch holds what the <i>guard</i> did (the findings, the metrics, the alarms).
+Someone looking only at a Langfuse trace cannot tell that the document was flagged — the log line and the metric are the record,
+and they are joined to the trace only through the quiz id.</p>""")
     body += "<h3>Why it does not block: there is no threshold that separates</h3>"
     body += T("""<p>The usual answer would be “raise the threshold until the false positives go away”. The measurements say that
 threshold does not exist. On the public benchmark, raising it from 0.5 to [[dw_sweep_high_t]] only costs recall — [[dw_sweep_low]]
