@@ -9,7 +9,7 @@ Every number is read from a file: facts.py (the repository, the infrastructure, 
 """
 import diagrams as d
 import facts_guard as G
-from lib import callout, link, table
+from lib import arrow, box, callout, link, svg, table, text
 
 GH = "https://github.com/jhgcc1/quizforge"
 INFRA = "https://github.com/jhgcc1/quizforge-infra"
@@ -36,6 +36,37 @@ def code(path, label=None):
 
 
 # ---------------------------------------------------------------------------- 1. in short
+
+
+def suites_diagram():
+    """The four suites and when each one runs. The shared diagram of the architecture reports shows the GitHub nightly
+    (the live suite against provider drift) but not the red team nightly, which is a different task and two orders of
+    magnitude larger, so this report draws its own."""
+    b = ""
+    lanes = [
+        (14, "Every pull request", "promptfoo OFFLINE · [[pf_offline]] tests", "fake model, no secrets, ~1 minute", "ci", "required to merge"),
+        (110, "Every pull request", "redteam-sample · [[pf_sample]] attacks", "fake, then the real model", "ai", "not required: the maintainer decides"),
+        (206, "Merge to main", "promptfoo LIVE · [[pf_live]] tests", "real model, inside llm-eval", "ai", "blocks the deploy"),
+        (302, "Every night (GitHub)", "promptfoo LIVE · [[pf_live]] tests", "catches provider or model drift", "mgd", "opens a red run"),
+        (398, "Every night [[redteam_time]] (Fargate)", "redteam-nightly · ≈[[pf_nightly]] + ≈[[pub_cases]] cases", "fresh attacks, encodings, public datasets", "compute", "reports; a leak raises an alarm"),
+    ]
+    for y, when, what, note, kind, gate in lanes:
+        b += box(10, y, 200, 70, when, "", "ext", small=True)
+        b += arrow(210, y + 35, 250, y + 35)
+        b += box(250, y, 300, 70, what, note, kind, small=True)
+        b += arrow(550, y + 35, 590, y + 35)
+        b += box(590, y, 230, 70, gate, "", "sec", small=True)
+    b += text(850, 34, "The first four fail their job when an attack works", "note")
+    b += text(850, 54, "(the sample's does not block the merge). The last", "note")
+    b += text(850, 72, "one never fails: a nightly that breaks a pipeline", "note")
+    b += text(850, 90, "gets ignored, so a finding becomes an alarm.", "note")
+    b += text(850, 128, "Sizes are not comparable on purpose:", "note")
+    b += text(850, 148, "· a pull request must stay fast and cheap", "note")
+    b += text(850, 166, "· the frozen sample is the same 50 attacks", "note")
+    b += text(850, 184, "  every time, so a regression is visible", "note")
+    b += text(850, 202, "· the night can afford a fresh, large set", "note")
+    b += text(10, 495, "The attack corpus is ONE file (packages/core/src/attacks.ts): vitest and promptfoo test the same attacks.", "note")
+    return svg(1160, 515, b, "The four promptfoo suites: when each one runs, how big it is, and what it blocks")
 
 
 def summary():
@@ -250,7 +281,7 @@ def promptfoo():
     body = T(f"""<p><b>promptfoo [[pf_version]]</b>, pinned, run through {code('scripts/promptfoo.sh')}. It is not a guardrail:
 it protects no user. It <b>proves</b>, on every pull request and every night, that the guardrails above still do what this report
 says they do. The suites are described in {code('promptfoo/README.md')}.</p>""")
-    body += d.promptfoo_flow()
+    body += suites_diagram()
     body += callout("ok", "No model judges another model",
                     T(f"Every assertion is plain code ({code('promptfoo/assertions.js')}, itself unit-tested). A model may <i>write</i> attacks — "
                           "the red team attacker does — but only code decides whether an attack worked. A canary in the reply is a fact, not an opinion."))
