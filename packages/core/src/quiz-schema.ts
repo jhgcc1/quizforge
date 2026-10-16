@@ -49,29 +49,87 @@ export const GeneratedQuizSchema = z
 export type GeneratedQuestion = z.output<typeof GeneratedQuestionSchema>;
 export type GeneratedQuiz = z.output<typeof GeneratedQuizSchema>;
 
+const NAMED_ENTITIES: Record<string, string> = {
+  nbsp: " ", amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", copy: "\u00a9", reg: "\u00ae", hellip: "\u2026",
+  mdash: "\u2014", ndash: "\u2013", laquo: "\u00ab", raquo: "\u00bb", ntilde: "\u00f1", Ntilde: "\u00d1",
+  szlig: "\u00df", ccedil: "\u00e7", Ccedil: "\u00c7", aelig: "\u00e6", oslash: "\u00f8", iexcl: "\u00a1", iquest: "\u00bf",
+};
+const ACCENTS: Record<string, string> = { acute: "\u0301", grave: "\u0300", circ: "\u0302", tilde: "\u0303", uml: "\u0308", cedil: "\u0327", ring: "\u030a" };
+
+/** Decodes the HTML entities a reader would see rendered (&amp;, &nbsp;, &eacute;, &#233;, &#xE9;); unknown ones are left alone. */
+function decodeEntities(s: string): string {
+  return s
+    .replace(/&#(\d{1,7});/g, (m, d: string) => (Number(d) <= 0x10ffff ? String.fromCodePoint(Number(d)) : m))
+    .replace(/&#x([0-9a-f]{1,6});/gi, (m, h: string) => (parseInt(h, 16) <= 0x10ffff ? String.fromCodePoint(parseInt(h, 16)) : m))
+    .replace(/&([a-zA-Z])(acute|grave|circ|tilde|uml|cedil|ring);/g, (_m, l: string, a: string) => l + ACCENTS[a]!)
+    .replace(/&([a-zA-Z]+);/g, (m, n: string) => NAMED_ENTITIES[n] ?? m)
+    .normalize("NFKC");
+}
+
+/** Inline tags glue their text to the neighbours ("<b>Super</b>base" reads "Superbase"); every other tag (td, tr, p, li, br, div...) separates. */
+const INLINE_TAG = /<\/?(?:a|b|i|u|s|em|strong|code|kbd|span|small|big|mark|sub|sup|abbr|cite|q|font|tt|ins|del)(?:\s[^<>]*)?\/?>/gi;
+/** A real tag starts with a letter right after "<" or "</": "a <3 b > c", "x < y" and "<user@host.com>" are text, not tags. */
+const ANY_TAG = /<\/?[a-zA-Z][a-zA-Z0-9-]*(?:\s[^<>]*)?\/?>/g;
+
 /**
- * Visible text of a markdown document: link/image syntax collapses to its label, URLs and HTML tags
- * disappear, task-list markers ("[x]", "[ ]") are dropped, and only letters/digits survive (lowercased,
- * single-spaced; so list bullets, emphasis, headings, table pipes, quote styles, dashes and line breaks never
- * matter). Models quote what a reader sees ("Agents: Build autonomous agents"), not raw markdown
- * ("[**Agents**](https://...): Build ..."), so grounding is compared on this form while still requiring the same
- * words in the same order.
+ * Visible text of a markdown/HTML document, as a reader sees it rendered: link/image syntax collapses to its label,
+ * URLs, HTML comments, code-fence info strings ("```bash") and HTML tags disappear (inline tags glue, block tags,
+ * table cells and rows separate), entities are decoded, task-list markers ("[x]", "[ ]") are dropped, and only
+ * letters/digits survive (lowercased, single-spaced; so list bullets, emphasis, heading markers, table pipes, quote
+ * styles, dashes and line breaks never matter). Models quote what a reader sees ("Agents: Build autonomous agents"),
+ * not raw markdown ("[**Agents**](https://...): Build ..."), so grounding is compared on this form while still
+ * requiring the same words in the same order.
  */
 export function visibleText(markdown: string): string {
-  return markdown
-    .normalize("NFKC")
-    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/\[[ xX]\](?=\s)/g, " ")
-    .replace(/<[^>]+>/g, " ")
+  return decodeEntities(
+    markdown
+      .normalize("NFKC")
+      .replace(/<!--[\s\S]*?-->/g, " ")
+      .replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, " ")
+      .replace(/^[ \t]*(?:`{3,}|~{3,})[^\n]*$/gm, " ")
+      .replace(/^ {0,3}\[[^\]]+\]:[ \t]+\S.*$/gm, " ")
+      .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+      .replace(/!?\[([^\]]+)\]\[[^\]]*\]/g, "$1")
+      .replace(/\[[ xX]\](?=\s)/g, " ")
+      .replace(INLINE_TAG, "")
+      .replace(ANY_TAG, " "),
+  )
     .replace(/https?:\/\/\S+/g, " ")
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim()
     .toLowerCase();
 }
 
-/** Same as {@link visibleText} but link labels are dropped too (a quote that skips "[Docs](...)" still reads as one passage). */
-function visibleTextWithoutLinks(markdown: string): string {
-  return visibleText(markdown.replace(/(?<!!)\[[^\]]*\]\([^)]*\)/g, " "));
+/** Image alt text is not visible in a rendered page, so a quote that skips "![badge](...)" still reads as one passage. */
+const withoutImages = (md: string): string => md.replace(/!\[[^\]]*\](?:\([^)]*\)|\[[^\]]*\])/g, " ");
+/** Same for link labels ("Docs" in "[Docs](...)"): a quote may skip them. */
+const withoutLinks = (md: string): string => md.replace(/(?<!!)\[[^\]]*\]\([^)]*\)/g, " ");
+/** Same for inline code spans ("Node.js `^20.19.0`, Bun" read as "Node.js, Bun"). */
+const withoutInlineCode = (md: string): string => md.replace(/`[^`\n]*`/g, " ");
+/** Same for ordered-list numerals ("3. ", "4) "): a quote that joins two list items does not carry their numbers. */
+const withoutListNumbers = (md: string): string => md.replace(/^([ \t]*)\d{1,3}[.)][ \t]+/gm, "$1");
+
+interface Variant {
+  readonly haystack: string;
+  /** The quote is normalised the same way as the document (only matters for list numerals, which a quote may start with). */
+  readonly listNumbers: boolean;
+}
+let lastVariants: { source: string; variants: Variant[] } | undefined;
+/**
+ * Normalised variants of the document: every combination of "skip images / link labels / inline code / list numerals".
+ * Each variant only removes things a reader may skip while reading a passage; it never adds or reorders words.
+ * (One-entry cache: a quiz checks every quote, then every revision, against the same text.)
+ */
+function documentVariants(markdown: string): Variant[] {
+  if (lastVariants?.source === markdown) return lastVariants.variants;
+  const steps = [withoutImages, withoutLinks, withoutInlineCode, withoutListNumbers];
+  const variants: Variant[] = [];
+  for (let mask = 0; mask < 1 << steps.length; mask++) {
+    const text = steps.reduce((md, step, i) => (mask & (1 << i) ? step(md) : md), markdown);
+    variants.push({ haystack: ` ${visibleText(text)} `, listNumbers: (mask & 8) !== 0 });
+  }
+  lastVariants = { source: markdown, variants };
+  return variants;
 }
 
 const MIN_QUOTE_WORDS = 3;
@@ -94,16 +152,21 @@ const contiguous = (haystack: string, words: readonly string[]): boolean => hays
  * Words that are not in the document, in another order, or spliced from places that are not adjacent are NOT
  * grounded (a splice only gets through rule 2, and then the verified prefix alone must carry the quote).
  */
-function quoteGrounded(rawQuote: string, haystacks: readonly string[]): boolean {
-  const words = visibleText(rawQuote).split(" ").filter(Boolean);
-  if (words.length < MIN_QUOTE_WORDS) return false;
-  if (haystacks.some((h) => contiguous(h, words))) return true;
+function quoteGrounded(rawQuote: string, variants: readonly Variant[]): boolean {
+  const words = (listNumbers: boolean) => visibleText(listNumbers ? withoutListNumbers(rawQuote) : rawQuote).split(" ").filter(Boolean);
+  const plain = words(false);
+  const stripped = words(true);
+  const wordsOf = (v: Variant) => (v.listNumbers ? stripped : plain);
+  if (variants.some((v) => wordsOf(v).length >= MIN_QUOTE_WORDS && contiguous(v.haystack, wordsOf(v)))) return true;
   if (!TRUNCATED.test(rawQuote.trim())) return false;
-  for (let k = words.length - 1; k >= MIN_TRUNCATED_PREFIX_WORDS; k--) {
-    if (words.length - k > MAX_TRUNCATED_TAIL_WORDS) break;
-    if (haystacks.some((h) => contiguous(h, words.slice(0, k)))) return true;
-  }
-  return false;
+  return variants.some((v) => {
+    const w = wordsOf(v);
+    for (let k = w.length - 1; k >= MIN_TRUNCATED_PREFIX_WORDS; k--) {
+      if (w.length - k > MAX_TRUNCATED_TAIL_WORDS) break;
+      if (contiguous(v.haystack, w.slice(0, k))) return true;
+    }
+    return false;
+  });
 }
 
 /**
@@ -114,10 +177,10 @@ export function checkGrounding(
   quiz: { questions: readonly { sourceQuote: string }[] },
   sourceText: string,
 ): { ok: boolean; ungrounded: number[] } {
-  const haystacks = [` ${visibleText(sourceText)} `, ` ${visibleTextWithoutLinks(sourceText)} `];
+  const variants = documentVariants(sourceText);
   const ungrounded: number[] = [];
   quiz.questions.forEach((q, i) => {
-    if (!quoteGrounded(q.sourceQuote, haystacks)) ungrounded.push(i + 1);
+    if (!quoteGrounded(q.sourceQuote, variants)) ungrounded.push(i + 1);
   });
   return { ok: ungrounded.length === 0, ungrounded };
 }
