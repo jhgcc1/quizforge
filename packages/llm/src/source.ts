@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { binaryLike } from "@quizforge/core";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 
@@ -115,11 +116,15 @@ export interface FetchOptions {
   maxRedirects?: number;
 }
 
+/** Enough bytes to judge whether this is text at all, without waiting for the rest. */
+const SNIFF_BYTES = 4096;
+
 async function readCapped(res: Response, maxBytes: number): Promise<string> {
   if (!res.body) return "";
   const reader = res.body.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
+  let sniffed = false;
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -129,8 +134,24 @@ async function readCapped(res: Response, maxBytes: number): Promise<string> {
       throw new SourceError(`document exceeds ${maxBytes} bytes`, "too_large");
     }
     chunks.push(value);
+    // The content type proves nothing here: raw.githubusercontent.com sets it from the file name, so an executable
+    // committed as README.md arrives as text/plain. Judge the bytes, and hang up on the first ones instead of
+    // downloading half a megabyte of a binary and spending seconds of the guard on it.
+    if (!sniffed && total >= SNIFF_BYTES) {
+      sniffed = true;
+      const head = Buffer.concat(chunks);
+      const reason = binaryLike(head.toString("utf8"), head);
+      if (reason) {
+        await reader.cancel();
+        throw new SourceError(`that document is not text: ${reason}`, "not_text");
+      }
+    }
   }
-  return Buffer.concat(chunks).toString("utf8");
+  const text = Buffer.concat(chunks).toString("utf8");
+  // a document smaller than the sniff size was never judged above
+  const reason = sniffed ? undefined : binaryLike(text, Buffer.concat(chunks));
+  if (reason) throw new SourceError(`that document is not text: ${reason}`, "not_text");
+  return text;
 }
 
 /** Normalize so hashing, grounding and chunking all see the same text. */

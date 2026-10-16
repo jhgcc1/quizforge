@@ -11,6 +11,7 @@ export function userFacingError(raw: string | null): string | null {
   if (/not a valid URL|only https|credentials in URL|custom ports/i.test(raw)) return "That is not a valid https document URL.";
   if (/document is empty|has no usable sections|unexpected content-type/i.test(raw)) return "That URL does not contain a readable Markdown/text document.";
   if (/source returned HTTP 404/i.test(raw)) return "The document was not found (HTTP 404). Check the URL.";
+  if (/not_text:/i.test(raw)) return "That link does not point to a text document (it looks like a binary file). Use a Markdown or text file.";
   if (/unsafe_document/i.test(raw)) return "This document contains hidden or encoded text, so it was rejected for safety. Remove it and try again.";
   if (/unsupported_language/i.test(raw)) return "This document is not in a supported language. Supported: English, Portuguese and Spanish.";
   if (/invalid_llm_input/i.test(raw)) return "This request could not be processed safely. Check the topic and the document.";

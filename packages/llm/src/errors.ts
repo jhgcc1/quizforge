@@ -15,6 +15,17 @@ export class UnsafeDocumentError extends NonRetryableError {
   }
 }
 
+/**
+ * The bytes are not a text document at all (an executable, an archive, an image committed as `README.md`). Separate from
+ * `UnsafeDocumentError` because nothing was hidden and nobody is necessarily attacking: the user may simply have pasted
+ * the wrong link, and the message says so.
+ */
+export class NotTextError extends NonRetryableError {
+  constructor(readonly reason: string) {
+    super(`not_text: ${reason}`);
+  }
+}
+
 /** A request that does not fit the strict schema of what a model call may carry. A bug or an attack: never retried. */
 export class InvalidLlmInputError extends NonRetryableError {
   constructor(message: string) {

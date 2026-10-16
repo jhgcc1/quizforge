@@ -8,6 +8,7 @@ import {
   QualityGateError,
   StructuredOutputError,
   SourceError,
+  NotTextError,
   UnsafeDocumentError,
   UnsafeOutputError,
   UnsupportedLanguageError,
@@ -196,7 +197,7 @@ export async function processQuizJob(
     const exhausted = receive.count >= receive.max;
     log.error({ err, permanent, exhausted }, "quiz generation failed");
     // A rejected document is the guard doing its job (and a user typo is not an outage): it has its own metric and does not feed the job-failure alarm.
-    if (err instanceof UnsafeDocumentError || err instanceof UnsupportedLanguageError) emit({ DocumentRejected: { value: 1, unit: "Count" } });
+    if (err instanceof UnsafeDocumentError || err instanceof UnsupportedLanguageError || err instanceof NotTextError) emit({ DocumentRejected: { value: 1, unit: "Count" } });
     else emit({ JobFailed: { value: 1, unit: "Count" }, JobPermanentFailure: { value: permanent ? 1 : 0, unit: "Count" } });
 
     if (permanent || exhausted) {

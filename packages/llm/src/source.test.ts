@@ -74,6 +74,42 @@ describe("fetchMarkdown", () => {
     expect(f).toHaveBeenCalledTimes(1);
   });
 
+  it("rejects a binary served as text/plain, which is what GitHub does for a .md name", async () => {
+    // raw.githubusercontent.com sets the content type from the file name: an executable committed as README.md
+    // arrives as text/plain, so only the bytes can tell.
+    const elf = Buffer.concat([Buffer.from([0x7f, 0x45, 0x4c, 0x46]), Buffer.alloc(16 * 1024, 7)]);
+    const f = vi.fn(async () => md(elf as unknown as string));
+    await expect(fetchMarkdown("https://raw.githubusercontent.com/o/r/main/README.md", {}, deps(f))).rejects.toMatchObject({
+      code: "not_text",
+    });
+  });
+
+  it("hangs up on the first bytes instead of downloading the whole binary", async () => {
+    // a body that counts how much of it was read: the reader must stop after the sniff, not at 512 KB
+    const big = Buffer.concat([Buffer.from([0x7f, 0x45, 0x4c, 0x46]), Buffer.alloc(400 * 1024, 7)]);
+    let served = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        const chunk = big.subarray(served, served + 4096);
+        served += chunk.byteLength;
+        if (chunk.byteLength === 0) controller.close();
+        else controller.enqueue(new Uint8Array(chunk));
+      },
+    });
+    const f = vi.fn(async () => new Response(body, { status: 200, headers: { "content-type": "text/plain" } }));
+    await expect(fetchMarkdown("https://raw.githubusercontent.com/o/r/main/README.md", {}, deps(f))).rejects.toMatchObject({
+      code: "not_text",
+    });
+    expect(served).toBeLessThan(64 * 1024); // not the 400 KB that were on offer
+  });
+
+  it("still accepts a text document that is merely mis-encoded (latin-1 accents)", async () => {
+    const latin1 = Buffer.from("# Introdução\n\nEste documento explica como a aplicação gera um questionário a partir do texto.\n".repeat(20), "latin1");
+    const f = vi.fn(async () => md(latin1 as unknown as string));
+    const r = await fetchMarkdown("https://raw.githubusercontent.com/o/r/main/README.md", {}, deps(f));
+    expect(r.text).toContain("Introdu");
+  });
+
   it("blocks a host that resolves to a private address (DNS pointing inside)", async () => {
     const f = vi.fn();
     await expect(
