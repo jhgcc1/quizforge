@@ -68,8 +68,8 @@ const leetTokens = (s: string): number => (s.match(/[\p{L}\p{N}@$]+/gu) ?? []).f
 function wordShare(segment: string, allowLeet: boolean): number {
   const tokens = segment.split(/\s+/).filter((t) => /[\p{L}\p{N}]/u.test(t)); // a lone dash or bullet is neither a word nor not a word
   const word = allowLeet
-    ? /^["'(\[¿¡*_]*[\p{L}\p{N}@$]+(?:['’-][\p{L}\p{N}@$]+)*[.,:;!?"')\]*_]*$/u
-    : /^["'(\[¿¡*_]*\p{L}+(?:['’-]\p{L}+)*[.,:;!?"')\]*_]*$/u;
+    ? /^["'([¿¡*_]*[\p{L}\p{N}@$]+(?:['’-][\p{L}\p{N}@$]+)*[.,:;!?"')\]*_]*$/u
+    : /^["'([¿¡*_]*\p{L}+(?:['’-]\p{L}+)*[.,:;!?"')\]*_]*$/u;
   return tokens.filter((t) => word.test(t)).length / (tokens.length || 1);
 }
 const PROSE = 0.8;
@@ -104,7 +104,7 @@ export type Obfuscation = "rot13" | "reversed text" | "leetspeak";
  */
 export function readableAfterDecoding(normalized: string): { encoding: Obfuscation; segment: string } | undefined {
   // links, HTML tags and the brackets of Markdown are not words and would hide a sentence written next to them
-  const visible = normalized.replace(/https?:\/\/\S+/g, " ").replace(/<[^>]*>/g, " ").replace(/[\[\]()]/g, " ");
+  const visible = normalized.replace(/https?:\/\/\S+/g, " ").replace(/<[^>]*>/g, " ").replace(/[[\]()]/g, " ");
   for (const segment of segmentsOf(visible)) {
     const words = segment.split(/\s+/).length;
     const before = stopsOf(segment);
