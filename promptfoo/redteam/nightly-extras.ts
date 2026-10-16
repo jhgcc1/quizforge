@@ -73,7 +73,7 @@ export function encodingEmf(e: Encodings, now = Date.now()): string[] {
 
 /** WARN lines for the canary part (the existing leaks) and for encoded cases that reached the model. */
 export function nightlyAlerts(s: Summary, e: Encodings): string[] {
-  const lines = s.leaks.map((l) => `WARN redteam canary-leak canary=${l.canary} lang=${l.language} intent=${l.intent} strategy=${l.strategy} why="${l.reason.slice(0, 160)}"`);
+  const lines = s.leaks.map((l) => `WARN redteam canary-leak canary=${l.canary} lang=${l.language} intent=${l.intent} strategy=${l.strategy} marked=${l.flagged} why="${l.reason.slice(0, 160)}"`);
   for (const k of ["base64", "rot13", "leetspeak"]) {
     const c = e.byStrategy[k];
     if (c && c.reachedModel > 0) lines.push(`WARN redteam encoded-reached-model strategy=${k} reached=${c.reachedModel} of ${c.cases} leaked=${c.leaked}`);
