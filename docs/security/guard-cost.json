@@ -1,0 +1,409 @@
+{
+  "about": "CPU cost of the input guard (packages/core/src/guard.ts) by document shape and size. Written by scripts/measure-guard-cost.mjs.",
+  "maxSourceBytes": 524288,
+  "repeats": 3,
+  "measure": "median of the repeats",
+  "profiles": {
+    "cpu-100": {
+      "at": "2026-10-16T15:04:02.393Z",
+      "cpuQuotaPct": 100,
+      "cpu": "13th Gen Intel(R) Core(TM) i5-13420H",
+      "node": "v20.19.6",
+      "cases": [
+        {
+          "shape": "prose",
+          "what": "ordinary prose (a README)",
+          "bytes": 65536,
+          "ms": 253,
+          "verdict": "clean",
+          "findings": 0
+        },
+        {
+          "shape": "prose",
+          "what": "ordinary prose (a README)",
+          "bytes": 262144,
+          "ms": 981,
+          "verdict": "clean",
+          "findings": 0
+        },
+        {
+          "shape": "prose",
+          "what": "ordinary prose (a README)",
+          "bytes": 524288,
+          "ms": 2093,
+          "verdict": "clean",
+          "findings": 0
+        },
+        {
+          "shape": "non-prose-tokens",
+          "what": "word lists and tables: no common words, so no part is skipped",
+          "bytes": 65536,
+          "ms": 695,
+          "verdict": "clean",
+          "findings": 0
+        },
+        {
+          "shape": "non-prose-tokens",
+          "what": "word lists and tables: no common words, so no part is skipped",
+          "bytes": 262144,
+          "ms": 2953,
+          "verdict": "clean",
+          "findings": 0
+        },
+        {
+          "shape": "non-prose-tokens",
+          "what": "word lists and tables: no common words, so no part is skipped",
+          "bytes": 524288,
+          "ms": 5692,
+          "verdict": "clean",
+          "findings": 0
+        },
+        {
+          "shape": "short-lines",
+          "what": "many very short lines (a table of two columns)",
+          "bytes": 65536,
+          "ms": 434,
+          "verdict": "clean",
+          "findings": 0
+        },
+        {
+          "shape": "short-lines",
+          "what": "many very short lines (a table of two columns)",
+          "bytes": 262144,
+          "ms": 1859,
+          "verdict": "clean",
+          "findings": 0
+        },
+        {
+          "shape": "short-lines",
+          "what": "many very short lines (a table of two columns)",
+          "bytes": 524288,
+          "ms": 3908,
+          "verdict": "clean",
+          "findings": 0
+        },
+        {
+          "shape": "base64-in-urls",
+          "what": "an instruction in base64 inside link targets",
+          "bytes": 65536,
+          "ms": 289,
+          "verdict": "blocked",
+          "findings": 675
+        },
+        {
+          "shape": "base64-in-urls",
+          "what": "an instruction in base64 inside link targets",
+          "bytes": 262144,
+          "ms": 1070,
+          "verdict": "blocked",
+          "findings": 2702
+        },
+        {
+          "shape": "base64-in-urls",
+          "what": "an instruction in base64 inside link targets",
+          "bytes": 524288,
+          "ms": 2078,
+          "verdict": "blocked",
+          "findings": 5405
+        },
+        {
+          "shape": "hex",
+          "what": "an instruction written in hexadecimal",
+          "bytes": 65536,
+          "ms": 896,
+          "verdict": "blocked",
+          "findings": 771
+        },
+        {
+          "shape": "hex",
+          "what": "an instruction written in hexadecimal",
+          "bytes": 262144,
+          "ms": 3633,
+          "verdict": "blocked",
+          "findings": 3084
+        },
+        {
+          "shape": "hex",
+          "what": "an instruction written in hexadecimal",
+          "bytes": 524288,
+          "ms": 7301,
+          "verdict": "blocked",
+          "findings": 6168
+        },
+        {
+          "shape": "rot13",
+          "what": "an instruction written in rot13",
+          "bytes": 65536,
+          "ms": 836,
+          "verdict": "blocked",
+          "findings": 1
+        },
+        {
+          "shape": "rot13",
+          "what": "an instruction written in rot13",
+          "bytes": 262144,
+          "ms": 3370,
+          "verdict": "blocked",
+          "findings": 1
+        },
+        {
+          "shape": "rot13",
+          "what": "an instruction written in rot13",
+          "bytes": 524288,
+          "ms": 7006,
+          "verdict": "blocked",
+          "findings": 1
+        },
+        {
+          "shape": "leetspeak",
+          "what": "an instruction written in leetspeak",
+          "bytes": 65536,
+          "ms": 662,
+          "verdict": "blocked",
+          "findings": 1
+        },
+        {
+          "shape": "leetspeak",
+          "what": "an instruction written in leetspeak",
+          "bytes": 262144,
+          "ms": 2628,
+          "verdict": "blocked",
+          "findings": 1
+        },
+        {
+          "shape": "leetspeak",
+          "what": "an instruction written in leetspeak",
+          "bytes": 524288,
+          "ms": 5429,
+          "verdict": "blocked",
+          "findings": 1
+        },
+        {
+          "shape": "spaced-letters",
+          "what": "an instruction written as spaced letters",
+          "bytes": 65536,
+          "ms": 546,
+          "verdict": "blocked",
+          "findings": 1
+        },
+        {
+          "shape": "spaced-letters",
+          "what": "an instruction written as spaced letters",
+          "bytes": 262144,
+          "ms": 2197,
+          "verdict": "blocked",
+          "findings": 1
+        },
+        {
+          "shape": "spaced-letters",
+          "what": "an instruction written as spaced letters",
+          "bytes": 524288,
+          "ms": 4470,
+          "verdict": "blocked",
+          "findings": 1
+        }
+      ]
+    },
+    "cpu-50": {
+      "at": "2026-10-16T15:13:31.276Z",
+      "cpuQuotaPct": 50,
+      "cpu": "13th Gen Intel(R) Core(TM) i5-13420H",
+      "node": "v20.19.6",
+      "cases": [
+        {
+          "shape": "prose",
+          "what": "ordinary prose (a README)",
+          "bytes": 65536,
+          "ms": 681,
+          "verdict": "clean",
+          "findings": 0
+        },
+        {
+          "shape": "prose",
+          "what": "ordinary prose (a README)",
+          "bytes": 262144,
+          "ms": 2823,
+          "verdict": "clean",
+          "findings": 0
+        },
+        {
+          "shape": "prose",
+          "what": "ordinary prose (a README)",
+          "bytes": 524288,
+          "ms": 5524,
+          "verdict": "clean",
+          "findings": 0
+        },
+        {
+          "shape": "non-prose-tokens",
+          "what": "word lists and tables: no common words, so no part is skipped",
+          "bytes": 65536,
+          "ms": 1985,
+          "verdict": "clean",
+          "findings": 0
+        },
+        {
+          "shape": "non-prose-tokens",
+          "what": "word lists and tables: no common words, so no part is skipped",
+          "bytes": 262144,
+          "ms": 7671,
+          "verdict": "clean",
+          "findings": 0
+        },
+        {
+          "shape": "non-prose-tokens",
+          "what": "word lists and tables: no common words, so no part is skipped",
+          "bytes": 524288,
+          "ms": 16332,
+          "verdict": "clean",
+          "findings": 0
+        },
+        {
+          "shape": "short-lines",
+          "what": "many very short lines (a table of two columns)",
+          "bytes": 65536,
+          "ms": 1320,
+          "verdict": "clean",
+          "findings": 0
+        },
+        {
+          "shape": "short-lines",
+          "what": "many very short lines (a table of two columns)",
+          "bytes": 262144,
+          "ms": 5230,
+          "verdict": "clean",
+          "findings": 0
+        },
+        {
+          "shape": "short-lines",
+          "what": "many very short lines (a table of two columns)",
+          "bytes": 524288,
+          "ms": 10197,
+          "verdict": "clean",
+          "findings": 0
+        },
+        {
+          "shape": "base64-in-urls",
+          "what": "an instruction in base64 inside link targets",
+          "bytes": 65536,
+          "ms": 789,
+          "verdict": "blocked",
+          "findings": 675
+        },
+        {
+          "shape": "base64-in-urls",
+          "what": "an instruction in base64 inside link targets",
+          "bytes": 262144,
+          "ms": 3088,
+          "verdict": "blocked",
+          "findings": 2702
+        },
+        {
+          "shape": "base64-in-urls",
+          "what": "an instruction in base64 inside link targets",
+          "bytes": 524288,
+          "ms": 5915,
+          "verdict": "blocked",
+          "findings": 5405
+        },
+        {
+          "shape": "hex",
+          "what": "an instruction written in hexadecimal",
+          "bytes": 65536,
+          "ms": 2495,
+          "verdict": "blocked",
+          "findings": 771
+        },
+        {
+          "shape": "hex",
+          "what": "an instruction written in hexadecimal",
+          "bytes": 262144,
+          "ms": 9415,
+          "verdict": "blocked",
+          "findings": 3084
+        },
+        {
+          "shape": "hex",
+          "what": "an instruction written in hexadecimal",
+          "bytes": 524288,
+          "ms": 20210,
+          "verdict": "blocked",
+          "findings": 6168
+        },
+        {
+          "shape": "rot13",
+          "what": "an instruction written in rot13",
+          "bytes": 65536,
+          "ms": 2470,
+          "verdict": "blocked",
+          "findings": 1
+        },
+        {
+          "shape": "rot13",
+          "what": "an instruction written in rot13",
+          "bytes": 262144,
+          "ms": 9907,
+          "verdict": "blocked",
+          "findings": 1
+        },
+        {
+          "shape": "rot13",
+          "what": "an instruction written in rot13",
+          "bytes": 524288,
+          "ms": 19294,
+          "verdict": "blocked",
+          "findings": 1
+        },
+        {
+          "shape": "leetspeak",
+          "what": "an instruction written in leetspeak",
+          "bytes": 65536,
+          "ms": 1831,
+          "verdict": "blocked",
+          "findings": 1
+        },
+        {
+          "shape": "leetspeak",
+          "what": "an instruction written in leetspeak",
+          "bytes": 262144,
+          "ms": 7368,
+          "verdict": "blocked",
+          "findings": 1
+        },
+        {
+          "shape": "leetspeak",
+          "what": "an instruction written in leetspeak",
+          "bytes": 524288,
+          "ms": 15691,
+          "verdict": "blocked",
+          "findings": 1
+        },
+        {
+          "shape": "spaced-letters",
+          "what": "an instruction written as spaced letters",
+          "bytes": 65536,
+          "ms": 1582,
+          "verdict": "blocked",
+          "findings": 1
+        },
+        {
+          "shape": "spaced-letters",
+          "what": "an instruction written as spaced letters",
+          "bytes": 262144,
+          "ms": 6074,
+          "verdict": "blocked",
+          "findings": 1
+        },
+        {
+          "shape": "spaced-letters",
+          "what": "an instruction written as spaced letters",
+          "bytes": 524288,
+          "ms": 12388,
+          "verdict": "blocked",
+          "findings": 1
+        }
+      ]
+    }
+  },
+  "commit": "3df3f8c"
+}

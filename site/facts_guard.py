@@ -1,0 +1,349 @@
+"""Numbers of the guardrails report that come from the measured files in docs/security (never typed by hand).
+
+facts.py already reads the rule counts, the detector settings, the public benchmark and the pt/es validation. This module adds
+the files the architecture reports do not use: the input preparation of the detector (detector-prep.json), the polite rules
+(polite-rules.json), the planted-words rail on benign READMEs (planted-words-benign.json), the public-dataset part of the
+nightly (public-datasets-nightly.json), the topic check (topic-check.json), the rule audit (guard-audit.json) and the CPU cost
+of the guard (guard-cost.json, written by scripts/measure-guard-cost.mjs).
+
+Every table of the report is built here from those files, so a number can only change when a measurement changes.
+"""
+import json
+from pathlib import Path
+
+from lib import table
+
+ROOT = Path(__file__).resolve().parent.parent
+SEC = ROOT / "docs" / "security"
+
+
+def _json(name):
+    p = SEC / name
+    return json.loads(p.read_text(encoding="utf8")) if p.exists() else None
+
+
+PREP = _json("detector-prep.json")
+POLITE = _json("polite-rules.json")
+PLANTED = _json("planted-words-benign.json")
+PUBLIC = _json("public-datasets-nightly.json")
+TOPIC = _json("topic-check.json")
+AUDIT = _json("guard-audit.json")
+COST = _json("guard-cost.json")
+PTES_READMES = _json("guard-pt-es-readmes.json")
+DEEPSET = _json("replay-deepset.json")
+
+SHIPPED = "after: badges + cut-link clean-up (shipped)"
+BEFORE = "before (as in production)"
+
+
+def _kb(b):
+    return f"{round(b / 1024)} KB"
+
+
+# ---------------------------------------------------------------- cost of the guard
+
+
+def cost_table():
+    """CPU time of inspectText by document shape, at the largest size the API accepts, in both measured CPU profiles."""
+    profiles = COST["profiles"]
+    biggest = COST["maxSourceBytes"]
+    order = ["cpu-100", "cpu-50"]
+    heads = ["Shape of the document", "What it is", "Verdict"] + [
+        ("full CPU core" if p == "cpu-100" else f"{profiles[p]['cpuQuotaPct']}% of a core (as in production)") for p in order if p in profiles
+    ]
+    rows = []
+    for case in profiles[order[0]]["cases"]:
+        if case["bytes"] != biggest:
+            continue
+        cells = [f"<code>{case['shape']}</code>", case["what"], case["verdict"]]
+        for p in order:
+            if p in profiles:
+                ms = next(c["ms"] for c in profiles[p]["cases"] if c["shape"] == case["shape"] and c["bytes"] == biggest)
+                cells.append(f"<b>{ms / 1000:.1f} s</b>" if ms >= 10_000 else f"{ms / 1000:.1f} s")
+        rows.append(cells)
+    rows.sort(key=lambda r: float(r[-1].replace("<b>", "").replace("</b>", "").removesuffix(" s")))
+    return table(heads, rows, widths=["18%", "34%", "14%", "17%", "17%"])
+
+
+def cost_scaling_table():
+    """The same shapes by size: the cost grows with the bytes, in the production CPU profile."""
+    p = COST["profiles"].get("cpu-50") or COST["profiles"]["cpu-100"]
+    sizes = sorted({c["bytes"] for c in p["cases"]})
+    rows = []
+    for shape in dict.fromkeys(c["shape"] for c in p["cases"]):
+        cells = [f"<code>{shape}</code>"]
+        for b in sizes:
+            ms = next(c["ms"] for c in p["cases"] if c["shape"] == shape and c["bytes"] == b)
+            cells.append(f"{ms / 1000:.1f} s")
+        rows.append(cells)
+    return table(["Shape"] + [_kb(b) for b in sizes], rows)
+
+
+def cost_facts():
+    profiles = COST["profiles"]
+    biggest = COST["maxSourceBytes"]
+    out = {"gc_max_kb": _kb(biggest), "gc_commit": COST["commit"], "gc_repeats": COST["repeats"]}
+    for p, suffix in (("cpu-100", "full"), ("cpu-50", "half")):
+        if p not in profiles:
+            continue
+        at_max = [c for c in profiles[p]["cases"] if c["bytes"] == biggest]
+        worst = max(at_max, key=lambda c: c["ms"])
+        prose = next(c for c in at_max if c["shape"] == "prose")
+        out[f"gc_{suffix}_prose"] = f"{prose['ms'] / 1000:.1f} s"
+        out[f"gc_{suffix}_worst"] = f"{worst['ms'] / 1000:.1f} s"
+        out[f"gc_{suffix}_worst_shape"] = worst["shape"]
+    out["gc_cpu_pct"] = profiles.get("cpu-50", {}).get("cpuQuotaPct", 50)
+    return out
+
+
+# ---------------------------------------------------------------- detector: input preparation
+
+
+def prep_fp_table():
+    """False positives of Prompt Guard 2 per document set, before and after the input preparation that shipped."""
+    sets = PREP["falsePositives"]["sets"]
+    rows = []
+    for name, v in sets.items():
+        rows.append([
+            name, str(v["documents"]),
+            f"{v[BEFORE]['flagged']} (highest score {v[BEFORE]['maxScore']:.2f})",
+            f"{v[SHIPPED]['flagged']} (highest score {v[SHIPPED]['maxScore']:.2f})",
+        ])
+    tot = PREP["falsePositives"]["totals"]
+    rows.append(["<b>All of them</b>", f"<b>{PREP['falsePositives']['documents']}</b>", f"<b>{tot[BEFORE]}</b>", f"<b>{tot[SHIPPED]}</b>"])
+    return table(["Benign documents", "Documents", "Flagged before", "Flagged after"], rows, widths=["34%", "12%", "27%", "27%"])
+
+
+def prep_recall_table():
+    """Recall of the detector on the attack sets: the preparation must not lose a single catch."""
+    rows = []
+    for name, v in PREP["recall"].items():
+        rows.append([name, str(v["documents"]), f"{v[BEFORE]['flagged']} ({v[BEFORE]['recallPct']}%)", f"{v[SHIPPED]['flagged']} ({v[SHIPPED]['recallPct']}%)"])
+    return table(["Attack set", "Documents", "Caught before", "Caught after"], rows, widths=["40%", "14%", "23%", "23%"])
+
+
+def prep_wide_table():
+    """The wide benign measurement: real READMEs in three languages, detector and rules side by side."""
+    rows = []
+    s = PREP["wideBenign"]["sets"]
+    for lang, v in s.items():
+        rows.append([lang, str(v["documents"]), str(v["flaggedBefore"]), str(v["flaggedAfter"]), str(v["rulesFlag"]), str(v["both"])])
+    rows.append(["<b>all</b>"] + [f"<b>{sum(v[k] for v in s.values())}</b>" for k in ("documents", "flaggedBefore", "flaggedAfter", "rulesFlag", "both")])
+    return table(["Language", "READMEs", "Detector before", "Detector after", "Keyword rules", "Both"], rows)
+
+
+def two_signals_table():
+    """Could a policy block on agreement? The measured answer, benign and attacks side by side."""
+    ts = PREP["twoSignals"]
+    cols = [k for k in ts["benign"] if k != "documents"]
+    rows = []
+    for key, label in (("benign", "Benign documents (false positives)"), ("nightly640", "One nightly run of attacks (recall)")):
+        if key not in ts:
+            continue
+        rows.append([f"{label}, n={ts[key]['documents']}"] + [f"{ts[key][c]}%" for c in cols])
+    label = lambda c: c.replace("rulesAlone", "Rules alone").replace("detector", "PG2").replace(">=", " ≥ ").replace("both(", "both: ").replace("either(", "either: ").replace(")", "").replace(" AND ", " and ").replace(" OR ", " or ")  # noqa: E731
+    return table(["Policy"] + [label(c) for c in cols], rows)
+
+
+def prep_facts():
+    fp, wide, ts = PREP["falsePositives"], PREP["wideBenign"]["sets"], PREP["twoSignals"]
+    out = {
+        "dp_model": PREP["model"], "dp_threshold": f"{PREP['threshold']:g}", "dp_docs": fp["documents"],
+        "dp_before": fp["totals"][BEFORE], "dp_after": fp["totals"][SHIPPED],
+        "dp_variants": len(PREP["variants"]),
+        "dp_wide_docs": sum(v["documents"] for v in wide.values()),
+        "dp_wide_before": sum(v["flaggedBefore"] for v in wide.values()),
+        "dp_wide_after": sum(v["flaggedAfter"] for v in wide.values()),
+        "dp_wide_rules": sum(v["rulesFlag"] for v in wide.values()),
+        "dp_wide_both": sum(v["both"] for v in wide.values()),
+    }
+    out["dp_wide_after_pct"] = f"{100 * out['dp_wide_after'] / out['dp_wide_docs']:.1f}%"
+    out["dp_wide_rules_pct"] = f"{100 * out['dp_wide_rules'] / out['dp_wide_docs']:.1f}%"
+    if "nightly640" in ts:
+        out["dp_both_recall"] = f"{ts['nightly640']['both(detector>=0.5 AND rules)']}%"
+        out["dp_rules_recall"] = f"{ts['nightly640']['rulesAlone']}%"
+        out["dp_either_recall"] = f"{ts['nightly640']['either(detector>=0.5 OR rules)']}%"
+    return out
+
+
+# ---------------------------------------------------------------- polite rules and the rule audit
+
+
+def polite_table():
+    rows = []
+    for name, v in POLITE["falsePositives"].items():
+        rows.append([name, str(v["documents"]), str(v["anyRule"]), str(v["polite"])])
+    rows.append(["<b>All of them</b>", f"<b>{sum(v['documents'] for v in POLITE['falsePositives'].values())}</b>",
+                 f"<b>{sum(v['anyRule'] for v in POLITE['falsePositives'].values())}</b>",
+                 f"<b>{sum(v['polite'] for v in POLITE['falsePositives'].values())}</b>"])
+    return table(["Benign documents", "Documents", "Any rule matched", "A polite rule matched"], rows, widths=["40%", "14%", "23%", "23%"])
+
+
+def audit_table():
+    """Where each rule earns its place: the corpora the audit ran the rules against."""
+    rows = [[name, str(n)] for name, n in AUDIT["groups"].items()]
+    sole = [r for r in AUDIT["rules"] if r["soleHits"] > 0]
+    dead = [r for r in AUDIT["rules"] if r["total"] == 0]
+    return table(["Corpus of the rule audit", "Documents"], rows, widths=["70%", "30%"]), len(sole), len(dead)
+
+
+def polite_facts():
+    rec = POLITE["recall"]
+    key = next(iter(rec))
+    out = {"pol_rules": POLITE["politeRules"], "pol_total_then": POLITE["totalRules"],
+           "pol_cases": rec[key]["cases"], "pol_old": rec[key]["old"], "pol_with": rec[key]["withPolite"],
+           "pol_fp_docs": sum(v["documents"] for v in POLITE["falsePositives"].values()),
+           "pol_fp": sum(v["anyRule"] for v in POLITE["falsePositives"].values())}
+    out["pol_old_pct"] = f"{100 * out['pol_old'] / out['pol_cases']:.0f}%"
+    out["pol_with_pct"] = f"{100 * out['pol_with'] / out['pol_cases']:.0f}%"
+    rules, sole, dead = AUDIT["rules"], 0, 0
+    for r in rules:
+        sole += 1 if r["soleHits"] > 0 else 0
+        dead += 1 if r["total"] == 0 else 0
+    out.update({"ga_rules": len(rules), "ga_sole": sole, "ga_dead": dead, "ga_corpora": len(AUDIT["groups"]),
+                "ga_docs": sum(AUDIT["groups"].values())})
+    return out
+
+
+# ---------------------------------------------------------------- the output rails
+
+
+def planted_table():
+    """The planted-words rail on real READMEs: words it used to call planted, and what is left after the fix."""
+    before = sum(len(v["before"]) for v in PLANTED.values())
+    after = sum(len(v["after"]) for v in PLANTED.values())
+    worst = sorted(PLANTED.items(), key=lambda kv: -len(kv[1]["before"]))[:6]
+    rows = [[f"<code>{k.split('/')[-1]}</code>", ", ".join(v["before"]) or "—", ", ".join(v["after"]) or "—"] for k, v in worst if v["before"]]
+    return table(["Real README", "Called planted before", "After"], rows, widths=["34%", "44%", "22%"]), before, after
+
+
+def replay_quality_table():
+    """The quizzes made from READMEs that carry an attack: are they still about the document? (scoreQuiz, offline replay)"""
+    s = TOPIC["replaySummary"]
+    f = TOPIC["floors"]
+    rows = [
+        ["Quizzes scored (replay of public attacks)", str(s["quizzes"])],
+        ["Grounded in the document", f"{100 * s['grounded']:.0f}%"],
+        ["Relevance to the document (mean / lowest)", f"{s['relevanceMean']:.2f} / {s['relevanceMin']:.2f} (golden-set floor {f['relevance']})"],
+        ["Question diversity (mean)", f"{s['diversityMean']:.3f} (floor {f['question_diversity']})"],
+        ["Section coverage (mean)", f"{s['coverageMean']:.3f} (floor {f['coverage']})"],
+        ["Quizzes under the relevance floor", f"{s['belowFloor']['relevance']} of {s['quizzes']}"],
+        ["Quizzes using a content word that <b>only the attack text</b> had", f"<b>{s['withSteeringWords']}</b> of {s['quizzes']}"],
+    ]
+    return table(["The quiz under attack, measured offline", "Value"], rows, widths=["62%", "38%"])
+
+
+def topic_live_table():
+    """The topic field through the real pipeline: 5 fixtures x (no topic, a topic of the document, an unrelated topic)."""
+    live = TOPIC["live"]
+    rows = []
+    for variant in dict.fromkeys(x["variant"] for x in live):
+        xs = [x for x in live if x["variant"] == variant]
+        def avg(k, xs=xs):  # `coverage` is missing for the one-section fixture, so each column averages what it has
+            vals = [x[k] for x in xs if k in x]
+            return f"{sum(vals) / len(vals):.2f}" + (f" (of {len(vals)})" if len(vals) < len(xs) else "") if vals else "—"
+        rows.append([variant, str(len(xs)), avg("grounded"), avg("relevance"), avg("coverage"), avg("question_diversity")])
+    return table(["Topic asked for", "Quizzes", "Grounded", "Relevance", "Coverage", "Diversity"], rows)
+
+
+def output_facts():
+    _, before, after = planted_table()
+    s = TOPIC["replaySummary"]
+    live = TOPIC["live"]
+    return {"pw_docs": len(PLANTED), "pw_before": before, "pw_after": after,
+            "tc_quizzes": s["quizzes"], "tc_below": s["belowFloor"]["relevance"], "tc_steering": s["withSteeringWords"],
+            "tc_live": len(live), "tc_live_fixtures": len({x["fixture"] for x in live}),
+            "tc_live_grounded": f"{100 * sum(x['grounded'] for x in live) / len(live):.0f}%"}
+
+
+# ---------------------------------------------------------------- the nightly: public datasets
+
+
+def public_table():
+    t = PUBLIC["totals"]
+    rows = [
+        ["Cases built from the sources", str(PUBLIC["cases"])],
+        ["Rows dropped (too short, or not an attack)", f"{PUBLIC['dropped']} dropped, {PUBLIC['tooShort']} too short"],
+        ["Stage A: the guard sees the text in a README", str(t["stageA"])],
+        ["Flagged by the keyword rules", str(t["rulesFlagged"])],
+        ["Flagged by Prompt Guard 2", str(t["pg2Flagged"])],
+        ["Passed both layers (they reached the prompts)", str(t["passedBoth"])],
+        ["Stage B: a quiz was made with the real model", f"{PUBLIC['stageB']['cases']} cases, {PUBLIC['stageB']['quizzes']} quizzes"],
+        ["Quizzes the oracle judged contaminated", f"<b>{t['contaminated']}</b>"],
+        ["Documents in a refused language that reached the model", f"<b>{t['blockedLangReachedModel']}</b> of {PUBLIC['blockedLanguages']['cases']}"],
+        ["Benign rows flagged (false positives)", f"{PUBLIC['benign']['flagged'] and len(PUBLIC['benign']['flagged']) or PUBLIC['benign']['either']} of {PUBLIC['benign']['cases']}"],
+        ["Foreign-language attack inside a README in a supported language", f"{PUBLIC['foreignInSupported']['passed']} of {PUBLIC['foreignInSupported']['cases']} passed every layer"],
+        ["Sources that could not be read", str(t["sourcesFailed"])],
+    ]
+    return table(["The public-dataset part of one nightly run", "Value"], rows, widths=["62%", "38%"])
+
+
+def encoded_table():
+    rows = [[k, str(v["cases"]), str(v["blockedBeforeModel"]), str(v["reachedModel"]), str(v["contaminated"])] for k, v in PUBLIC["encoded"].items()]
+    return table(["Encoding", "Cases", "Blocked before the model", "Reached the model", "Contaminated a quiz"], rows)
+
+
+def sources_table():
+    """The public sources of the nightly: each one pinned to a revision, and the run says whether it drifted."""
+    rows = []
+    for x in PUBLIC["sources"]:
+        rows.append([
+            f"<code>{x.get('id', x.get('key'))}</code>", x.get("license", "—"), f"{x.get('rows', '—'):,}" if isinstance(x.get("rows"), int) else "—",
+            f"<code>{(x.get('pinnedRevision') or '')[:10]}</code>" if x.get("pinnedRevision") else "—",
+            ("drifted" if x.get("drifted") else "as pinned") + (f", {x['status']}" if x.get("status") and x["status"] != "ok" else ""),
+        ])
+    return table(["Public source", "Licence", "Rows", "Pinned revision", "State in the measured run"], rows)
+
+
+def public_facts():
+    t = PUBLIC["totals"]
+    return {"pub_cases": PUBLIC["cases"], "pub_sources": len(PUBLIC["sources"]), "pub_stagea": t["stageA"],
+            "pub_rules": t["rulesFlagged"], "pub_pg2": t["pg2Flagged"], "pub_passed": t["passedBoth"],
+            "pub_contaminated": t["contaminated"], "pub_encoded_reached": t["encodedReachedModel"],
+            "pub_blocked_langs": ", ".join(PUBLIC["blockedLanguages"]["languages"]),
+            "pub_blocked_cases": PUBLIC["blockedLanguages"]["cases"], "pub_benign": PUBLIC["benign"]["cases"],
+            "pub_foreign_cases": PUBLIC["foreignInSupported"]["cases"], "pub_foreign_passed": PUBLIC["foreignInSupported"]["passed"],
+            "pub_seed": PUBLIC["config"]["seed"], "ptes_docs": PTES_READMES["documents"],
+            "ds_name": DEEPSET["dataset"]["name"], "ds_attacks": len(DEEPSET["attacks"]), "ds_runs": len(DEEPSET["runs"])}
+
+
+# ---------------------------------------------------------------- the alarms that watch the nightly
+
+import os  # noqa: E402
+import re as _re  # noqa: E402
+
+INFRA_DIR = Path(os.environ.get("INFRA_DIR", Path.home() / "quizforge-infra"))
+_RT = (INFRA_DIR / "terraform" / "redteam.tf").read_text(encoding="utf8")
+
+
+def nightly_alarms():
+    """Every alarm of terraform/redteam.tf, read from the file: the single ones plus the entries of the for_each map.
+
+    `facts.ALARMS_REDTEAM` counts resource blocks, and one of them is a for_each over several alarms, so it is not the
+    number of alarms. This counts the alarms themselves.
+    """
+    out = []
+    for m in _re.finditer(r'resource "aws_cloudwatch_metric_alarm" "(\w+)" \{(.*?)\n\}', _RT, _re.S):
+        block = m.group(2)
+        if "for_each" in block:
+            continue
+        name = _re.search(r'alarm_name\s+= "\$\{local\.name\}-([\w-]+)"', block)
+        desc = _re.search(r'alarm_description\s+= "(.*?)"\n', block, _re.S)
+        out.append((name.group(1) if name else m.group(1), desc.group(1) if desc else ""))
+    for m in _re.finditer(r'"(redteam-[\w-]+)" = \{(.*?)\n    \}', _RT, _re.S):
+        desc = _re.search(r'description = "(.*?)"', m.group(2), _re.S)
+        out.append((m.group(1), desc.group(1) if desc else ""))
+    return out
+
+
+def alarms_table():
+    rows = [[f"<code>{n}</code>", d.replace("See redteam/latest/report.html", "See the report of the run")] for n, d in nightly_alarms()]
+    return table(["Alarm", "What it means"], rows, widths=["30%", "70%"])
+
+
+def all_facts():
+    out = {}
+    for f in (cost_facts, prep_facts, polite_facts, output_facts, public_facts):
+        out.update(f())
+    out["rt_alarms"] = len(nightly_alarms())
+    return out

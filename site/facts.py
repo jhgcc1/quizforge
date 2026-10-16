@@ -106,9 +106,11 @@ def _tokens():
     return t
 
 
-def tok(s):
-    """Replace [[name]] in a text by the number read from the repository files."""
-    t = _tokens()
+def tok(s, extra=None):
+    """Replace [[name]] in a text by the number read from the repository files.
+
+    `extra` lets a report add the tokens of its own measured files (see site/facts_guard.py)."""
+    t = _tokens() | (extra or {})
 
     def rep(m):
         if m.group(1) not in t:
