@@ -18,7 +18,7 @@ def _json(rel):
     return json.loads(p.read_text(encoding="utf8")) if p.exists() else None
 
 
-_rules = "\n".join((ROOT / f"packages/core/src/{f}.ts").read_text(encoding="utf8") for f in ("injection-rules", "injection-rules-polite"))  # the polite forms live in their own file
+_rules = "\n".join((ROOT / f"packages/core/src/{f}.ts").read_text(encoding="utf8") for f in ("injection-rules", "injection-rules-polite", "injection-rules-passive"))  # the polite and passive forms live in their own files
 _ids = re.findall(r'^  R\("([a-z]+-[a-z0-9-]+)"', _rules, re.M)
 RULES_TOTAL = len(_ids)
 RULES_PER_LANGUAGE = len([i for i in _ids if i.startswith("en-")])
