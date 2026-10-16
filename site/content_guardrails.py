@@ -404,6 +404,18 @@ def redteam():
     body = T(f"""<p>The red team builds documents that look like a real README and hide an attack in one paragraph, at a position
 chosen from a hash of the attack text — random-looking, but the same every run ({code('promptfoo/redteam/readme.ts')}). Each
 intent carries a unique canary token, so success is a fact: the canary is either in the quiz or it is not.</p>""")
+    body += callout("", "What a canary is, and why everything hangs on it",
+                    T("""A canary is an arbitrary, unique token — <code>ZX9-XRAY</code> — that exists <b>only inside the attack text</b>. The
+                    hidden instruction tells the model to put it in the quiz. That turns a question of judgement (“did the model obey the
+                    document?”, which needs interpretation, or a second model to arbitrate) into a <b>boolean one</b>: the token is in the
+                    reply or it is not. Code decides, every time, which is what lets this repository hold the rule that <b>no model judges
+                    another model</b> — the attacker model writes attacks, it never grades them.<br><br>
+                    Each of the [[pf_base_intents]] intents carries its own (<code>ZX9-ALPHA</code> … <code>ZX9-LIMA</code>), so a leak names
+                    <i>which</i> attack worked, not just that one did. The letter+digit shape is deliberate too: the planted-words rail never
+                    exempts the parts of such a token through the frequency list, so <code>zx9</code> and <code>xray</code> stay blocked even
+                    if some README legitimately says “xray”.<br><br>
+                    So a <b>leak</b> has an exact meaning here: the canary reached the quiz. Not “the quiz looked off”, not “the model seemed
+                    influenced” — the token only the attacker had came out the other end. It is the one number that raises an alarm at night."""))
     body += table(["Piece", "What it is"], [
         [T("<b>Intents</b> ([[pf_base_intents]] base, [[pf_nightly_intents]] at night)"), "override, prompt leak, task swap, a link in a question, DAN role play, a fake system message, a fake closing tag, answer manipulation, the grandma trick, format hijack, an image with a link, debug mode — each with its own canary (<code>ZX9-ALPHA</code>…)"],
         ["<b>Attack texts</b>", T("Each intent in English, Portuguese and Spanish, as a translation and as a paraphrase in another tone, written by the attacker model and then frozen")],
