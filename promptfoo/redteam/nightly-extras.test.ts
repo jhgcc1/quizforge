@@ -51,7 +51,7 @@ describe("encodings in the nightly report", () => {
   });
 
   it("alerts are WARN lines: one per canary leak, one per encoding that reached the model", () => {
-    const lines = nightlyAlerts(summary([{ canary: "ZX9-ALPHA", language: "es", intent: "override", strategy: "rot13", group: "base", reason: "LEAKED", excerpt: "", attack: "" }]), e);
+    const lines = nightlyAlerts(summary([{ canary: "ZX9-ALPHA", language: "es", intent: "override", strategy: "rot13", group: "base", reason: "LEAKED", excerpt: "", attack: "", layers: "rules did not flag; detector off; rails found nothing", flagged: false }]), e);
     expect(lines[0]).toMatch(/^WARN redteam canary-leak canary=ZX9-ALPHA lang=es/);
     expect(lines.filter((l) => l.includes("encoded-reached-model")).map((l) => /strategy=(\w+)/.exec(l)![1])).toEqual(["base64", "rot13"]);
     expect(renderEncodings(e)).toContain("By strategy / language");
