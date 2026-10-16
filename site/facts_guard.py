@@ -346,6 +346,7 @@ def all_facts():
     for f in (cost_facts, prep_facts, polite_facts, output_facts, public_facts):
         out.update(f())
     out["rt_alarms"] = len(nightly_alarms())
+    out.update(detector_why_facts())
     return out
 
 
@@ -401,3 +402,57 @@ def provenance_table():
     ]
     return table(["Measurement", "File", "Measured on", "What it covers", "Does it cover today's code?"], rows,
                  widths=["20%", "16%", "11%", "28%", "25%"])
+
+
+# ---------------------------------------------------------------- why the detector only flags
+
+BENCH = _json("benchmark.json")
+
+
+def _attack_scores():
+    """The detector's score for every injection of the public benchmark sample."""
+    out = []
+    for r in BENCH["results"]:
+        if r.get("label") != 1:
+            continue
+        d = r.get("detector")
+        s = d.get("score") if isinstance(d, dict) else d
+        if isinstance(s, (int, float)):
+            out.append(s)
+    return sorted(out)
+
+
+def threshold_sweep_table():
+    """Raising the threshold does not buy anything on the public benchmark: fewer attacks caught, the same zero false positives."""
+    rows = [[f"{r['threshold']:g}", f"{r['caught']} of {r['injections']} ({r['recallPct']}%)", f"{r['falsePositives']} of {r['benign']}"]
+            for r in BENCH["thresholdSweep"]["all"]]
+    return table(["Threshold", "Attacks caught (public benchmark)", "False positives (benign rows)"], rows, widths=["20%", "45%", "35%"])
+
+
+def flagged_readmes_table():
+    """The real READMEs the detector still flags, with their score and how many attacks score lower."""
+    scores = _attack_scores()
+    below = lambda s: f"{100 * sum(1 for x in scores if x < s) / len(scores):.0f}%"  # noqa: E731
+    rows = []
+    for x in sorted(PREP["wideBenign"]["flaggedAfter"], key=lambda x: -x["after"]):
+        rows.append([f"<code>{x['doc']}</code>", f"{x['after']:.3f}", below(x["after"]), "yes" if x.get("rules") else "no"])
+    return table(["Real README, flagged with no attack in it", "Score", "Attacks of the benchmark scoring lower", "A keyword rule also matched"], rows,
+                 widths=["42%", "12%", "26%", "20%"])
+
+
+def detector_why_facts():
+    scores = _attack_scores()
+    mid = scores[len(scores) // 2]
+    flagged = PREP["wideBenign"]["flaggedAfter"]
+    top = max(flagged, key=lambda x: x["after"])
+    sweep = BENCH["thresholdSweep"]["all"]
+    return {
+        "dw_attack_median": f"{mid:.3f}", "dw_attacks": len(scores),
+        "dw_top_doc": top["doc"].split("/")[-1], "dw_top_score": f"{top['after']:.3f}",
+        "dw_top_below": f"{100 * sum(1 for x in scores if x < top['after']) / len(scores):.0f}%",
+        "dw_flagged_n": len(flagged),
+        "dw_flagged_over_99": sum(1 for x in flagged if x["after"] >= 0.99),
+        "dw_flagged_rules": sum(1 for x in flagged if x.get("rules")),
+        "dw_sweep_low": f"{sweep[0]['recallPct']}%", "dw_sweep_high": f"{sweep[-1]['recallPct']}%",
+        "dw_sweep_high_t": f"{sweep[-1]['threshold']:g}",
+    }

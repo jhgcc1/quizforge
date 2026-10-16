@@ -170,10 +170,36 @@ them, scores each one, and the document is <b>flagged</b> when the highest score
 window is kept as an excerpt of [[det_excerpt]] characters, for the output rails.</p>""")
     body += d.detector_flag()
     body += callout("warn", "It flags, it does not block",
-                    T("<code>INJECTION_DETECTOR=flag</code> in Terraform and in the local stack. A flagged document still becomes a quiz. "
-                          "Only the output rails change behaviour (strict link mode, planted words). The reason is in the numbers below: at a threshold "
-                          "that catches a useful share of attacks, the classifier also flags ordinary READMEs, and a product that refuses real documents "
-                          "is a broken product."))
+                    T("<code>INJECTION_DETECTOR=flag</code> in Terraform (the production default, not overridden) and in the local stack. "
+                      "A flagged document still becomes a quiz; what changes is the output rails. <code>block</code> exists and is one variable "
+                      "away — the rest of this section is why it is not set."))
+    body += "<h3>What the flag actually changes</h3>"
+    body += T(f"""<p>The flag is not a score in a log. The worker passes the excerpt of the most suspicious window on as
+<code>flaggedExcerpts</code> ({code('apps/worker/src/processor.ts')}), and the output rails treat the document as untrusted
+({code('packages/llm/src/output-guard.ts', '<code>linkTrust</code>')}):</p>""")
+    body += table(["Without a flag", "With a flag (rule or detector)"], [
+        ["A link in the reply must occur in the document, or its host must", "<b>Strict link mode</b>: the flagged lines and the detector excerpt are <i>removed</i> from the document first, and the link must occur in what is left — so a link planted inside the instruction no longer counts as “in the document”"],
+        ["No planted-words check", "<b>Planted words</b>: a word that occurs only in a flagged line may not appear in the quiz at all. From a detector excerpt, only canary-shaped words count (a letter+digit token such as <code>ZX9-XRAY</code>), precisely because the detector flags ordinary paragraphs now and then and their words are legitimate quiz material"],
+        ["The metric <code>InjectionDetected</code> is still written", "The same metric, plus a WARN line with the model and the score. There is no alarm on it (see “Nightly and alerts”)"],
+    ], widths=["32%", "68%"])
+    body += "<h3>Why it does not block: there is no threshold that separates</h3>"
+    body += T("""<p>The usual answer would be “raise the threshold until the false positives go away”. The measurements say that
+threshold does not exist. On the public benchmark, raising it from 0.5 to [[dw_sweep_high_t]] only costs recall — [[dw_sweep_low]]
+down to [[dw_sweep_high]] — because the benign rows there were never a problem:</p>""")
+    body += G.threshold_sweep_table()
+    body += T("""<p>The problem appears on real documents. Of [[dp_wide_docs]] real READMEs, <b>[[dw_flagged_n]] are flagged with no
+attack in them</b> — and they are not borderline. The README of <code>[[dw_top_doc]]</code> scores <b>[[dw_top_score]]</b>, higher
+than <b>[[dw_top_below]] of the [[dw_attacks]] real attacks</b> in the benchmark, whose median score is just
+<b>[[dw_attack_median]]</b>. [[dw_flagged_over_99]] of them are at 0.99 or above, so no useful threshold excludes them:</p>""")
+    body += G.flagged_readmes_table()
+    body += T("""<p>Read the list and the reason is plain: these are documents <i>about</i> instructions. A skills repository, two
+“clean code” guides full of “don't do this, do that”, a bash cookbook, command-line tools whose README is a wall of options. The
+classifier is not malfunctioning — it sees imperative text aimed at a reader and says so. It simply cannot tell that text from an
+instruction aimed at <i>it</i>, which is the only distinction that matters here.</p>
+<p>So blocking at 0.5 would refuse [[dw_flagged_n]] of [[dp_wide_docs]] real READMEs ([[dp_wide_after_pct]]) to catch a part of the
+attacks that the keyword rules already catch better. And “block only when a rule agrees” does not rescue it either:
+[[dw_flagged_rules]] of these [[dw_flagged_n]] legitimate READMEs have a rule match too, and that policy's recall is measured
+below.</p>""")
     body += "<h3>Preparing the input: the same model, fewer false positives</h3>"
     body += T(f"""<p>The false positives had a cause that was not semantic at all: <b>badge rubble</b>. A README head full of
 <code>![License MIT ](…</code> shields, with link targets cut in the middle, reads to the classifier like a command. The shipped
