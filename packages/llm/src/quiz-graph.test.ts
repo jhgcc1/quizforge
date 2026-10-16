@@ -4,7 +4,7 @@ import { JobBudget } from "./budget.js";
 import { BudgetExceededError } from "./errors.js";
 import type { ChatMessage, CompleteOptions, LlmClient } from "./llm.js";
 import type { GenerationProgress } from "./progress.js";
-import { QualityGateError, runQuizGraph, type QuizGraphDeps, type QuizGraphInput } from "./quiz-graph.js";
+import { QualityGateError, runQuizGraph, ungroundedMessage, type QuizGraphDeps, type QuizGraphInput } from "./quiz-graph.js";
 
 const usage = { promptTokens: 100, completionTokens: 50, cachedTokens: 0 };
 
@@ -52,6 +52,7 @@ function scripted(handlers: Record<string, Handler | string>) {
   return { llm, calls };
 }
 const five = [0, 1, 2, 3, 4].map((i) => q(i));
+const checkAllGrounded = (qs: { sourceQuote: string }[]) => qs.every((x) => SHORT_DOC.replace(/\s+/g, " ").includes(x.sourceQuote));
 
 describe("single-shot", () => {
   it("one call when the first answer is valid and grounded", async () => {
@@ -172,6 +173,64 @@ describe("graceful degradation of ungrounded questions", () => {
     expect(err).toBeInstanceOf(QualityGateError);
     expect(err.ungrounded).toEqual([1, 3]); // positions after the easy->hard ordering
     expect(err.message).toContain("does not exist anywhere"); // diagnosable from the logs
+  });
+});
+
+describe("one spare candidate keeps the quiz at exactly n", () => {
+  const six = [0, 1, 2, 3, 4, 5].map((i) => q(i));
+  const hallucinated = (i: number) => q(i, { sourceQuote: `a quote about topic ${i} that does not exist anywhere in the document` });
+  const run = (f: ReturnType<typeof scripted>, n = 5) => runQuizGraph({ llm: f.llm, budget: new JobBudget() }, { sourceText: SHORT_DOC, numQuestions: n, strategy: "single-shot" });
+
+  it("asks for n + 1 questions in the prompt", async () => {
+    let prompt = "";
+    const f = scripted({ "generate:single-shot": (m) => ((prompt = m.find((x) => x.role === "user")!.content), ok(...six)) });
+    await run(f);
+    expect(prompt).toContain("Write exactly 6 questions");
+  });
+
+  it("n = 5 with one persistently ungrounded quote: the failure of the 4-grounded case becomes a 5-question quiz", async () => {
+    const bad = [...six];
+    bad[2] = hallucinated(2);
+    const f = scripted({ "generate:single-shot": ok(...bad), revise: ok(hallucinated(2)) });
+    const r = await run(f);
+    expect(r.questions).toHaveLength(5);
+    expect(checkAllGrounded(r.questions)).toBe(true);
+    expect(r.trail.at(-1)).toBe("finalize:dropped-1-ungrounded");
+  });
+
+  it("all n + 1 grounded: trims to exactly n", async () => {
+    const f = scripted({ "generate:single-shot": ok(...six) });
+    const r = await run(f);
+    expect(r.questions).toHaveLength(5);
+    expect(r.trail.at(-1)).toBe("finalize:trimmed-spare-1");
+  });
+
+  it("a model that answers exactly n (no spare) is still accepted", async () => {
+    const f = scripted({ "generate:single-shot": ok(...five) });
+    expect((await run(f)).questions).toHaveLength(5);
+  });
+
+  it("n = 8 has no spare to ask for (the contract caps at 8)", async () => {
+    let prompt = "";
+    const eight = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => q(i));
+    const f = scripted({ "generate:single-shot": (m) => ((prompt = m.find((x) => x.role === "user")!.content), ok(...eight)) });
+    const r = await run(f, 8);
+    expect(prompt).toContain("Write exactly 8 questions");
+    expect(r.questions).toHaveLength(8);
+  });
+
+  it("two ungrounded of n = 5 + 1 still fails (4 grounded)", async () => {
+    const bad = [...six];
+    bad[0] = hallucinated(0);
+    bad[1] = hallucinated(1);
+    const f = scripted({ "generate:single-shot": ok(...bad), revise: ok(hallucinated(0), hallucinated(1)) });
+    await expect(run(f)).rejects.toBeInstanceOf(QualityGateError);
+  });
+
+  it("the message to the reviser names the rejected quote and explains a too-short one", () => {
+    expect(ungroundedMessage("## Licença")).toContain("too short");
+    expect(ungroundedMessage("## Licença")).toContain("6 to 25 words");
+    expect(ungroundedMessage("pg_graphql es una extensión de PostgreSQL")).toContain("pg_graphql es una extensión");
   });
 });
 

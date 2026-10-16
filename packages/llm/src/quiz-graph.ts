@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   GeneratedQuestionSchema,
   GeneratedQuizSchema,
+  MAX_QUESTIONS,
   MIN_QUESTIONS,
   checkGrounding,
   type GeneratedQuestion,
@@ -85,6 +86,17 @@ export class QualityGateError extends Error {
 }
 
 const MAX_SINGLE_SHOT_CHARS = 60_000;
+/** One spare candidate is requested (never above MAX_QUESTIONS): if one question has to be dropped for an ungrounded quote, the quiz still has n. */
+const withSpare = (n: number): number => Math.min(n + 1, MAX_QUESTIONS);
+/** What the reviser is told about a quote that is not in the document (kept out of the locked prompts: it is data, built per quote). */
+export function ungroundedMessage(quote: string): string {
+  const words = quote.split(/\s+/).filter(Boolean).length;
+  const shown = `"${quote.slice(0, 120)}"`;
+  if (words < 3) {
+    return `sourceQuote ${shown} is too short to verify (a heading or one table cell alone does not count); copy a whole sentence or line of 6 to 25 words verbatim`;
+  }
+  return `sourceQuote ${shown} is not an exact excerpt of the document; copy one whole sentence, list item or table row verbatim as it reads (do not add or change words such as verbs, do not join sentences that are not adjacent, no markdown symbols, no ellipsis)`;
+}
 const PLAN_EXTRA_FACTS = 2; // ask for a few more than needed: facts whose quote is not in the document are dropped
 
 const State = Annotation.Root({
@@ -182,7 +194,7 @@ export function buildQuizGraph(deps: QuizGraphDeps, checkpointer?: BaseCheckpoin
         if (done < sections.length) say(s, "writing_questions", `section ${done + 1} of ${sections.length}`);
         return r.value.questions;
       });
-      const chosen = selectQuestions(results, n);
+      const chosen = selectQuestions(results, withSpare(n));
       if (chosen.length < n) throw new StructuredOutputError(`only ${chosen.length}/${n} distinct questions produced`, "", 1);
       return {
         questions: chosen,
@@ -194,13 +206,13 @@ export function buildQuizGraph(deps: QuizGraphDeps, checkpointer?: BaseCheckpoin
     }
     say(s, "writing_questions");
     const doc = sourceText.length > MAX_SINGLE_SHOT_CHARS ? sourceText.slice(0, MAX_SINGLE_SHOT_CHARS) : sourceText;
-    const Quiz = z.object({ questions: z.array(GeneratedQuestionSchema).length(n) });
+    const Quiz = z.object({ questions: z.array(GeneratedQuestionSchema).min(n).max(withSpare(n)) });
     const r = await generateStructured({
       llm: deps.llm,
       budget: deps.budget,
       schema: Quiz,
       system: generationSystem(s.input.promptVariant),
-      user: singleShotUser({ doc, n, topic }),
+      user: singleShotUser({ doc, n: withSpare(n), topic }),
       options: { name: "generate:single-shot", temperature: 0.4 },
       check: quizReplyCheck(sourceText, s.input.flaggedExcerpts),
     });
@@ -257,7 +269,7 @@ export function buildQuizGraph(deps: QuizGraphDeps, checkpointer?: BaseCheckpoin
     const issues: Record<number, string[]> = {};
     const add = (i: number, msg: string) => (issues[i] = [...(issues[i] ?? []), msg]);
     const grounding = checkGrounding({ questions: s.questions }, s.input.sourceText);
-    for (const i of grounding.ungrounded) add(i, "sourceQuote is not an exact excerpt of the document; copy one sentence or line verbatim, without markdown symbols, without joining sentences and without an ellipsis");
+    for (const i of grounding.ungrounded) add(i, ungroundedMessage(s.questions[i - 1]!.sourceQuote));
     s.questions.forEach((q, i) => lintQuestion(q).forEach((m) => add(i + 1, m)));
     const parsed = GeneratedQuizSchema.safeParse({ questions: s.questions });
     if (!parsed.success) {
@@ -308,11 +320,18 @@ export function buildQuizGraph(deps: QuizGraphDeps, checkpointer?: BaseCheckpoin
   };
 
   const finalize = async (s: S): Promise<Partial<S>> => {
+    const n = s.input.numQuestions;
     const ungrounded = checkGrounding({ questions: s.questions }, s.input.sourceText).ungrounded;
-    if (ungrounded.length === 0) return { trail: [...s.trail, "finalize"] };
+    if (ungrounded.length === 0) {
+      if (s.questions.length <= n) return { trail: [...s.trail, "finalize"] };
+      // The spare candidate was not needed: the quiz is exactly n (the spare is the last, i.e. the hardest, question).
+      return { questions: s.questions.slice(0, n), trail: [...s.trail, `finalize:trimmed-spare-${s.questions.length - n}`] };
+    }
 
     // Graceful degradation: a question whose quote cannot be found after the revision rounds is DROPPED (never shown)
-    // when enough grounded ones remain, so the user gets a slightly shorter quiz instead of an error.
+    // when enough grounded ones remain, so the user gets a slightly shorter quiz instead of an error. The spare
+    // candidate requested at generation usually keeps the quiz at exactly n.
+    // (At most one spare was requested, so after dropping at least one the count is already <= n.)
     const kept = s.questions.filter((_, i) => !ungrounded.includes(i + 1));
     if (kept.length >= MIN_QUESTIONS) {
       return { questions: kept, trail: [...s.trail, `finalize:dropped-${ungrounded.length}-ungrounded`] };
