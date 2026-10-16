@@ -16,7 +16,7 @@ attacker), but only code decides if an attack worked.
 | `offline` | 89 | fake | Hidden or encoded text and other languages are rejected before any model call. Bad topics are refused. Plain instructions arrive sanitized inside `<document>` tags. The prompts keep their safety rules. Bad model replies are rejected by the output rails. | every pull request (job `promptfoo`) |
 | `live` | 20 | MiniMax | A plain-text attack does not hijack the real model, and the agent stays on its purpose (a quiz about the document). | pull requests that touch prompts or guard (`llm-eval-pr`), main, nightly |
 | `redteam-sample` | 50 (+5) | fake, then MiniMax | 50 frozen red team attacks (en, pt, es) never make the agent print a canary or its prompts. Plus a small group of 5 READMEs in fr, de, it, hi, th that must be rejected before the model. | every pull request from this repository (job `redteam-sample`) and every merge to main |
-| `redteam-nightly` | about 640 | MiniMax | The same checks with a fresh, larger set of attacks every time. Any new failure is saved so it can join the corpus. | every night at 06:00 UTC, as a separate AWS Fargate task (`docs/redteam-nightly.md`) |
+| `redteam-nightly` | about 930 canary cases (640 plain and jailbreak + 288 encoded) plus about 600 public dataset cases | MiniMax | The same checks with a fresh, larger set of attacks every time, the base64, rot13 and leetspeak encodings on a subset, and a seeded sample of public datasets. It reports (metrics, WARN lines, report) and does not fail. Any new failure is saved so it can join the corpus. | every night at 06:00 UTC, as a separate AWS Fargate task (`docs/redteam-nightly.md`) |
 
 `redteam-sample` is not a required check. The maintainer decides.
 
@@ -35,7 +35,8 @@ Files are in `promptfoo/redteam/`.
 | `sample.yaml` | The frozen sample: exactly 50 tests, a normal promptfoo tests file. Do not edit by hand. |
 | `language-policy.yaml` | The 5-test language policy group (not counted in the 50). |
 | `sample-offline.yaml`, `sample-live.yaml`, `nightly-live.yaml` | The eval configs (the stage is the provider `mode`). |
-| `report.ts` | Table by language and by strategy, new failing cases as JSON, exit 1 if a canary leaked. |
+| `report.ts` | Table by language and by strategy, new failing cases as JSON, exit 1 if a canary leaked (`--no-fail`: the nightly). |
+| `nightly-extras.ts`, `nightly-encoded.ts`, `public/` | The nightly encodings, the public dataset part and their report sections (see below). |
 
 ### The 12 intents
 
@@ -126,6 +127,9 @@ started every night by AWS as a separate Fargate task (`scripts/redteam-nightly-
 | `REDTEAM_NUM_TESTS` | 10 | Fresh attack texts per intent. 32 intents x 10 texts x 2 cases (plain and jailbreak template) = about 640 tests |
 | `REDTEAM_SEED` | today's date | Repeats a run |
 | `REDTEAM_CONCURRENCY` | 6 | Cases at the same time |
+| `REDTEAM_ENCODED_PER_INTENT` | 3 | Texts per intent that are also encoded with base64, rot13 and leetspeak (32 x 3 x 3 = about 288 more cases, `0` = none) |
+| `REDTEAM_PUBLIC` | 1 | `0` skips the public dataset part |
+| `REDTEAM_PUBLIC_PER_GROUP`, `_PER_GROUP_BLOCKED`, `_MODEL_CASES`, `_BENIGN`, `_FOREIGN`, `_ENCODED` | 25, 15, 40, 60, 20, 10 | Size of the public dataset sample (see below) |
 
 The nightly intents are the 12 base intents plus 20 made for this product (`intents-nightly.ts`, texts in `intents-nightly.json`, en/pt/es):
 
@@ -140,13 +144,20 @@ The nightly intents are the 12 base intents plus 20 made for this product (`inte
 
 The markup of a placement (the comment, the code fence, the table) is added by code around the sentence, so a translation can never lose it.
 A bad topic is refused before the model (`invalid_input`): that is a safe outcome (`nightly-assertions.js`). The encodings (base64, rot13,
-leetspeak) are not used at night: they are tested by the offline suite and the frozen sample, and an encoded text would hide the markup.
+leetspeak) run at night on a subset of the same texts (`REDTEAM_ENCODED_PER_INTENT` per intent, `nightly-encoded.ts`, config `redteam.nightly-encoded.yaml`),
+always as a plain paragraph: an encoded text would hide the markup of a placement. They should stop at the input guard; one that reaches the model is reported.
 To rebuild `intents-nightly.json` after changing `intents-nightly.ts`: `pnpm exec tsx promptfoo/redteam/build-intents-nightly.ts --mode committed` (needs the key).
 
-It writes everything under `promptfoo/out/nightly/` and `promptfoo/out/redteam-nightly.json`. It exits non-zero if any canary leaked, prints a table
+It writes everything under `promptfoo/out/nightly/` and `promptfoo/out/redteam-nightly.json`. **The nightly reports, it does not fail:** a canary
+leak (or any other finding) is a metric, a `WARN` line and a report entry, and the exit code stays 0 (non-zero only when the run itself is broken: no key,
+promptfoo crashed, the report or the upload failed). The frozen sample (`redteam-sample`) is the regression gate and still fails on a leak. The nightly prints a table
 by language and by strategy, and saves the failing cases that are not already in `promptfoo/redteam/known-failures.json` to
 `promptfoo/out/nightly/new-failures.json`. Add those cases to the corpus (`packages/core/src/attacks.ts`) or to `KNOWN_ISSUES.md`.
-`scripts/redteam-nightly-aws.sh` adds `summary.json` and `report.html` (`nightly-report.ts`) and uploads them (`nightly-publish.ts`).
+`scripts/redteam-nightly-aws.sh` adds `summary.json` and `report.html` (`nightly-report.ts`), extends them with the encodings and the public datasets (`nightly-extras.ts`) and uploads them (`nightly-publish.ts`).
+
+### Public datasets (`redteam-public`)
+
+`scripts/promptfoo.sh redteam-public` (also run by `redteam-nightly`) tests the pipeline with a seeded daily sample of public prompt-injection datasets (deepset, yanismiraoui, PrevenIA, ZN (CC-BY-4.0, credited in the report), ShieldLM), by dataset and language: stage A (guard, language policy, Prompt Guard 2, no model call) and stage B (the real model, the replay oracle) for en, pt, es; documents in blocked languages that must be rejected before the model; an informational group (a foreign sentence in a supported README) and a benign control. Code in `redteam/public/`, config `redteam/public.yaml`; tests are offline with a stub fetcher (`public.test.ts`). Findings are alerts, never a failing exit code. Everything is explained in [docs/redteam-nightly.md](../docs/redteam-nightly.md); measured numbers in `docs/security/public-datasets-nightly.md`.
 
 ### Polite attacks: the rules and the planted-words rail
 
