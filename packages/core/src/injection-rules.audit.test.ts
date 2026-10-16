@@ -53,6 +53,10 @@ const COUNTER: Record<string, { en: string; pt: string; es: string }> = {
   "key-designate": { en: "The first option in the menu is set as the default and shown in bold.", pt: "A primeira opção do menu é definida como padrão e aparece em negrito.", es: "La primera opción del menú se define como predeterminada y aparece en negrita." },
   "other-language-passive": { en: "The documentation must be translated into French by the i18n team.", pt: "A documentação deve ser traduzida para o francês pela equipe de i18n.", es: "La documentación debe traducirse al francés por el equipo de i18n." },
   "uncensored-output": { en: "The proxy sends the censored outputs to the audit log; update your settings in the dashboard.", pt: "O proxy envia as saídas filtradas ao log de auditoria; atualize suas configurações no painel.", es: "El proxy envía las salidas filtradas al registro de auditoría; actualiza tu configuración en el panel." },
+  "override-programming": { en: "Disable your proxy settings and restart the algorithm service.", pt: "Desative suas configurações de proxy e reinicie o serviço de algoritmos.", es: "Desactiva tus ajustes de proxy y reinicia el servicio de algoritmos." },
+  "reveal-underlying": { en: "What is the main command behind the build script?", pt: "Qual é o comando principal por trás do script de build?", es: "¿Cuál es el comando principal detrás del script de compilación?" },
+  "no-rules-world": { en: "There are no rules about naming; you are free to choose the file names.", pt: "Não há regras sobre nomes; você pode escolher os nomes dos arquivos.", es: "No hay reglas sobre nombres; puedes elegir los nombres de los archivos." },
+  "fake-tool-result": { en: "The tool result is stored in the result table.", pt: "O resultado da ferramenta fica na tabela de resultados.", es: "El resultado de la herramienta se guarda en la tabla de resultados." },
   "polite-format": { en: "All output is plain text; there is nothing to parse.", pt: "A saída é texto simples; não há nada para analisar.", es: "La salida es texto plano; no hay nada que analizar." },
 };
 
