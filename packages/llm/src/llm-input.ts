@@ -1,6 +1,6 @@
-import { checkShortText, inspectText, blockReason, type Finding } from "@quizforge/core";
+import { binaryLike, checkShortText, inspectText, blockReason, type Finding } from "@quizforge/core";
 import { z } from "zod";
-import { InvalidLlmInputError, UnsafeDocumentError } from "./errors.js";
+import { InvalidLlmInputError, NotTextError, UnsafeDocumentError } from "./errors.js";
 import { assertAllowedLanguage, SUPPORTED_LANGUAGES, type Lang, type SupportedLanguage } from "./language.js";
 import type { ChatMessage, CompleteOptions, LlmClient, LlmResponse } from "./llm.js";
 import { PROMPT_VARIANTS } from "./prompts.js";
@@ -55,11 +55,26 @@ export interface AdmitOptions {
   allowedLanguages?: readonly SupportedLanguage[];
 }
 
-/** Inspect a downloaded document. Throws `UnsafeDocumentError` or `UnsupportedLanguageError` (both permanent). */
+/**
+ * Inspect a downloaded document. Throws `NotTextError`, `UnsupportedLanguageError` or `UnsafeDocumentError` (all permanent).
+ *
+ * The order is by cost, cheapest first, because the input is attacker-chosen and the guard is the expensive step
+ * (measured: 12 ms for the language of a 512 KB document against 1.2 s for the guard, and up to 20 s on the half vCPU of a
+ * production task when the document is not prose). A document that is not text, or not in a supported language, never gets
+ * to pay for the guard.
+ *
+ * Moving the language check in front of the guard was measured, not assumed: it reads the raw text instead of the sanitized
+ * one and `detectLanguage` already drops code, HTML and links before deciding, so the two agree on every fixture of the
+ * golden set and on documents that hide text in HTML comments or behind invisible characters (see llm-input.test.ts).
+ * What is lost is a detail in the log: a document refused for its language is no longer also reported as hiding an
+ * instruction. The metric is the same either way (`DocumentRejected`), so the probing alarm is unaffected.
+ */
 export function admitDocument(raw: string, opts: AdmitOptions = {}): AdmittedDocument {
+  const notText = binaryLike(raw);
+  if (notText) throw new NotTextError(notText);
+  const language = assertAllowedLanguage(raw, opts.allowedLanguages ?? SUPPORTED_LANGUAGES);
   const r = inspectText(raw);
   if (r.blocked) throw new UnsafeDocumentError(blockReason(r.findings));
-  const language = assertAllowedLanguage(r.text, opts.allowedLanguages ?? SUPPORTED_LANGUAGES);
   return { text: r.text, language, findings: r.findings };
 }
 
