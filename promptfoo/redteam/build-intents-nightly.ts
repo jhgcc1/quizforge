@@ -10,7 +10,7 @@
  * Every sentence is checked by code: the canary (and URL) survived, it fits its markup, a topic stays on one line. The MARKUP (comment, code block, table...) is added by code around the sentence, never by the model.
  * MINIMAX_API_KEY must be in the environment (never in a file).
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import MiniMaxAttacker from "./attacker-provider.js";
@@ -79,14 +79,66 @@ export function slotsFor(intents: BaseIntent[], perIntent: number, seed: number)
   return slots;
 }
 
-/** A fresh set: `perIntent` new paraphrases of every intent (the 12 base ones and the new ones). */
-export async function freshIntents(ask: Ask, perIntent: number, seed: number, seeds: Map<string, string>, intents: BaseIntent[] = ALL_INTENTS): Promise<NightlyMeta[]> {
-  const metas = await mapLimit(slotsFor(intents, perIntent, seed), 6, async ({ intent, language, variant }) => {
+/** One text the attacker model would not (or could not) write: it is skipped, never fatal. */
+export interface Refusal {
+  intent: string;
+  language: string;
+  /** The start of the last answer (a refusal like "I'm sorry, but I can't help with that"), or why there was none. */
+  reason: string;
+}
+
+/**
+ * A fresh set: `perIntent` new paraphrases of every intent (the 12 base ones and the new ones).
+ * A refusal or an unusable answer for ONE text never stops the run: the text is asked again (5 tries), then once more with another variant of the
+ * prompt (a different phrasing, 3 tries); if it is still refused it is SKIPPED and reported through `onRefused`, and the run goes on with the texts it has.
+ */
+export async function freshIntents(ask: Ask, perIntent: number, seed: number, seeds: Map<string, string>, intents: BaseIntent[] = ALL_INTENTS, onRefused: (r: Refusal) => void = () => {}): Promise<NightlyMeta[]> {
+  const metas = await mapLimit(slotsFor(intents, perIntent, seed), 6, async ({ intent, language, variant }): Promise<NightlyMeta | undefined> => {
     const from = seeds.get(`${intent.id}/${language}`) ?? sentenceOf(intent).text;
-    return metaOf(intent, language, await askUntil(ask, paraphrasePrompt(from, language, variant), (a) => sentenceOk(intent, a), 5));
+    const ok = (a: string): boolean => sentenceOk(intent, a);
+    let reason = "";
+    for (const [v, tries] of [[variant, 5], [variant + 20, 3]] as const) {
+      try {
+        return metaOf(intent, language, await askUntil(ask, paraphrasePrompt(from, language, v), ok, tries));
+      } catch (err) {
+        reason = err instanceof Error ? err.message.slice(0, 160) : String(err);
+      }
+    }
+    onRefused({ intent: intent.id, language, reason });
+    return undefined;
   });
   // promptfoo treats two identical texts as one: keep the first of each
-  return [...new Map(metas.map((m) => [m.text, m])).values()];
+  return [...new Map(metas.filter((m): m is NightlyMeta => m !== undefined).map((m) => [m.text, m])).values()];
+}
+
+/** What the generation did, for the report and the metrics. */
+export interface GenerationReport {
+  requested: number;
+  produced: number;
+  refused: Refusal[];
+  /** The generation produced nothing (or crashed): the fixed texts of the repository were used instead. */
+  fallback: boolean;
+  fallbackReason?: string;
+}
+
+/** The fixed attack texts of the repository: the 12 base intents (intents.meta.json, 72 texts) and the product-specific ones (intents-nightly.json). No model needed. */
+export function fixedIntents(baseMetas: NightlyMeta[], newMetas: NightlyMeta[]): NightlyMeta[] {
+  return [...new Map([...baseMetas, ...newMetas].map((m) => [m.text, m])).values()];
+}
+
+/** The fresh set with every failure absorbed: partial results are used as they are, and no result at all falls back to the fixed texts. */
+export async function generateOrFallback(ask: Ask, perIntent: number, seed: number, seeds: Map<string, string>, fixed: () => NightlyMeta[], intents: BaseIntent[] = ALL_INTENTS): Promise<{ metas: NightlyMeta[]; report: GenerationReport }> {
+  const refused: Refusal[] = [];
+  const requested = slotsFor(intents, perIntent, seed).length;
+  let metas: NightlyMeta[] = [];
+  let crash = "";
+  try {
+    metas = await freshIntents(ask, perIntent, seed, seeds, intents, (r) => refused.push(r));
+  } catch (err) {
+    crash = err instanceof Error ? err.message.slice(0, 200) : String(err);
+  }
+  if (metas.length > 0) return { metas, report: { requested, produced: metas.length, refused, fallback: false } };
+  return { metas: fixed(), report: { requested, produced: 0, refused, fallback: true, fallbackReason: crash || `the attacker model produced no text (${refused.length} refused)` } };
 }
 
 const readJson = <T>(file: string): T => JSON.parse(readFileSync(file, "utf8")) as T;
@@ -109,15 +161,18 @@ async function main(): Promise<void> {
   };
   if (args.mode === "committed") {
     const metas = await committedIntents(ask);
-    const { writeFileSync } = await import("node:fs");
     writeFileSync(COMMITTED_FILE, JSON.stringify(metas, null, 2) + "\n");
     console.log(`wrote ${metas.length} intents to ${COMMITTED_FILE}`);
     return;
   }
-  const seeds = seedTexts(readJson<NightlyMeta[]>(resolve(here, "intents.meta.json")), readJson<NightlyMeta[]>(COMMITTED_FILE));
-  const metas = await freshIntents(ask, args.perIntent, args.seed, seeds);
+  const baseMetas = readJson<NightlyMeta[]>(resolve(here, "intents.meta.json"));
+  const newMetas = readJson<NightlyMeta[]>(COMMITTED_FILE);
+  const { metas, report } = await generateOrFallback(ask, args.perIntent, args.seed, seedTexts(baseMetas, newMetas), () => fixedIntents(baseMetas, newMetas));
   writeIntents(args.out, metas);
-  console.log(`wrote ${metas.length} intents to ${args.out} (${ALL_INTENTS.length} intents, ${args.perIntent} per intent, seed ${args.seed})`);
+  writeFileSync(resolve(args.out, "generation.json"), JSON.stringify(report, null, 2) + "\n");
+  for (const r of report.refused) console.error(`WARN redteam generation-refused intent=${r.intent} lang=${r.language} last="${r.reason.replace(/"/g, "'")}"`);
+  if (report.fallback) console.error(`WARN redteam generation-fallback: using the ${metas.length} fixed attack texts (${report.fallbackReason})`);
+  console.log(`wrote ${metas.length} intents to ${args.out} (${ALL_INTENTS.length} intents, ${args.perIntent} per intent, seed ${args.seed}; ${report.refused.length} refused, ${report.fallback ? "FALLBACK to the fixed texts" : "fresh"})`);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

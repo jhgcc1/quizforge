@@ -2,7 +2,8 @@
 # The NIGHTLY RED TEAM task (see docs/redteam-nightly.md). Build context: repository root.
 #   docker build -f docker/redteam/Dockerfile -t quizforge-redteam .
 # One-shot task (no server, no health check): the entrypoint is scripts/redteam-nightly-aws.sh. It runs the promptfoo red team suite against
-# the real pipeline and the real model, writes a report to S3 and exits (non-zero when a canary leaked).
+# the real pipeline and the real model (canary part, encodings, public datasets), writes a report to S3 and exits. It REPORTS and does not fail:
+# a leak or any other finding is a metric and a report entry; the exit code is non-zero only when the run itself is broken.
 # The semantic detector is the SAME as in production: Meta's Llama Prompt Guard 2 86M, baked in like the worker image's runtime-detector target.
 # Needs about 3 GB of memory (4 GB in Fargate). Built with Llama: THIRD_PARTY_NOTICES.md.
 ARG NODE_VERSION=22

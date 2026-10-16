@@ -145,9 +145,9 @@ export function buildSummary(items: Classified[], info: RunInfo): Summary {
 
 // ------------------------------------------------------------------------------------------ CloudWatch (Embedded Metric Format)
 
-type EmfValue = { value: number; unit: "Count" | "Seconds" };
+export type EmfValue = { value: number; unit: "Count" | "Seconds" };
 
-function emf(timestamp: number, dimensions: Record<string, string>, metrics: Record<string, EmfValue>): string {
+export function emf(timestamp: number, dimensions: Record<string, string>, metrics: Record<string, EmfValue>): string {
   return JSON.stringify({
     _aws: { Timestamp: timestamp, CloudWatchMetrics: [{ Namespace: "QuizForge", Dimensions: [Object.keys(dimensions)], Metrics: Object.entries(metrics).map(([Name, m]) => ({ Name, Unit: m.unit })) }] },
     ...dimensions,
