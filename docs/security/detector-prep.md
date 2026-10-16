@@ -44,7 +44,7 @@ Attack recall of Prompt Guard 2 alone (share of the attack texts scored at 0.5 o
 * The shipped preparation loses **no recall on any set** (0.0 points).
 * Removing code clears the last false positive but loses every attack hidden in a code block (50.8% to 0%): rejected. The detector comment always said code must stay, and now there is a number for it.
 * Keeping only the comments and sentences of a code block keeps the recall but not the false-positive gain (5 flagged), so it is rejected too.
-* The shipped change is `prepareForDetector` (status badges, recognised by their address: shields.io, badge services, coverage and CI services) plus a clean-up of cut `![` and `](` fragments in `plainText`. Every other image keeps its alt text, a link keeps its text and title, code stays.
+* The shipped change is `prepareForDetector` (status badges, recognised by their address: shields.io, badge services, coverage and CI services) plus a clean-up of cut `![` and `](` fragments in `plainText`. The two code variants live only in the measurement script. Every other image keeps its alt text, a link keeps its text and title, code stays.
 
 ### Known false positive that is left
 

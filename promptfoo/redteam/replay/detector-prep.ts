@@ -16,7 +16,7 @@ import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { benignDocument, inspectText } from "@quizforge/core";
 import { detectLanguage } from "@quizforge/llm";
-import { chunkProse, prepareForDetector, type PrepareOptions } from "../../../packages/detector/src/chunk.js";
+import { chunkProse, prepareForDetector } from "../../../packages/detector/src/chunk.js";
 import { loadClassifier, DEFAULT_MODEL } from "../../../packages/detector/src/index.js";
 import { embedAttack, readmeBlocks } from "../readme.js";
 import { DATASETS, groupRows, type RawRow } from "./ptes-data.js";
@@ -50,13 +50,29 @@ const legacyPlainText = (md: string): string =>
 
 type Variant = { name: string; prepare: (md: string) => string; plain?: (p: string) => string };
 const identity = (md: string): string => md;
-const prep = (o: PrepareOptions) => (md: string): string => prepareForDetector(md, o);
+/** The two ways of treating code that were tried and rejected (they are not in the shipped detector). */
+const words = (s: string): number => s.split(/\s+/).filter(Boolean).length;
+const isProse = (s: string): boolean => words(s) >= 4 && (s.match(/[{}[\]();=<>$\\|&]/g) ?? []).length / s.length < 0.04;
+const proseOfCode = (block: string): string => {
+  const keep: string[] = [];
+  for (const raw of block.split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    const comment = /^(?:\/\/+|#+|--|\*+|\/\*+)\s*(.*?)\s*(?:\*\/)?$/.exec(line)?.[1] ?? /\s(?:\/\/|#)\s+(.+)$/.exec(line)?.[1];
+    if (comment !== undefined) { if (words(comment) >= 4) keep.push(comment); continue; }
+    for (const m of line.matchAll(/(["'`])((?:(?!\1)[^\\\n]|\\.){12,})\1/g)) if (words(m[2]!) >= 4) keep.push(m[2]!);
+    if (isProse(line)) keep.push(line);
+  }
+  return keep.join("\n");
+};
+const dropCode = (md: string): string => md.replace(/```[\s\S]*?```|~~~[\s\S]*?~~~/g, " ").replace(/`([^`\n]*)`/g, (_m, c: string) => (isProse(c) ? c : " "));
+const reduceCode = (md: string): string => md.replace(/```[\s\S]*?```|~~~[\s\S]*?~~~/g, (m) => proseOfCode(m.replace(/^(?:```|~~~)[^\n]*\n?/, "").replace(/(?:```|~~~)$/, ""))).replace(/`([^`\n]*)`/g, (_m, c: string) => (isProse(c) ? c : " "));
 const VARIANTS: Variant[] = [
   { name: "before (as in production)", prepare: identity, plain: legacyPlainText },
-  { name: "badges only, no clean-up (tried)", prepare: prep({}), plain: legacyPlainText },
-  { name: "after: badges + cut-link clean-up (shipped)", prepare: prep({}) },
-  { name: "+ code dropped (rejected)", prepare: prep({ images: true, code: "drop" }) },
-  { name: "+ code reduced to its prose (rejected)", prepare: prep({ images: true, code: "prose" }) },
+  { name: "badges only, no clean-up (tried)", prepare: prepareForDetector, plain: legacyPlainText },
+  { name: "after: badges + cut-link clean-up (shipped)", prepare: prepareForDetector },
+  { name: "+ code dropped (rejected)", prepare: (md) => dropCode(prepareForDetector(md)) },
+  { name: "+ code reduced to its prose (rejected)", prepare: (md) => reduceCode(prepareForDetector(md)) },
 ];
 const AFTER = VARIANTS[2]!;
 
