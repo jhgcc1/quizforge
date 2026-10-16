@@ -100,26 +100,18 @@ def cost_facts():
 
 
 def prep_fp_table():
-    """False positives of Prompt Guard 2 per document set, before and after the input preparation that shipped."""
+    """False positives of Prompt Guard 2 per document set, as the pipeline runs today."""
     sets = PREP["falsePositives"]["sets"]
-    rows = []
-    for name, v in sets.items():
-        rows.append([
-            name, str(v["documents"]),
-            f"{v[BEFORE]['flagged']} (highest score {v[BEFORE]['maxScore']:.2f})",
-            f"{v[SHIPPED]['flagged']} (highest score {v[SHIPPED]['maxScore']:.2f})",
-        ])
+    rows = [[name, str(v["documents"]), str(v[SHIPPED]["flagged"]), f"{v[SHIPPED]['maxScore']:.2f}"] for name, v in sets.items()]
     tot = PREP["falsePositives"]["totals"]
-    rows.append(["<b>All of them</b>", f"<b>{PREP['falsePositives']['documents']}</b>", f"<b>{tot[BEFORE]}</b>", f"<b>{tot[SHIPPED]}</b>"])
-    return table(["Benign documents", "Documents", "Flagged before", "Flagged after"], rows, widths=["34%", "12%", "27%", "27%"])
+    rows.append(["<b>All of them</b>", f"<b>{PREP['falsePositives']['documents']}</b>", f"<b>{tot[SHIPPED]}</b>", ""])
+    return table(["Benign documents", "Documents", "Flagged", "Highest score"], rows, widths=["40%", "16%", "22%", "22%"])
 
 
 def prep_recall_table():
-    """Recall of the detector on the attack sets: the preparation must not lose a single catch."""
-    rows = []
-    for name, v in PREP["recall"].items():
-        rows.append([name, str(v["documents"]), f"{v[BEFORE]['flagged']} ({v[BEFORE]['recallPct']}%)", f"{v[SHIPPED]['flagged']} ({v[SHIPPED]['recallPct']}%)"])
-    return table(["Attack set", "Documents", "Caught before", "Caught after"], rows, widths=["40%", "14%", "23%", "23%"])
+    """What the detector catches on each attack set, as it runs today."""
+    rows = [[name, str(v["documents"]), str(v[SHIPPED]["flagged"]), f"{v[SHIPPED]['recallPct']}%"] for name, v in PREP["recall"].items()]
+    return table(["Attack set", "Documents", "Caught", "Recall"], rows, widths=["46%", "18%", "18%", "18%"])
 
 
 def prep_wide_table():
@@ -127,9 +119,9 @@ def prep_wide_table():
     rows = []
     s = PREP["wideBenign"]["sets"]
     for lang, v in s.items():
-        rows.append([lang, str(v["documents"]), str(v["flaggedBefore"]), str(v["flaggedAfter"]), str(v["rulesFlag"]), str(v["both"])])
-    rows.append(["<b>all</b>"] + [f"<b>{sum(v[k] for v in s.values())}</b>" for k in ("documents", "flaggedBefore", "flaggedAfter", "rulesFlag", "both")])
-    return table(["Language", "READMEs", "Detector before", "Detector after", "Keyword rules", "Both"], rows)
+        rows.append([lang, str(v["documents"]), str(v["flaggedAfter"]), str(v["rulesFlag"]), str(v["both"])])
+    rows.append(["<b>all</b>"] + [f"<b>{sum(v[k] for v in s.values())}</b>" for k in ("documents", "flaggedAfter", "rulesFlag", "both")])
+    return table(["Language", "READMEs", "Flagged by the detector", "Flagged by a keyword rule", "Both"], rows)
 
 
 def two_signals_table():
@@ -228,12 +220,12 @@ def polite_facts():
 
 
 def planted_table():
-    """The planted-words rail on real READMEs: words it used to call planted, and what is left after the fix."""
+    """The real READMEs where the planted-words rail still treats a word as planted, and which words."""
     before = sum(len(v["before"]) for v in PLANTED.values())
     after = sum(len(v["after"]) for v in PLANTED.values())
-    worst = sorted(PLANTED.items(), key=lambda kv: -len(kv[1]["before"]))[:6]
-    rows = [[f"<code>{k.split('/')[-1]}</code>", ", ".join(v["before"]) or "—", ", ".join(v["after"]) or "—"] for k, v in worst if v["before"]]
-    return table(["Real README", "Called planted before", "After"], rows, widths=["34%", "44%", "22%"]), before, after
+    worst = sorted(((k, v) for k, v in PLANTED.items() if v["after"]), key=lambda kv: -len(kv[1]["after"]))[:6]
+    rows = [[f"<code>{k.split('/')[-1]}</code>", str(len(v["after"])), ", ".join(v["after"])] for k, v in worst]
+    return table(["Real README with a rule-flagged line", "Words", "The words the rail treats as planted"], rows, widths=["34%", "10%", "56%"]), before, after
 
 
 def replay_quality_table():

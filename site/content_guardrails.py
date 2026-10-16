@@ -39,16 +39,15 @@ def code(path, label=None):
 
 
 def suites_diagram():
-    """The four suites and when each one runs. The shared diagram of the architecture reports shows the GitHub nightly
-    (the live suite against provider drift) but not the red team nightly, which is a different task and two orders of
-    magnitude larger, so this report draws its own."""
+    """The four suites and when each one runs, with their real sizes. The shared diagram of the architecture reports
+    does not separate the red team nightly from the pull-request suites, and the sizes are what the reader needs here,
+    so this report draws its own."""
     b = ""
     lanes = [
         (14, "Every pull request", "promptfoo OFFLINE · [[pf_offline]] tests", "fake model, no secrets, ~1 minute", "ci", "required to merge"),
         (110, "Every pull request", "redteam-sample · [[pf_sample]] attacks", "fake, then the real model", "ai", "not required: the maintainer decides"),
         (206, "Merge to main", "promptfoo LIVE · [[pf_live]] tests", "real model, inside llm-eval", "ai", "blocks the deploy"),
-        (302, "Every night (GitHub)", "promptfoo LIVE · [[pf_live]] tests", "catches provider or model drift", "mgd", "opens a red run"),
-        (398, "Every night [[redteam_time]] (Fargate)", "redteam-nightly · ≈[[pf_nightly]] + ≈[[pub_cases]] cases", "fresh attacks, encodings, public datasets", "compute", "reports; a leak raises an alarm"),
+        (302, "Every night [[redteam_time]] (Fargate)", "redteam-nightly · ≈[[pf_nightly]] + ≈[[pub_cases]] cases", "fresh attacks, encodings, public datasets", "compute", "reports; a leak raises an alarm"),
     ]
     for y, when, what, note, kind, gate in lanes:
         b += box(10, y, 200, 70, when, "", "ext", small=True)
@@ -56,17 +55,18 @@ def suites_diagram():
         b += box(250, y, 300, 70, what, note, kind, small=True)
         b += arrow(550, y + 35, 590, y + 35)
         b += box(590, y, 230, 70, gate, "", "sec", small=True)
-    b += text(850, 34, "The first four fail their job when an attack works", "note")
-    b += text(850, 54, "(the sample's does not block the merge). The last", "note")
-    b += text(850, 72, "one never fails: a nightly that breaks a pipeline", "note")
-    b += text(850, 90, "gets ignored, so a finding becomes an alarm.", "note")
+    b += text(850, 34, "The first three fail their job when an attack", "note")
+    b += text(850, 54, "works (the sample's does not block the merge).", "note")
+    b += text(850, 72, "The last one never fails: a nightly that breaks", "note")
+    b += text(850, 90, "a pipeline gets ignored, so a finding becomes", "note")
+    b += text(850, 108, "an alarm instead.", "note")
     b += text(850, 128, "Sizes are not comparable on purpose:", "note")
     b += text(850, 148, "· a pull request must stay fast and cheap", "note")
     b += text(850, 166, "· the frozen sample is the same 50 attacks", "note")
     b += text(850, 184, "  every time, so a regression is visible", "note")
     b += text(850, 202, "· the night can afford a fresh, large set", "note")
-    b += text(10, 495, "The attack corpus is ONE file (packages/core/src/attacks.ts): vitest and promptfoo test the same attacks.", "note")
-    return svg(1160, 515, b, "The four promptfoo suites: when each one runs, how big it is, and what it blocks")
+    b += text(10, 399, "The attack corpus is ONE file (packages/core/src/attacks.ts): vitest and promptfoo test the same attacks.", "note")
+    return svg(1160, 419, b, "The four promptfoo suites: when each one runs, how big it is, and what it blocks")
 
 
 def summary():
@@ -379,7 +379,7 @@ says they do. The suites are described in {code('promptfoo/README.md')}.</p>""")
                           "the red team attacker does — but only code decides whether an attack worked. A canary in the reply is a fact, not an opinion."))
     body += table(["Suite", "Tests", "Model", "What it proves", "Where it runs"], [
         [T("<code>offline</code>"), T("[[pf_offline]]"), "fake", T("Hidden and encoded text and other languages are rejected before any model call; bad topics are refused; a plain instruction arrives sanitized inside <code>&lt;document&gt;</code>; the prompts keep their safety rules; bad model replies are rejected by the rails. It includes <b>every document in <code>evals/fixtures</code></b>, so a new test README is checked on its own pull request"), "Job <code>promptfoo</code>, every pull request"],
-        [T("<code>live</code>"), T("[[pf_live]]"), "MiniMax", "A plain-text attack does not hijack the real model, and the agent stays on purpose", "<code>llm-eval-pr</code> (when prompts, LLM code, guard or evals change), main before the deploy, nightly"],
+        [T("<code>live</code>"), T("[[pf_live]]"), "MiniMax", "A plain-text attack does not hijack the real model, and the agent stays on purpose", "<code>llm-eval-pr</code> (when prompts, LLM code, guard or evals change) and main before the deploy; at night it runs inside the red team task"],
         [T("<code>redteam-sample</code>"), T("[[pf_sample]] (+[[pf_policy]])"), "fake, then MiniMax", T("[[pf_sample]] frozen attacks in en ([[pf_sample_en]]), pt ([[pf_sample_pt]]) and es ([[pf_sample_es]]) never make the agent print a canary or its prompts; plus READMEs in five refused languages"), "Job <code>redteam-sample</code>, pull requests of this repository and every merge to main"],
         [T("<code>redteam-nightly</code>"), T("≈[[pf_nightly]] canary cases + ≈[[pub_cases]] public-dataset cases"), "MiniMax", "The same checks with a fresh, larger set every night, plus encodings and public datasets. It reports; it does not fail", T("A Fargate task, [[redteam_time]]")],
     ], widths=["14%", "12%", "11%", "45%", "18%"])
@@ -458,21 +458,6 @@ others. The same reasoning excludes <code>redteam-encoded-reached-model</code>, 
 guard when those alarms were written. The keyword-rule flag has a <i>spike</i> alarm instead ([[flagged_alarm]] documents in an
 hour), because one flagged README is normal and a hundred is somebody probing. Alerts go to e-mail through SNS; the trace tool
 gets the quality scores, not the flags.</p>""")
-    body += "<h3>Two nightlies, and why one does not replace the other</h3>"
-    body += T("""<p>Seventeen minutes before the red team task, a second nightly runs in GitHub Actions. They look alike on a
-pipeline diagram and they are not interchangeable:</p>""")
-    body += table(["", "GitHub nightly (05:43 UTC)", "Red team nightly (06:00 UTC)"], [
-        ["<b>The question</b>", "Is the quiz still <i>good</i>? Grounding, lint, the judge's score, injection resistance, language — against the golden set, on the real model", "Can anyone <i>hijack</i> the quiz? Fresh attacks with canaries through the whole pipeline"],
-        ["<b>What it would catch</b>", "The provider changing the model behind the same name, a prompt ageing badly, quality drifting while nobody pushed", "A new attack shape, a rule that stopped covering a family, an encoding that now gets through"],
-        ["<b>What it does on a bad result</b>", "<b>Fails</b>: a red run in the repository, visible where the code lives", "<b>Reports</b>: the run stays green and an alarm fires, because a nightly that breaks pipelines gets ignored"],
-        ["<b>Where the result lands</b>", "A Langfuse experiment on the golden dataset, comparable over time", "An HTML report in a private bucket, one folder per run"],
-        ["<b>What it runs against</b>", "The code of <code>main</code>, with the model key and nothing else", "The published image in the real environment, with the classifier loaded"],
-        ["<b>When it does not run</b>", "Only if GitHub Actions is down", "<b>While the environment is paused</b> (<code>redteam_on = redteam_enabled && !paused</code>): the cheap standby mode switches it off"],
-    ], widths=["16%", "42%", "42%"])
-    body += T("""<p>That last row is the practical answer to “isn't one enough”. The red team needs Fargate, a registry and a bucket,
-and the pause mode that keeps the bill near nothing turns it off; the GitHub nightly costs cents, needs only the model key and
-keeps watching. The first row is the honest answer: a guard that holds perfectly while the model quietly gets worse is a product
-that fails without a single alarm from the red team.</p>""")
     body += "<h3>What a flagged document leaves behind, and who hears about it</h3>"
     body += T(f"""<p>A flag is not an alert. Each flagged document leaves <b>two records</b>, and only a <i>pattern</i> of them wakes
 anybody up ({code('apps/worker/src/processor.ts')}):</p>""")

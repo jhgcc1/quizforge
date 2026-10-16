@@ -1098,7 +1098,7 @@ def eval_ladder():
         (f"On every pull request from this repository: red team sample, {F.PF_SAMPLE} frozen attacks + {F.PF_POLICY_DOCS} language documents (job redteam-sample)", "offline stage, then live; model key only; not a required check", "grp sub"),
         (f"On a pull request that changes prompts, LLM, guard or evals files: llm-eval-pr (golden set of {F.GOLDEN_N} + live promptfoo, {F.PF_LIVE} tests)", "real model; model key only, no Langfuse; green in seconds if nothing relevant changed", "grp"),
         ("On main, before the deploy: llm-eval (golden set + live promptfoo) and the red team sample again", "llm-eval gates the deploy and publish-prompts; Langfuse experiment", "grp sub"),
-        (f"Every night: eval.yml at {F.EVAL_TIME} (golden set + live) and the red team task on Fargate at {F.REDTEAM_TIME}", f"{F.PF_NIGHTLY_TESTS} fresh tests, {F.PF_NIGHTLY_INTENTS} intents; report to S3; alarms", "grp"),
+        (f"Every night: the red team task on Fargate at {F.REDTEAM_TIME} (the golden set runs on every merge to main, and on demand)", f"{F.PF_NIGHTLY_TESTS} fresh tests, {F.PF_NIGHTLY_INTENTS} intents; report to S3; alarms", "grp"),
     ]
     W, step_x, step_y = 1080, 22, 44
     n = len(layers)

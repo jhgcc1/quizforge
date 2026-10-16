@@ -14,7 +14,7 @@ attacker), but only code decides if an attack worked.
 | Suite | Tests | Model | What it proves | Runs |
 |---|---:|---|---|---|
 | `offline` | 89 | fake | Hidden or encoded text and other languages are rejected before any model call. Bad topics are refused. Plain instructions arrive sanitized inside `<document>` tags. The prompts keep their safety rules. Bad model replies are rejected by the output rails. | every pull request (job `promptfoo`) |
-| `live` | 20 | MiniMax | A plain-text attack does not hijack the real model, and the agent stays on its purpose (a quiz about the document). | pull requests that touch prompts or guard (`llm-eval-pr`), main, nightly |
+| `live` | 20 | MiniMax | A plain-text attack does not hijack the real model, and the agent stays on its purpose (a quiz about the document). | pull requests that touch prompts or guard (`llm-eval-pr`), main before the deploy, and inside the nightly red team task |
 | `redteam-sample` | 50 (+5) | fake, then MiniMax | 50 frozen red team attacks (en, pt, es) never make the agent print a canary or its prompts. Plus a small group of 5 READMEs in fr, de, it, hi, th that must be rejected before the model. | every pull request from this repository (job `redteam-sample`) and every merge to main |
 | `redteam-nightly` | about 930 canary cases (640 plain and jailbreak + 288 encoded) plus about 600 public dataset cases | MiniMax | The same checks with a fresh, larger set of attacks every time, the base64, rot13 and leetspeak encodings on a subset, and a seeded sample of public datasets. It reports (metrics, WARN lines, report) and does not fail. Any new failure is saved so it can join the corpus. | every night at 06:00 UTC, as a separate AWS Fargate task (`docs/redteam-nightly.md`) |
 

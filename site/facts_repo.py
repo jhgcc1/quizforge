@@ -250,8 +250,9 @@ def cov_floor(pkg):
 
 
 # ---------------------------------------------------------------- when the AI tests run (eval.yml, variables.tf)
+# eval.yml has no schedule: the golden set runs on every merge to main (job `llm-eval`) and on demand.
 _ec = re.search(r'cron: "(\d+) (\d+) \* \* \*"', _text(".github/workflows/eval.yml"))
-EVAL_TIME = f"{int(_ec.group(2)):02d}:{int(_ec.group(1)):02d} UTC"
+EVAL_TIME = f"{int(_ec.group(2)):02d}:{int(_ec.group(1)):02d} UTC" if _ec else "on demand"
 _rc = re.search(r'variable "redteam_schedule".*?default\s*=\s*"cron\((\d+) (\d+) ', _vars, re.S)
 REDTEAM_TIME = f"{int(_rc.group(2)):02d}:{int(_rc.group(1)):02d} UTC"
 
