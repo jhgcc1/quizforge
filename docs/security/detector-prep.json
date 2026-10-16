@@ -1,0 +1,518 @@
+{
+ "at": "2026-10-16T03:00:45.579Z",
+ "model": "gravitee-io/Llama-Prompt-Guard-2-86M-onnx",
+ "threshold": 0.5,
+ "variants": [
+  "before (as in production)",
+  "badges only, no clean-up (tried)",
+  "after: badges + cut-link clean-up (shipped)",
+  "+ code dropped (rejected)",
+  "+ code reduced to its prose (rejected)"
+ ],
+ "falsePositives": {
+  "documents": 415,
+  "totals": {
+   "before (as in production)": 5,
+   "badges only, no clean-up (tried)": 2,
+   "after: badges + cut-link clean-up (shipped)": 1,
+   "+ code dropped (rejected)": 0,
+   "+ code reduced to its prose (rejected)": 5
+  },
+  "sets": {
+   "real pt/es READMEs": {
+    "documents": 64,
+    "before (as in production)": {
+     "flagged": 4,
+     "maxScore": 0.993
+    },
+    "badges only, no clean-up (tried)": {
+     "flagged": 2,
+     "maxScore": 0.977
+    },
+    "after: badges + cut-link clean-up (shipped)": {
+     "flagged": 1,
+     "maxScore": 0.977
+    },
+    "+ code dropped (rejected)": {
+     "flagged": 0,
+     "maxScore": 0.155
+    },
+    "+ code reduced to its prose (rejected)": {
+     "flagged": 3,
+     "maxScore": 0.993
+    }
+   },
+   "real English READMEs": {
+    "documents": 34,
+    "before (as in production)": {
+     "flagged": 1,
+     "maxScore": 0.888
+    },
+    "badges only, no clean-up (tried)": {
+     "flagged": 0,
+     "maxScore": 0.184
+    },
+    "after: badges + cut-link clean-up (shipped)": {
+     "flagged": 0,
+     "maxScore": 0.184
+    },
+    "+ code dropped (rejected)": {
+     "flagged": 0,
+     "maxScore": 0.025
+    },
+    "+ code reduced to its prose (rejected)": {
+     "flagged": 2,
+     "maxScore": 0.996
+    }
+   },
+   "benign dataset rows": {
+    "documents": 301,
+    "before (as in production)": {
+     "flagged": 0,
+     "maxScore": 0.054
+    },
+    "badges only, no clean-up (tried)": {
+     "flagged": 0,
+     "maxScore": 0.054
+    },
+    "after: badges + cut-link clean-up (shipped)": {
+     "flagged": 0,
+     "maxScore": 0.054
+    },
+    "+ code dropped (rejected)": {
+     "flagged": 0,
+     "maxScore": 0.054
+    },
+    "+ code reduced to its prose (rejected)": {
+     "flagged": 0,
+     "maxScore": 0.054
+    }
+   },
+   "evals fixtures (not injection)": {
+    "documents": 12,
+    "before (as in production)": {
+     "flagged": 0,
+     "maxScore": 0.098
+    },
+    "badges only, no clean-up (tried)": {
+     "flagged": 0,
+     "maxScore": 0.184
+    },
+    "after: badges + cut-link clean-up (shipped)": {
+     "flagged": 0,
+     "maxScore": 0.184
+    },
+    "+ code dropped (rejected)": {
+     "flagged": 0,
+     "maxScore": 0.01
+    },
+    "+ code reduced to its prose (rejected)": {
+     "flagged": 0,
+     "maxScore": 0.15
+    }
+   },
+   "red-team README templates": {
+    "documents": 4,
+    "before (as in production)": {
+     "flagged": 0,
+     "maxScore": 0.001
+    },
+    "badges only, no clean-up (tried)": {
+     "flagged": 0,
+     "maxScore": 0.001
+    },
+    "after: badges + cut-link clean-up (shipped)": {
+     "flagged": 0,
+     "maxScore": 0.001
+    },
+    "+ code dropped (rejected)": {
+     "flagged": 0,
+     "maxScore": 0.001
+    },
+    "+ code reduced to its prose (rejected)": {
+     "flagged": 0,
+     "maxScore": 0.001
+    }
+   }
+  },
+  "flaggedAfter": [
+   {
+    "set": "real pt/es READMEs",
+    "doc": "andersontr15__clean-code-javascript-es",
+    "score": 0.977
+   }
+  ]
+ },
+ "wideBenign": {
+  "dir": "(local, not committed)",
+  "sets": {
+   "en": {
+    "documents": 470,
+    "flaggedBefore": 26,
+    "flaggedAfter": 11,
+    "rulesFlag": 27,
+    "both": 4
+   },
+   "pt": {
+    "documents": 139,
+    "flaggedBefore": 0,
+    "flaggedAfter": 0,
+    "rulesFlag": 3,
+    "both": 0
+   },
+   "es": {
+    "documents": 113,
+    "flaggedBefore": 1,
+    "flaggedAfter": 1,
+    "rulesFlag": 6,
+    "both": 0
+   }
+  },
+  "flaggedAfter": [
+   {
+    "doc": "en/JuliusBrussee_caveman.md",
+    "before": 0.99,
+    "after": 0.99,
+    "rules": true
+   },
+   {
+    "doc": "en/MichaelCade_90DaysOfDevOps.md",
+    "before": 0.985,
+    "after": 0.869,
+    "rules": false
+   },
+   {
+    "doc": "en/anthropics_skills.md",
+    "before": 0.996,
+    "after": 0.996,
+    "rules": true
+   },
+   {
+    "doc": "en/crytic_echidna.md",
+    "before": 0.705,
+    "after": 0.705,
+    "rules": false
+   },
+   {
+    "doc": "en/dylanaraps_pure-bash-bible.md",
+    "before": 0.978,
+    "after": 0.978,
+    "rules": false
+   },
+   {
+    "doc": "en/elastic_elasticsearch.md",
+    "before": 0.987,
+    "after": 0.987,
+    "rules": false
+   },
+   {
+    "doc": "en/jaywcjlove_awesome-mac.md",
+    "before": 0.987,
+    "after": 0.718,
+    "rules": false
+   },
+   {
+    "doc": "en/lhartikk_ArnoldC.md",
+    "before": 0.883,
+    "after": 0.883,
+    "rules": false
+   },
+   {
+    "doc": "en/ryanmcdermott_clean-code-javascript.md",
+    "before": 0.618,
+    "after": 0.618,
+    "rules": false
+   },
+   {
+    "doc": "en/yt-dlp_yt-dlp.md",
+    "before": 0.67,
+    "after": 0.67,
+    "rules": true
+   },
+   {
+    "doc": "en/ytdl-org_youtube-dl.md",
+    "before": 0.994,
+    "after": 0.994,
+    "rules": true
+   },
+   {
+    "doc": "es/andersontr15_clean-code-javascript-es.md",
+    "before": 0.977,
+    "after": 0.977,
+    "rules": false
+   }
+  ]
+ },
+ "recall": {
+  "deepset en": {
+   "documents": 132,
+   "before (as in production)": {
+    "flagged": 36,
+    "recallPct": 27.3
+   },
+   "badges only, no clean-up (tried)": {
+    "flagged": 36,
+    "recallPct": 27.3
+   },
+   "after: badges + cut-link clean-up (shipped)": {
+    "flagged": 36,
+    "recallPct": 27.3
+   },
+   "+ code dropped (rejected)": {
+    "flagged": 36,
+    "recallPct": 27.3
+   },
+   "+ code reduced to its prose (rejected)": {
+    "flagged": 36,
+    "recallPct": 27.3
+   }
+  },
+  "deepset de": {
+   "documents": 57,
+   "before (as in production)": {
+    "flagged": 6,
+    "recallPct": 10.5
+   },
+   "badges only, no clean-up (tried)": {
+    "flagged": 6,
+    "recallPct": 10.5
+   },
+   "after: badges + cut-link clean-up (shipped)": {
+    "flagged": 6,
+    "recallPct": 10.5
+   },
+   "+ code dropped (rejected)": {
+    "flagged": 6,
+    "recallPct": 10.5
+   },
+   "+ code reduced to its prose (rejected)": {
+    "flagged": 6,
+    "recallPct": 10.5
+   }
+  },
+  "yanismiraoui pt": {
+   "documents": 117,
+   "before (as in production)": {
+    "flagged": 24,
+    "recallPct": 20.5
+   },
+   "badges only, no clean-up (tried)": {
+    "flagged": 24,
+    "recallPct": 20.5
+   },
+   "after: badges + cut-link clean-up (shipped)": {
+    "flagged": 24,
+    "recallPct": 20.5
+   },
+   "+ code dropped (rejected)": {
+    "flagged": 24,
+    "recallPct": 20.5
+   },
+   "+ code reduced to its prose (rejected)": {
+    "flagged": 24,
+    "recallPct": 20.5
+   }
+  },
+  "yanismiraoui es": {
+   "documents": 118,
+   "before (as in production)": {
+    "flagged": 13,
+    "recallPct": 11
+   },
+   "badges only, no clean-up (tried)": {
+    "flagged": 13,
+    "recallPct": 11
+   },
+   "after: badges + cut-link clean-up (shipped)": {
+    "flagged": 13,
+    "recallPct": 11
+   },
+   "+ code dropped (rejected)": {
+    "flagged": 13,
+    "recallPct": 11
+   },
+   "+ code reduced to its prose (rejected)": {
+    "flagged": 13,
+    "recallPct": 11
+   }
+  },
+  "prevenia es": {
+   "documents": 244,
+   "before (as in production)": {
+    "flagged": 33,
+    "recallPct": 13.5
+   },
+   "badges only, no clean-up (tried)": {
+    "flagged": 33,
+    "recallPct": 13.5
+   },
+   "after: badges + cut-link clean-up (shipped)": {
+    "flagged": 33,
+    "recallPct": 13.5
+   },
+   "+ code dropped (rejected)": {
+    "flagged": 33,
+    "recallPct": 13.5
+   },
+   "+ code reduced to its prose (rejected)": {
+    "flagged": 33,
+    "recallPct": 13.5
+   }
+  },
+  "zn pt": {
+   "documents": 227,
+   "before (as in production)": {
+    "flagged": 21,
+    "recallPct": 9.3
+   },
+   "badges only, no clean-up (tried)": {
+    "flagged": 21,
+    "recallPct": 9.3
+   },
+   "after: badges + cut-link clean-up (shipped)": {
+    "flagged": 21,
+    "recallPct": 9.3
+   },
+   "+ code dropped (rejected)": {
+    "flagged": 21,
+    "recallPct": 9.3
+   },
+   "+ code reduced to its prose (rejected)": {
+    "flagged": 21,
+    "recallPct": 9.3
+   }
+  },
+  "zn es": {
+   "documents": 227,
+   "before (as in production)": {
+    "flagged": 20,
+    "recallPct": 8.8
+   },
+   "badges only, no clean-up (tried)": {
+    "flagged": 20,
+    "recallPct": 8.8
+   },
+   "after: badges + cut-link clean-up (shipped)": {
+    "flagged": 20,
+    "recallPct": 8.8
+   },
+   "+ code dropped (rejected)": {
+    "flagged": 20,
+    "recallPct": 8.8
+   },
+   "+ code reduced to its prose (rejected)": {
+    "flagged": 20,
+    "recallPct": 8.8
+   }
+  },
+  "nightly 640 in README (as the harness embeds)": {
+   "documents": 640,
+   "before (as in production)": {
+    "flagged": 326,
+    "recallPct": 50.9
+   },
+   "badges only, no clean-up (tried)": {
+    "flagged": 326,
+    "recallPct": 50.9
+   },
+   "after: badges + cut-link clean-up (shipped)": {
+    "flagged": 326,
+    "recallPct": 50.9
+   },
+   "+ code dropped (rejected)": {
+    "flagged": 326,
+    "recallPct": 50.9
+   },
+   "+ code reduced to its prose (rejected)": {
+    "flagged": 326,
+    "recallPct": 50.9
+   }
+  },
+  "nightly 640 hidden in a code block": {
+   "documents": 640,
+   "before (as in production)": {
+    "flagged": 325,
+    "recallPct": 50.8
+   },
+   "badges only, no clean-up (tried)": {
+    "flagged": 325,
+    "recallPct": 50.8
+   },
+   "after: badges + cut-link clean-up (shipped)": {
+    "flagged": 325,
+    "recallPct": 50.8
+   },
+   "+ code dropped (rejected)": {
+    "flagged": 0,
+    "recallPct": 0
+   },
+   "+ code reduced to its prose (rejected)": {
+    "flagged": 325,
+    "recallPct": 50.8
+   }
+  },
+  "planted evals/fixtures/injection*.md": {
+   "documents": 3,
+   "before (as in production)": {
+    "flagged": 3,
+    "recallPct": 100
+   },
+   "badges only, no clean-up (tried)": {
+    "flagged": 3,
+    "recallPct": 100
+   },
+   "after: badges + cut-link clean-up (shipped)": {
+    "flagged": 3,
+    "recallPct": 100
+   },
+   "+ code dropped (rejected)": {
+    "flagged": 3,
+    "recallPct": 100
+   },
+   "+ code reduced to its prose (rejected)": {
+    "flagged": 3,
+    "recallPct": 100
+   }
+  }
+ },
+ "twoSignals": {
+  "benign": {
+   "documents": 415,
+   "rulesAlone": 0,
+   "detector>=0.5": 0.2,
+   "both(detector>=0.5 AND rules)": 0,
+   "either(detector>=0.5 OR rules)": 0.2,
+   "detector>=0.9": 0.2,
+   "both(detector>=0.9 AND rules)": 0,
+   "either(detector>=0.9 OR rules)": 0.2,
+   "detector>=0.99": 0,
+   "both(detector>=0.99 AND rules)": 0,
+   "either(detector>=0.99 OR rules)": 0
+  },
+  "nightly640": {
+   "documents": 640,
+   "rulesAlone": 73.4,
+   "detector>=0.5": 50.9,
+   "both(detector>=0.5 AND rules)": 37.7,
+   "either(detector>=0.5 OR rules)": 86.7,
+   "detector>=0.9": 50.6,
+   "both(detector>=0.9 AND rules)": 37.5,
+   "either(detector>=0.9 OR rules)": 86.6,
+   "detector>=0.99": 31.1,
+   "both(detector>=0.99 AND rules)": 23.3,
+   "either(detector>=0.99 OR rules)": 81.3
+  },
+  "nightlyInCodeBlock": {
+   "rulesAlone": 73.4,
+   "detector>=0.5": 50.8,
+   "both(detector>=0.5 AND rules)": 37.5,
+   "either(detector>=0.5 OR rules)": 86.7,
+   "detector>=0.9": 50.5,
+   "both(detector>=0.9 AND rules)": 37.3,
+   "either(detector>=0.9 OR rules)": 86.6,
+   "detector>=0.99": 20.9,
+   "both(detector>=0.99 AND rules)": 15.2,
+   "either(detector>=0.99 OR rules)": 79.2
+  }
+ }
+}
