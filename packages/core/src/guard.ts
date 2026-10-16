@@ -21,6 +21,7 @@ export type FindingKind =
   | "hidden_unicode_text"
   | "html_comment"
   | "inline_image_data"
+  | "link_url"
   | "hidden_html"
   | "encoded_payload"
   | "obfuscated_instruction"
@@ -131,6 +132,37 @@ function fromHex(token: string): string | undefined {
   return tryUtf8(bytes);
 }
 
+/**
+ * The text without link URLs. A Markdown link keeps its LABEL (`[the docs](https://x)` becomes "the docs"), so the prose a
+ * question is built from survives; an image, an autolink and a bare URL become a space. `found` collects every removed URL, so
+ * the caller can still inspect what they carried (an instruction hidden in base64 inside a query string is still an attack).
+ *
+ * Why the guard removes them at all: a quiz never cites a link, so a URL in a document is not content — it is only a destination
+ * an attacker could get into the reply. Removing it closes that class instead of refereeing it.
+ */
+export function stripLinkUrls(text: string, found?: (url: string) => void): string {
+  const take = (url: string): string => {
+    found?.(url);
+    return " ";
+  };
+  // [label](url "title") and ![alt](url "title"): the label, the alt text and the title are things a READER sees, so they stay
+  // (and an instruction written in one is still flagged); only the URL goes.
+  const MD_LINK = /!?\[([^\]]*)\]\(\s*(https?:\/\/[^)\s]+)(?:\s+(?:"([^"]*)"|'([^']*)'))?\s*\)/g;
+  return text
+    .replace(MD_LINK, (_m, label: string, url: string, dq?: string, sq?: string) => {
+      take(url);
+      return [label, dq ?? sq ?? ""].filter(Boolean).join(" ");
+    })
+    .replace(/<(https?:\/\/[^>\s]+)>/g, (_m, url: string) => take(url))
+    // "[" is excluded so a URL that already carries a marker ("...?logo=[inline image]") is not cut in half
+    .replace(/https?:\/\/[^\s)"'<>[\]]+/g, (m) => take(m))
+    // the gap a removed URL leaves must not survive as double spaces or as a space before punctuation: a quote is checked
+    // against this text character for character, so "the docs ." would never match what a reader sees
+    .replace(/[^\S\n]{2,}/g, " ")
+    .replace(/[^\S\n]+([,.;:!?)\]])/g, "$1")
+    .replace(/[^\S\n]+$/gm, "");
+}
+
 /** True when the run at `index` is part of a link (https://host/path?x=<run>, a data: URI): the chunk before it, up to a space or bracket, has "://". */
 function insideUrl(text: string, index: number): boolean {
   let start = index;
@@ -232,6 +264,15 @@ export function inspectText(input: string, _opts: InspectOptions = {}): InspectR
   });
   if (images) add({ kind: "inline_image_data", severity: "sanitize", detail: `${images} inline image(s) removed (data URI)` });
 
+  // 3c. link URLs: a quiz never cites a link, so a URL is not content — it is only a destination an attacker could get into the
+  // reply. The label of a Markdown link stays. The removed URLs are kept for step 6, which still decodes what they carried.
+  const urls: string[] = [];
+  const withoutLinks = stripLinkUrls(text, (u) => urls.push(u));
+  if (urls.length) {
+    text = withoutLinks;
+    add({ kind: "link_url", severity: "sanitize", detail: `${urls.length} link URL(s) removed (the quiz never cites a link)` });
+  }
+
   // 4. elements made invisible with HTML/CSS
   for (const m of text.matchAll(HIDDEN_ELEMENT)) {
     const inner = m[2] ?? "";
@@ -244,7 +285,7 @@ export function inspectText(input: string, _opts: InspectOptions = {}): InspectR
   if (MODEL_MARKUP.test(text)) add({ kind: "model_markup", severity: "block", detail: "contains chat-template markers (for example <|im_start|>)" });
 
   // 6. encoded payloads: decode, then look for instructions or plain sentences
-  for (const [enc, decoded, inUrl] of decodeCandidates(text)) {
+  for (const [enc, decoded, inUrl] of decodeCandidates(urls.length ? `${text}\n${urls.join("\n")}` : text)) {
     if (hasInjection(decoded) || MODEL_MARKUP.test(decoded)) add({ kind: "encoded_payload", severity: "block", detail: `an instruction is hidden in ${enc}`, sample: excerpt(decoded) });
     else if (!inUrl && decoded.length >= 40 && looksLikeSentence(decoded)) add({ kind: "encoded_payload", severity: "block", detail: `a readable sentence is hidden in ${enc}`, sample: excerpt(decoded) });
   }

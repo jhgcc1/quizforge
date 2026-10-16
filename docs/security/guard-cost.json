@@ -5,7 +5,7 @@
   "measure": "median of the repeats",
   "profiles": {
     "cpu-100": {
-      "at": "2026-10-16T15:04:02.393Z",
+      "at": "2026-10-16T17:35:37.874Z",
       "cpuQuotaPct": 100,
       "cpu": "13th Gen Intel(R) Core(TM) i5-13420H",
       "node": "v20.19.6",
@@ -14,7 +14,7 @@
           "shape": "prose",
           "what": "ordinary prose (a README)",
           "bytes": 65536,
-          "ms": 253,
+          "ms": 206,
           "verdict": "clean",
           "findings": 0
         },
@@ -22,7 +22,7 @@
           "shape": "prose",
           "what": "ordinary prose (a README)",
           "bytes": 262144,
-          "ms": 981,
+          "ms": 721,
           "verdict": "clean",
           "findings": 0
         },
@@ -30,7 +30,7 @@
           "shape": "prose",
           "what": "ordinary prose (a README)",
           "bytes": 524288,
-          "ms": 2093,
+          "ms": 1698,
           "verdict": "clean",
           "findings": 0
         },
@@ -38,7 +38,7 @@
           "shape": "non-prose-tokens",
           "what": "word lists and tables: no common words, so no part is skipped",
           "bytes": 65536,
-          "ms": 695,
+          "ms": 543,
           "verdict": "clean",
           "findings": 0
         },
@@ -46,7 +46,7 @@
           "shape": "non-prose-tokens",
           "what": "word lists and tables: no common words, so no part is skipped",
           "bytes": 262144,
-          "ms": 2953,
+          "ms": 2088,
           "verdict": "clean",
           "findings": 0
         },
@@ -54,7 +54,7 @@
           "shape": "non-prose-tokens",
           "what": "word lists and tables: no common words, so no part is skipped",
           "bytes": 524288,
-          "ms": 5692,
+          "ms": 4250,
           "verdict": "clean",
           "findings": 0
         },
@@ -62,7 +62,7 @@
           "shape": "short-lines",
           "what": "many very short lines (a table of two columns)",
           "bytes": 65536,
-          "ms": 434,
+          "ms": 327,
           "verdict": "clean",
           "findings": 0
         },
@@ -70,7 +70,7 @@
           "shape": "short-lines",
           "what": "many very short lines (a table of two columns)",
           "bytes": 262144,
-          "ms": 1859,
+          "ms": 1353,
           "verdict": "clean",
           "findings": 0
         },
@@ -78,7 +78,7 @@
           "shape": "short-lines",
           "what": "many very short lines (a table of two columns)",
           "bytes": 524288,
-          "ms": 3908,
+          "ms": 2783,
           "verdict": "clean",
           "findings": 0
         },
@@ -86,31 +86,31 @@
           "shape": "base64-in-urls",
           "what": "an instruction in base64 inside link targets",
           "bytes": 65536,
+          "ms": 66,
+          "verdict": "blocked",
+          "findings": 676
+        },
+        {
+          "shape": "base64-in-urls",
+          "what": "an instruction in base64 inside link targets",
+          "bytes": 262144,
           "ms": 289,
           "verdict": "blocked",
-          "findings": 675
-        },
-        {
-          "shape": "base64-in-urls",
-          "what": "an instruction in base64 inside link targets",
-          "bytes": 262144,
-          "ms": 1070,
-          "verdict": "blocked",
-          "findings": 2702
+          "findings": 2703
         },
         {
           "shape": "base64-in-urls",
           "what": "an instruction in base64 inside link targets",
           "bytes": 524288,
-          "ms": 2078,
+          "ms": 569,
           "verdict": "blocked",
-          "findings": 5405
+          "findings": 5406
         },
         {
           "shape": "hex",
           "what": "an instruction written in hexadecimal",
           "bytes": 65536,
-          "ms": 896,
+          "ms": 653,
           "verdict": "blocked",
           "findings": 771
         },
@@ -118,7 +118,7 @@
           "shape": "hex",
           "what": "an instruction written in hexadecimal",
           "bytes": 262144,
-          "ms": 3633,
+          "ms": 2459,
           "verdict": "blocked",
           "findings": 3084
         },
@@ -126,7 +126,7 @@
           "shape": "hex",
           "what": "an instruction written in hexadecimal",
           "bytes": 524288,
-          "ms": 7301,
+          "ms": 5067,
           "verdict": "blocked",
           "findings": 6168
         },
@@ -134,7 +134,7 @@
           "shape": "rot13",
           "what": "an instruction written in rot13",
           "bytes": 65536,
-          "ms": 836,
+          "ms": 673,
           "verdict": "blocked",
           "findings": 1
         },
@@ -142,7 +142,7 @@
           "shape": "rot13",
           "what": "an instruction written in rot13",
           "bytes": 262144,
-          "ms": 3370,
+          "ms": 2656,
           "verdict": "blocked",
           "findings": 1
         },
@@ -150,7 +150,7 @@
           "shape": "rot13",
           "what": "an instruction written in rot13",
           "bytes": 524288,
-          "ms": 7006,
+          "ms": 5347,
           "verdict": "blocked",
           "findings": 1
         },
@@ -158,7 +158,7 @@
           "shape": "leetspeak",
           "what": "an instruction written in leetspeak",
           "bytes": 65536,
-          "ms": 662,
+          "ms": 525,
           "verdict": "blocked",
           "findings": 1
         },
@@ -166,7 +166,7 @@
           "shape": "leetspeak",
           "what": "an instruction written in leetspeak",
           "bytes": 262144,
-          "ms": 2628,
+          "ms": 2018,
           "verdict": "blocked",
           "findings": 1
         },
@@ -174,7 +174,7 @@
           "shape": "leetspeak",
           "what": "an instruction written in leetspeak",
           "bytes": 524288,
-          "ms": 5429,
+          "ms": 4280,
           "verdict": "blocked",
           "findings": 1
         },
@@ -182,7 +182,7 @@
           "shape": "spaced-letters",
           "what": "an instruction written as spaced letters",
           "bytes": 65536,
-          "ms": 546,
+          "ms": 419,
           "verdict": "blocked",
           "findings": 1
         },
@@ -190,7 +190,7 @@
           "shape": "spaced-letters",
           "what": "an instruction written as spaced letters",
           "bytes": 262144,
-          "ms": 2197,
+          "ms": 1590,
           "verdict": "blocked",
           "findings": 1
         },
@@ -198,14 +198,14 @@
           "shape": "spaced-letters",
           "what": "an instruction written as spaced letters",
           "bytes": 524288,
-          "ms": 4470,
+          "ms": 3415,
           "verdict": "blocked",
           "findings": 1
         }
       ]
     },
     "cpu-50": {
-      "at": "2026-10-16T15:13:31.276Z",
+      "at": "2026-10-16T17:41:46.261Z",
       "cpuQuotaPct": 50,
       "cpu": "13th Gen Intel(R) Core(TM) i5-13420H",
       "node": "v20.19.6",
@@ -214,7 +214,7 @@
           "shape": "prose",
           "what": "ordinary prose (a README)",
           "bytes": 65536,
-          "ms": 681,
+          "ms": 518,
           "verdict": "clean",
           "findings": 0
         },
@@ -222,7 +222,7 @@
           "shape": "prose",
           "what": "ordinary prose (a README)",
           "bytes": 262144,
-          "ms": 2823,
+          "ms": 1609,
           "verdict": "clean",
           "findings": 0
         },
@@ -230,7 +230,7 @@
           "shape": "prose",
           "what": "ordinary prose (a README)",
           "bytes": 524288,
-          "ms": 5524,
+          "ms": 3192,
           "verdict": "clean",
           "findings": 0
         },
@@ -238,7 +238,7 @@
           "shape": "non-prose-tokens",
           "what": "word lists and tables: no common words, so no part is skipped",
           "bytes": 65536,
-          "ms": 1985,
+          "ms": 1174,
           "verdict": "clean",
           "findings": 0
         },
@@ -246,7 +246,7 @@
           "shape": "non-prose-tokens",
           "what": "word lists and tables: no common words, so no part is skipped",
           "bytes": 262144,
-          "ms": 7671,
+          "ms": 5290,
           "verdict": "clean",
           "findings": 0
         },
@@ -254,7 +254,7 @@
           "shape": "non-prose-tokens",
           "what": "word lists and tables: no common words, so no part is skipped",
           "bytes": 524288,
-          "ms": 16332,
+          "ms": 11375,
           "verdict": "clean",
           "findings": 0
         },
@@ -262,7 +262,7 @@
           "shape": "short-lines",
           "what": "many very short lines (a table of two columns)",
           "bytes": 65536,
-          "ms": 1320,
+          "ms": 985,
           "verdict": "clean",
           "findings": 0
         },
@@ -270,7 +270,7 @@
           "shape": "short-lines",
           "what": "many very short lines (a table of two columns)",
           "bytes": 262144,
-          "ms": 5230,
+          "ms": 4010,
           "verdict": "clean",
           "findings": 0
         },
@@ -278,7 +278,7 @@
           "shape": "short-lines",
           "what": "many very short lines (a table of two columns)",
           "bytes": 524288,
-          "ms": 10197,
+          "ms": 8020,
           "verdict": "clean",
           "findings": 0
         },
@@ -286,31 +286,31 @@
           "shape": "base64-in-urls",
           "what": "an instruction in base64 inside link targets",
           "bytes": 65536,
-          "ms": 789,
+          "ms": 278,
           "verdict": "blocked",
-          "findings": 675
+          "findings": 676
         },
         {
           "shape": "base64-in-urls",
           "what": "an instruction in base64 inside link targets",
           "bytes": 262144,
-          "ms": 3088,
+          "ms": 890,
           "verdict": "blocked",
-          "findings": 2702
+          "findings": 2703
         },
         {
           "shape": "base64-in-urls",
           "what": "an instruction in base64 inside link targets",
           "bytes": 524288,
-          "ms": 5915,
+          "ms": 1733,
           "verdict": "blocked",
-          "findings": 5405
+          "findings": 5406
         },
         {
           "shape": "hex",
           "what": "an instruction written in hexadecimal",
           "bytes": 65536,
-          "ms": 2495,
+          "ms": 1992,
           "verdict": "blocked",
           "findings": 771
         },
@@ -318,7 +318,7 @@
           "shape": "hex",
           "what": "an instruction written in hexadecimal",
           "bytes": 262144,
-          "ms": 9415,
+          "ms": 7672,
           "verdict": "blocked",
           "findings": 3084
         },
@@ -326,7 +326,7 @@
           "shape": "hex",
           "what": "an instruction written in hexadecimal",
           "bytes": 524288,
-          "ms": 20210,
+          "ms": 13264,
           "verdict": "blocked",
           "findings": 6168
         },
@@ -334,7 +334,7 @@
           "shape": "rot13",
           "what": "an instruction written in rot13",
           "bytes": 65536,
-          "ms": 2470,
+          "ms": 1717,
           "verdict": "blocked",
           "findings": 1
         },
@@ -342,7 +342,7 @@
           "shape": "rot13",
           "what": "an instruction written in rot13",
           "bytes": 262144,
-          "ms": 9907,
+          "ms": 7031,
           "verdict": "blocked",
           "findings": 1
         },
@@ -350,7 +350,7 @@
           "shape": "rot13",
           "what": "an instruction written in rot13",
           "bytes": 524288,
-          "ms": 19294,
+          "ms": 14661,
           "verdict": "blocked",
           "findings": 1
         },
@@ -358,7 +358,7 @@
           "shape": "leetspeak",
           "what": "an instruction written in leetspeak",
           "bytes": 65536,
-          "ms": 1831,
+          "ms": 1188,
           "verdict": "blocked",
           "findings": 1
         },
@@ -366,7 +366,7 @@
           "shape": "leetspeak",
           "what": "an instruction written in leetspeak",
           "bytes": 262144,
-          "ms": 7368,
+          "ms": 4498,
           "verdict": "blocked",
           "findings": 1
         },
@@ -374,7 +374,7 @@
           "shape": "leetspeak",
           "what": "an instruction written in leetspeak",
           "bytes": 524288,
-          "ms": 15691,
+          "ms": 9174,
           "verdict": "blocked",
           "findings": 1
         },
@@ -382,7 +382,7 @@
           "shape": "spaced-letters",
           "what": "an instruction written as spaced letters",
           "bytes": 65536,
-          "ms": 1582,
+          "ms": 904,
           "verdict": "blocked",
           "findings": 1
         },
@@ -390,7 +390,7 @@
           "shape": "spaced-letters",
           "what": "an instruction written as spaced letters",
           "bytes": 262144,
-          "ms": 6074,
+          "ms": 3634,
           "verdict": "blocked",
           "findings": 1
         },
@@ -398,12 +398,12 @@
           "shape": "spaced-letters",
           "what": "an instruction written as spaced letters",
           "bytes": 524288,
-          "ms": 12388,
+          "ms": 7623,
           "verdict": "blocked",
           "findings": 1
         }
       ]
     }
   },
-  "commit": "3df3f8c"
+  "commit": "70d9bd2"
 }

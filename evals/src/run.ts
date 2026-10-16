@@ -13,7 +13,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { LangfuseClient } from "@langfuse/client";
-import { createFakeLlm, createMiniMaxClient, fetchMarkdown, flushTracing, generateQuiz, initTracing, tracingEnabled, type LlmClient } from "@quizforge/llm";
+import { admitDocument, createFakeLlm, createMiniMaxClient, fetchMarkdown, flushTracing, generateQuiz, initTracing, tracingEnabled, type LlmClient } from "@quizforge/llm";
 import { ensureModelPrices } from "./ensure-models.js";
 import { DATASET, syncDataset } from "./dataset.js";
 import { GOLDEN, type GoldenItem } from "./golden.js";
@@ -62,7 +62,10 @@ async function runItem(item: GoldenItem): Promise<Outcome> {
   if (offline && item.modelOnly) return { id: item.id, ok: true, skipped: "needs a real model (a fake LLM copies the injected text)" };
   const started = Date.now();
   try {
-    const sourceText = await loadText(item);
+    // The quiz is generated from the document the GUARD admits (sanitized: no link URLs, no HTML comments...), and production
+    // stores that same text, so the evaluation has to score against it too — otherwise a quote is judged against bytes the
+    // model never saw.
+    const sourceText = admitDocument(await loadText(item)).text;
     const r = await generateQuiz({
       llm,
       ...(judgeLlm ? { judgeLlm, judgeSamples: 3 } : {}), // median of 3 judgements: one noisy outlier cannot flip the gate
