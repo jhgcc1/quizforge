@@ -6,7 +6,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 FULL = "--full" in sys.argv
-if FULL:
+GUARDRAILS = "--guardrails" in sys.argv
+if GUARDRAILS:
+    import content_guardrails as content  # noqa: E402  (the guardrails and promptfoo report)
+elif FULL:
     import content_full as content  # noqa: E402  (the long reference report)
 else:
     import content  # noqa: E402  (the short report for the presentation)
@@ -105,29 +108,32 @@ def assert_no_secrets(html: str) -> None:
 
 
 def main():
+    title = getattr(content, "TITLE", "QuizForge: architecture and decisions")
+    subtitle = getattr(content, "SUBTITLE", "An AI agent that turns a README into a quiz · AWS (Fargate, RDS, SQS, Cognito, CloudFront) · Terraform · GitHub Actions · Langfuse")
     nav = "".join(f'<a href="#{i}">{t}</a>' for i, t in content.NAV)
     body = "".join(content.all_sections())
     html = (
         '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
-        "<title>QuizForge Architecture</title>"
+        f"<title>{title}</title>"
         f"<style>{CSS}</style></head><body>"
-        "<header><h1>QuizForge: architecture and decisions</h1>"
-        "<p>An AI agent that turns a README into a quiz · AWS (Fargate, RDS, SQS, Cognito, CloudFront) · Terraform · GitHub Actions · Langfuse</p></header>"
+        f"<header><h1>{title}</h1>"
+        f"<p>{subtitle}</p></header>"
         f'<nav><button id="theme" aria-label="Toggle theme">◐ theme</button>{nav}</nav><main>{body}</main>'
         "<footer>Generated from the real repository and AWS account. Contains account-specific IDs: do not publish.</footer>"
         f"<script>{JS}</script></body></html>"
     )
-    html = facts.tok(html)  # [[name]] tokens: numbers read from the repository files
+    html = facts.tok(html, getattr(content, "EXTRA_FACTS", None))  # [[name]] tokens: numbers read from the repository files
     html = inline_images(html)
     assert_no_secrets(html)
     if PUBLIC:
         assert_no_personal_data(html)
+    name = getattr(content, "OUT_NAME", "quizforge-architecture-full.html" if FULL else "quizforge-architecture.html")
     if PUBLIC:
         html = redact(html)
-        out = HERE.parent / "docs" / "architecture" / ("quizforge-architecture-full.html" if FULL else "quizforge-architecture.html")
+        out = HERE.parent / "docs" / getattr(content, "OUT_DIR", "architecture") / name
         out.parent.mkdir(parents=True, exist_ok=True)
     else:
-        out = HERE / ("quizforge-architecture-full.html" if FULL else "quizforge-architecture.html")
+        out = HERE / name
     out.write_text(html, encoding="utf-8")
     print(f"{out} {out.stat().st_size / 1e6:.2f} MB, {html.count('<svg')} diagrams, {html.count('<table')} tables, {html.count('data:image/png')} images")
 

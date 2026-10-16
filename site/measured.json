@@ -1,19 +1,19 @@
 {
-  "measuredOn": "2026-10-15",
-  "commit": "b961850",
+  "measuredOn": "2026-10-16",
+  "commit": "70d9bd2",
   "command": "scripts/measure-facts.sh",
   "tests": {
-    "total": 1318,
-    "passed": 1314,
+    "total": 1860,
+    "passed": 1856,
     "skipped": 4,
     "failed": 0,
-    "files": 232
+    "files": 271
   },
   "coverage": {
-    "statements": 99.59,
-    "lines": 99.59,
-    "functions": 97.98,
-    "branches": 95.21,
+    "statements": 99.65,
+    "lines": 99.65,
+    "functions": 98.14,
+    "branches": 95.28,
     "statementsByPackage": {
       "apps/api": 100,
       "apps/worker": 98.88,

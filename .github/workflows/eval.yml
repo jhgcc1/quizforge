@@ -3,12 +3,11 @@ name: LLM evaluation
 # Regression test for the AI itself: runs the golden set against the real model, scores it
 # (grounding, lint, LLM-judge, injection resistance, language), logs an experiment in Langfuse and
 # FAILS when quality drops below the thresholds in evals/src/metrics.ts. Costs a few cents per run,
-# so it is not part of the per-PR gate: the merge-to-main run is the `llm-eval` job in ci.yml (it gates the deploy);
-# this workflow adds the nightly run (catches provider/model drift when nobody pushed) and an on-demand run
-# (e.g. before changing a prompt or switching model).
+# so it is not part of the per-PR gate: the merge-to-main run is the `llm-eval` job in ci.yml (it gates the deploy).
+# This workflow is the ON-DEMAND run of the same evaluation (before changing a prompt, when switching model, or to check
+# whether a failure is ours or the provider's). It had a nightly schedule too; it was removed, because `main` is merged
+# almost every day and that merge runs the same evaluation, so the nightly was paying for a measurement we already had.
 on:
-  schedule:
-    - cron: "43 5 * * *"
   workflow_dispatch:
     inputs:
       model:
