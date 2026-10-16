@@ -97,7 +97,7 @@ services:
 
   web:
     profiles: ["app"]
-    # the front end is its own repository: run scripts/web.sh first (it checks out ./web at the commit pinned in web.ref)
+    # the front end is its own repository: run scripts/web.sh first (it checks out its main into ./web)
     build: { context: ./web }
     image: quizforge-web:local
     environment:

@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 mkdir -p .local
 exec > .local/rebuild.log 2>&1
 docker compose --profile app down --remove-orphans
-scripts/web.sh   # checks out the front end into ./web at the commit pinned in web.ref
+scripts/web.sh   # checks out the main of the front end into ./web
 for s in api worker web; do
   start=$(date +%s)
   if [ "$s" = web ]; then dockerfile=web/Dockerfile; ctx=web; else dockerfile=apps/$s/Dockerfile; ctx=.; fi

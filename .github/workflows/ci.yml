@@ -135,32 +135,57 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+        with: { fetch-depth: 0 }
+      # The front end is a separate repository and production runs the main of both, so that is the pair this test is about.
+      # On main it always runs: it is the last gate before the deploy, and the back end is what can break the contract without
+      # anyone noticing (the front end pins @quizforge/contract to a published tarball, so a behaviour change is invisible to it).
+      # On a pull request it runs only when the change can reach the UI -- the job itself is always a check, green in seconds
+      # otherwise, so the required check is never missing.
+      - name: Can this change reach the UI?
+        id: scope
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ "${{ github.event_name }}" != pull_request ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"; echo "On main: the end-to-end test always runs before a deploy."; exit 0
+          fi
+          changed=$(git diff --name-only "origin/${BASE_REF}...HEAD" | grep -E '^(apps/api/|packages/contract/|packages/core/src/(contracts|quiz-schema|catalog)|packages/db/|e2e/|docker-compose\.yml|\.github/workflows/ci\.yml)' || true)
+          if [ -n "$changed" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; echo "::notice title=End-to-end test will run::$(echo $changed | tr '\n' ' ')"
+          else echo "run=false" >> "$GITHUB_OUTPUT"; echo "Nothing the front end consumes changed (API, contract, database, e2e): the browser test is not needed. It still runs on main."; fi
+      - if: steps.scope.outputs.run == 'true'
+        uses: pnpm/action-setup@v4
+      - if: steps.scope.outputs.run == 'true'
+        uses: actions/setup-node@v4
         with: { node-version: "${{ env.NODE_VERSION }}", cache: pnpm }
-      - run: pnpm install --frozen-lockfile
+      - if: steps.scope.outputs.run == 'true'
+        run: pnpm install --frozen-lockfile
       - name: Start Postgres and the SQS emulator
+        if: steps.scope.outputs.run == 'true' 
         run: |
           docker compose up -d postgres elasticmq
           for i in $(seq 1 40); do docker compose ps postgres --format '{{.Health}}' | grep -q healthy && break; sleep 2; done
           for i in $(seq 1 30); do curl -sf "http://localhost:9324/?Action=ListQueues" >/dev/null && break; sleep 2; done
-      - run: pnpm exec playwright install --with-deps chromium
-      - name: Read the pinned front end commit (web.ref)
-        id: webref
-        run: echo "sha=$(tr -d '[:space:]' < web.ref)" >> "$GITHUB_OUTPUT"
-      - name: Check out the front end (jhgcc1/quizforge-web at web.ref) into web/
+      - if: steps.scope.outputs.run == 'true'
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Check out the front end (jhgcc1/quizforge-web at main) into web/
+        if: steps.scope.outputs.run == 'true'
         uses: actions/checkout@v4
         with:
           repository: jhgcc1/quizforge-web
-          ref: ${{ steps.webref.outputs.sha }}
+          ref: main
           path: web
+      - name: Say which front end commit this ran against
+        if: steps.scope.outputs.run == 'true'
+        run: echo "e2e against front end \`$(git -C web rev-parse --short HEAD)\` (main)" >> "$GITHUB_STEP_SUMMARY"
       - name: Install and build the front end (standalone project, not part of this workspace)
+        if: steps.scope.outputs.run == 'true'
         working-directory: web
         run: |
           pnpm install --ignore-workspace --frozen-lockfile
           pnpm build
         env: { AUTH_MODE: local, APP_URL: "http://localhost:13000" }
       - name: Playwright (login -> generate -> answer -> reload -> submit -> score)
+        if: steps.scope.outputs.run == 'true'
         run: pnpm test:e2e
         env: { CI: "true" }
       - uses: actions/upload-artifact@v4
@@ -179,14 +204,11 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Read the pinned front end commit (web.ref)
-        id: webref
-        run: echo "sha=$(tr -d '[:space:]' < web.ref)" >> "$GITHUB_OUTPUT"
-      - name: Check out the front end (jhgcc1/quizforge-web at web.ref) into web/
+      - name: Check out the front end (jhgcc1/quizforge-web at main) into web/
         uses: actions/checkout@v4
         with:
           repository: jhgcc1/quizforge-web
-          ref: ${{ steps.webref.outputs.sha }}
+          ref: main
           path: web
       - uses: docker/setup-buildx-action@v3
       - name: Build web, api, worker and redteam images
