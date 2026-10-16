@@ -7,6 +7,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 pnpm --filter @quizforge/evals report            # docs/eval/structure-comparison.html, from the committed JSON
+(cd site && python3 build.py --guardrails --public)   # docs/security/guardrails-promptfoo.html (no AWS account needed)
 if [ -f .local/links.json ]; then
   (cd site && python3 build.py --public && python3 build.py --full --public)   # docs/architecture/quizforge-architecture.html (short) and -full.html
 else

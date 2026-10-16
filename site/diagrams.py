@@ -1006,14 +1006,16 @@ def detector_flag():
     b += box(646, 190, 298, 74, "Output rail: strict link mode", "the excerpt joins the flagged parts (next diagram)", "data", small=True)
     for x in (171, 481, 795):
         b += arrow(795, 96, x, 190, dash=True)
-    b += group(990, 20, 330, 260, "Not done", "grp ext")
-    b += text(1006, 66, "· the document is not blocked: the quiz is made", "note")
-    b += text(1006, 90, "  as usual (blocking needs INJECTION_DETECTOR=block)", "note")
-    b += text(1006, 126, "· nothing is sent to Langfuse", "note")
-    b += text(1006, 162, "· no alarm on InjectionDetected; the alarm", "note")
-    b += text(1006, 180, "  injection-flagged-spike counts the rules metric", "note")
-    b += text(1006, 198, "  InjectionFlagged (10 or more documents in an hour)", "note")
-    b += text(1006, 234, "· one window per document, not every window", "note")
+    b += group(990, 20, 336, 262, "Not done", "grp ext")
+    b += text(1006, 56, "· the document is not blocked: the quiz is", "note")
+    b += text(1006, 74, "  made as usual (that needs mode block)", "note")
+    b += text(1006, 104, "· the flag is not sent to Langfuse. The", "note")
+    b += text(1006, 122, "  generation IS traced there, with its", "note")
+    b += text(1006, 140, "  quality scores; the flag is not part of it", "note")
+    b += text(1006, 170, "· no alarm on InjectionDetected: the spike", "note")
+    b += text(1006, 188, "  alarm counts the rules metric instead", "note")
+    b += text(1006, 206, "  (InjectionFlagged, 10+ in an hour)", "note")
+    b += text(1006, 240, "· one window per document, not every window", "note")
     return svg(1340, 300, b, "Prompt Guard 2 in flag mode: it marks one window, records it, and blocks nothing")
 
 
@@ -1096,7 +1098,7 @@ def eval_ladder():
         (f"On every pull request from this repository: red team sample, {F.PF_SAMPLE} frozen attacks + {F.PF_POLICY_DOCS} language documents (job redteam-sample)", "offline stage, then live; model key only; not a required check", "grp sub"),
         (f"On a pull request that changes prompts, LLM, guard or evals files: llm-eval-pr (golden set of {F.GOLDEN_N} + live promptfoo, {F.PF_LIVE} tests)", "real model; model key only, no Langfuse; green in seconds if nothing relevant changed", "grp"),
         ("On main, before the deploy: llm-eval (golden set + live promptfoo) and the red team sample again", "llm-eval gates the deploy and publish-prompts; Langfuse experiment", "grp sub"),
-        (f"Every night: eval.yml at {F.EVAL_TIME} (golden set + live) and the red team task on Fargate at {F.REDTEAM_TIME}", f"{F.PF_NIGHTLY_TESTS} fresh tests, {F.PF_NIGHTLY_INTENTS} intents; report to S3; alarms", "grp"),
+        (f"Every night: the red team task on Fargate at {F.REDTEAM_TIME} (the golden set runs on every merge to main, and on demand)", f"{F.PF_NIGHTLY_TESTS} fresh tests, {F.PF_NIGHTLY_INTENTS} intents; report to S3; alarms", "grp"),
     ]
     W, step_x, step_y = 1080, 22, 44
     n = len(layers)
