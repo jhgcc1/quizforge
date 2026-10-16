@@ -179,12 +179,30 @@ def polite_table():
     return table(["Benign documents", "Documents", "Any rule matched", "A polite rule matched"], rows, widths=["40%", "14%", "23%", "23%"])
 
 
+# Where each corpus of the rule audit comes from (the sources listed in promptfoo/redteam/audit-rules.ts).
+AUDIT_SOURCES = {
+    "dataset injections": "<b>deepset/prompt-injections</b> (public, Apache-2.0), the injection rows of the 500-row sample",
+    "dataset benign": "the same public dataset, its benign rows — the false-positive side",
+    "replay attacks": "the public attacks that were replayed through the real pipeline (<code>replay-deepset.json</code>)",
+    "red-team sample": "the frozen red-team sample (<code>promptfoo/redteam/sample.yaml</code>), written by the attacker model and then frozen",
+    "nightly intents": "the attack texts of the nightly (<code>intents-nightly.json</code>): 12 intents × en, pt, es × translation and paraphrase",
+    "fixtures (benign)": "every benign document in <code>evals/fixtures</code>, the golden set of the repository",
+    "fixture injection.md": "the one fixture that <i>is</i> an attack, kept as a positive control",
+    "real READMEs": "real projects, downloaded at run time and never committed (only pointers are, in <code>real-readmes-pt-es.json</code>)",
+    "attacks.ts techniques": "the hand-written attack corpus of the repository (<code>packages/core/src/attacks.ts</code>), shared by vitest and promptfoo",
+    "attacks.ts bad topics": "the topic strings that must be refused, from the same file",
+}
+
+
 def audit_table():
-    """Where each rule earns its place: the corpora the audit ran the rules against."""
-    rows = [[name, str(n)] for name, n in AUDIT["groups"].items()]
+    """Where each rule earns its place: the corpora the audit ran the rules against, and where each corpus comes from."""
+    rows = []
+    for name, n in AUDIT["groups"].items():
+        key = next((k for k in AUDIT_SOURCES if name.startswith(k)), None)
+        rows.append([name, str(n), AUDIT_SOURCES.get(key, "—")])
     sole = [r for r in AUDIT["rules"] if r["soleHits"] > 0]
     dead = [r for r in AUDIT["rules"] if r["total"] == 0]
-    return table(["Corpus of the rule audit", "Documents"], rows, widths=["70%", "30%"]), len(sole), len(dead)
+    return table(["Corpus of the rule audit", "Documents", "Where it comes from"], rows, widths=["26%", "11%", "63%"]), len(sole), len(dead)
 
 
 def polite_facts():
@@ -200,8 +218,9 @@ def polite_facts():
     for r in rules:
         sole += 1 if r["soleHits"] > 0 else 0
         dead += 1 if r["total"] == 0 else 0
+    import facts as F  # for the rule count of today
     out.update({"ga_rules": len(rules), "ga_sole": sole, "ga_dead": dead, "ga_corpora": len(AUDIT["groups"]),
-                "ga_docs": sum(AUDIT["groups"].values())})
+                "ga_docs": sum(AUDIT["groups"].values()), "ga_rules_new": F.RULES_TOTAL - len({r["id"] for r in rules})})
     return out
 
 

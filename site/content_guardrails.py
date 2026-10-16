@@ -157,12 +157,19 @@ measured on one nightly run of [[pol_cases]] attacks: the rules caught <b>[[pol_
 family existed and <b>[[pol_with]] ([[pol_with_pct]])</b> with it — [[pol_rules]] polite rules, no false positive anywhere:</p>""")
     body += G.polite_table()
     body += "<h3>Does every rule earn its place?</h3>"
-    body += T(f"""<p>An audit ran every rule against [[ga_corpora]] corpora, [[ga_docs]] documents in all ({code('docs/security/guard-audit.md')}):</p>""")
+    body += T(f"""<p>Once, every rule was run against [[ga_corpora]] corpora, [[ga_docs]] documents in all, to see which rules do
+work and which are decoration ({code('promptfoo/redteam/audit-rules.ts')}, written up in
+{code('docs/security/guard-audit.md')}). The corpora mix what we wrote with what we did not:</p>""")
     body += audit_tbl
     body += T(f"""<p>Of the [[ga_rules]] rules the audit covered, <b>{sole} are the only rule that catches something</b> (removing one
 would lose a catch), and <b>{dead} match nothing in any corpus</b>. The second number is not an argument for deleting them: a rule
-that matches nothing in the corpora can still be the one that catches tomorrow's attack, and it costs only CPU. It <i>is</i> an
-argument for the corpora being too small, which is what the nightly and the public datasets are for.</p>""")
+that matches nothing here can still be the one that catches tomorrow's attack, and it costs only CPU. It <i>is</i> an argument for
+the corpora being small, which is what the nightly and the public datasets are for.</p>""")
+    body += callout("warn", "This audit was a one-off, and it shows",
+                    T(f"""It is a script run by hand, not a gate: nothing in CI re-runs it, and it needs a directory of real READMEs that is
+                    deliberately not committed. It was taken on the date in “When it was measured”, when there were [[ga_rules]] rules —
+                    there are <b>[[rules_total]]</b> today, so <b>[[ga_rules_new]] of them have never been through it</b>. Re-running it is one
+                    command, and the right moment is before the next round of rule work, not after."""))
     return sec("rules", "The keyword rules", body,
                "What they cover, the polite and passive forms that were missing, and whether each one earns its place.")
 
