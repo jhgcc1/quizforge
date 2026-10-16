@@ -1,4 +1,5 @@
 import { IMPERATIVE_RULES, MODEL_MARKUP, flaggedSegments, type GeneratedQuestion } from "@quizforge/core";
+import { COMMON_WORDS } from "./common-words.generated.js";
 import { UnsafeOutputError } from "./errors.js";
 import { firstBalancedJson, stripThink } from "./json.js";
 import { CRITIQUE_SYSTEM, GENERATION_SYSTEM, JUDGE_SYSTEM, PLAN_SYSTEM, REVISE_SYSTEM } from "./prompts.js";
@@ -88,7 +89,10 @@ export interface LinkTrust {
    * Words the QUIZ may not contain at all: the words that appear only in a line a keyword rule flagged (every word), or only in an
    * excerpt of the semantic detector (only the canary-like ones: a word with a digit such as "ZX9-XRAY", because the detector also
    * flags ordinary paragraphs now and then, and their words are legitimate quiz material). Without the quiz vocabulary and the
-   * common words of en, pt and es (see EXEMPT_WORDS), which every quiz uses.
+   * common words of en, pt and es (see `exempt`), which every quiz uses, and without the words that are frequent in ordinary READMEs
+   * (COMMON_WORDS, generated from a base of real READMEs: "system", "prompt", "model"...). The only words that stay planted are the
+   * rare ones ("pwned", "banana") and every part of a letter+digit token ("zx9-xray": canary parts are NEVER exempted by the
+   * frequency list, so "xray" stays planted even if some README says it).
    */
   plantedWords: Set<string>;
 }
@@ -143,7 +147,8 @@ export function linkTrust(sourceText: string, extraFlagged?: readonly string[]):
     const planted = new Set([...tokensOf(segments.join(" "))].filter((t) => !cleanTokens.has(t)));
     // the quiz may not use these at all: every word of a rule-flagged line, the canary-like words of a detector excerpt
     const skip = exempt();
-    const plantedWords = new Set([...tokensOf(ruleSegments.join(" ")), ...excerpts.flatMap(canaryParts)].filter((t) => !cleanTokens.has(t) && !skip.has(t)));
+    const canary = new Set([...canaryParts(ruleSegments.join("\n")), ...excerpts.flatMap(canaryParts)]);
+    const plantedWords = new Set([...tokensOf(ruleSegments.join(" ")), ...canary].filter((t) => !cleanTokens.has(t) && !skip.has(t) && (canary.has(t) || !COMMON_WORDS.has(t))));
     trust = { strict: true, trusted: clean.toLowerCase(), planted, plantedWords };
   }
   trustCache = { key: sourceText, extra: extraKey, trust };
