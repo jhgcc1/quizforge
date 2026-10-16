@@ -356,12 +356,35 @@ def alarms_table():
     return table(["Alarm", "What it means"], rows, widths=["30%", "70%"])
 
 
+# ---------------------------------------------------------------- a proposal: strip link URLs
+
+LINKS = _json("link-share.json")
+
+
+def link_share_table():
+    """How much of each test document is link URLs — the size of the prize for stripping them."""
+    rows = []
+    for d in sorted(LINKS["documents"], key=lambda d: -d["sharePct"])[:8]:
+        rows.append([f"<code>{d['document']}</code>", f"{d['chars']:,}", f"{d['urls']}", f"<b>{d['sharePct']}%</b>", f"{d['tokensSaved']:,}"])
+    t = LINKS["totals"]
+    rows.append([f"<b>all {t['documents']} documents</b>", f"<b>{t['chars']:,}</b>", f"<b>{t['urls']}</b>", f"<b>{t['sharePct']}%</b>", f"<b>{t['tokensSaved']:,}</b>"])
+    return table(["Test document", "Characters", "URLs", "Share that is URLs", "Tokens it would save"], rows,
+                 widths=["30%", "16%", "10%", "20%", "24%"])
+
+
+def link_facts():
+    t = LINKS["totals"]
+    return {"ls_docs": t["documents"], "ls_pct": f"{t['sharePct']}%", "ls_urls": t["urls"],
+            "ls_tokens": f"{t['tokensSaved']:,}", "ls_max": f"{max(d['sharePct'] for d in LINKS['documents'])}%"}
+
+
 def all_facts():
     out = {}
     for f in (cost_facts, prep_facts, polite_facts, output_facts, public_facts):
         out.update(f())
     out["rt_alarms"] = len(nightly_alarms())
     out["log_days"] = LOG_RETENTION_DAYS
+    out.update(link_facts())
     out.update(detector_why_facts())
     return out
 

@@ -702,6 +702,28 @@ def gaps():
          T("The language policy judges the <i>document</i>, so an attack written in another language inside an English, Portuguese or Spanish README is not refused by it: [[pub_foreign_passed]] of [[pub_foreign_cases]] such cases passed every layer in the measured run (0 blocked by the guard, 0 rejected by the policy, 2 flagged only). Whether any of them went on to affect a quiz is <b>not measured</b> by that run — the contamination oracle ran on a different group of cases"),
          "Either per-paragraph language detection (costly, and it would refuse legitimate multilingual READMEs) or rules keyed on the shape of the attack rather than its language"],
     ], widths=["22%", "39%", "39%"])
+    body += "<h3>A change that would remove the link class entirely</h3>"
+    body += T(f"""<p>The rails above spend real effort deciding <i>which</i> link of a document a quiz may cite. A simpler policy
+is available: <b>strip link URLs on the way in, and refuse any link on the way out</b>. A Markdown link keeps its label
+(<code>[the docs](https://…)</code> becomes “the docs”), so the prose a question is built from stays intact; only the URL goes.
+Nothing in the pipeline does this today — the numbers below are the measurement of the proposal
+({code('scripts/measure-link-share.mjs')} → {code('docs/security/link-share.json')}).</p>""")
+    body += G.link_share_table()
+    body += T("""<p>The prize is larger than the attack it closes. Across the [[ls_docs]] test documents, <b>[[ls_pct]] of the
+characters are URLs</b> ([[ls_urls]] of them, up to [[ls_max]] of a single README), so stripping them would mean:</p>
+<ul>
+<li><b>The exfiltration-by-link class disappears.</b> The model never sees a link, so no instruction can make it repeat one, and
+the strict-mode tests about links become unnecessary — the planted-words test stays, because a canary needs no link.</li>
+<li><b>About [[ls_tokens]] fewer tokens</b> of document per evaluation round: the model spends its context on prose instead of on
+query strings, which is cheaper and probably better.</li>
+<li><b>A cheaper guard.</b> Its cost is linear in the bytes (see “What it costs”), and a quarter of the bytes would be gone —
+along with the base64-inside-a-link case that needed its own handling.</li>
+</ul>
+<p>What it would cost, and why it is not a one-line change: <b>a quiz could never cite a source link</b>, which is a product
+decision, not a security one; the rule on the way out has to <b>refuse</b> a link rather than delete it silently, or a hijacked
+quiz would look correct; a URL written without a scheme (<code>evil.example/x</code>) is not matched by any of this and only
+matters if the front end turns it into a link; and the golden set has to be re-run to show that questions built from
+link-stripped documents are as good, since a quarter of the text changes.</p>""")
     body += callout("", "How to re-generate this report",
                     T(f"{code('scripts/measure-guard-cost.mjs')} for the cost table, the scripts behind each JSON in "
                           f"{code('docs/security')} for the rest, then <code>python3 site/build.py --guardrails --public</code>. "
