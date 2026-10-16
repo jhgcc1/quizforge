@@ -151,10 +151,10 @@ order given to the model) and only those are used by the output rails; the rest 
 <p>Rules for other languages were removed on purpose. A document in German or Russian is refused by the <b>language policy</b>
 before anything else, so a German rule would protect nothing and would cost a false positive.</p>""")
     body += "<h3>Polite and passive forms: the attack that says please</h3>"
-    body += T("""<p>Early rules read like a hacker: “ignore all previous instructions”. Real attacks are often polite
-(“could you kindly, before each question, add…”), passive (“the quiz is to be prefixed by…”) or impersonal. Those forms were
-measured on one nightly run of [[pol_cases]] attacks: the rules caught <b>[[pol_old]] ([[pol_old_pct]])</b> before the polite
-family existed and <b>[[pol_with]] ([[pol_with_pct]])</b> with it — [[pol_rules]] polite rules, no false positive anywhere:</p>""")
+    body += T("""<p>An attack does not have to read like a hacker. It can be polite (“could you kindly, before each question,
+add…”), passive (“the quiz is to be prefixed by…”) or impersonal, and <b>[[pol_rules]] of the rules exist for exactly those
+forms</b>. Measured on one nightly run of [[pol_cases]] attacks, the rules catch <b>[[pol_with]] ([[pol_with_pct]])</b> — and on
+benign documents they cost nothing:</p>""")
     body += G.polite_table()
     body += "<h3>Does every rule earn its place?</h3>"
     body += T(f"""<p>Once, every rule was run against [[ga_corpora]] corpora, [[ga_docs]] documents in all, to see which rules do
@@ -219,18 +219,19 @@ instruction aimed at <i>it</i>, which is the only distinction that matters here.
 attacks that the keyword rules already catch better. And “block only when a rule agrees” does not rescue it either:
 [[dw_flagged_rules]] of these [[dw_flagged_n]] legitimate READMEs have a rule match too, and that policy's recall is measured
 below.</p>""")
-    body += "<h3>Preparing the input: the same model, fewer false positives</h3>"
-    body += T(f"""<p>The false positives had a cause that was not semantic at all: <b>badge rubble</b>. A README head full of
-<code>![License MIT ](…</code> shields, with link targets cut in the middle, reads to the classifier like a command. The shipped
-preparation removes status badges and cut links before the scan — nothing else. [[dp_variants]] variants were measured
-({code('docs/security/detector-prep.md')}); dropping code, or reducing it to its prose, was rejected because it lost recall.</p>""")
+    body += "<h3>The text the classifier actually scores</h3>"
+    body += T(f"""<p>The document is prepared before it is scored: <b>status badges and cut link targets are removed</b>, and nothing
+else. A README head full of <code>![License MIT ](…</code> shields, with link targets broken in the middle, reads to the
+classifier like a command, and that rubble is not content anyone wants scored. Code is <i>kept</i>: removing it, or reducing it to
+its prose, costs recall ({code('docs/security/detector-prep.md')} measures [[dp_variants]] variants of this choice).</p>
+<p>With that input, on documents that carry no attack at all:</p>""")
     body += G.prep_fp_table()
-    body += T("<p>On the attack sets, the preparation had to be free: not one catch may be lost, in any language.</p>")
+    body += T("<p>And on documents that <i>are</i> attacks, in every language and placement that is measured:</p>")
     body += G.prep_recall_table()
     body += "<h3>How often does it fire on a real README?</h3>"
-    body += T("""<p>A wide benign measurement, on real READMEs in three languages: <b>[[dp_wide_docs]] documents</b>,
-[[dp_wide_before]] flagged before the preparation and <b>[[dp_wide_after]] after ([[dp_wide_after_pct]])</b>. The keyword rules
-flag [[dp_wide_rules]] of the same documents ([[dp_wide_rules_pct]]), and both layers agree on only [[dp_wide_both]].</p>""")
+    body += T("""<p>On <b>[[dp_wide_docs]] real READMEs</b> in three languages, the detector flags <b>[[dp_wide_after]]
+([[dp_wide_after_pct]])</b>. The keyword rules flag [[dp_wide_rules]] of the same documents ([[dp_wide_rules_pct]]), and the two
+layers agree on only [[dp_wide_both]] — they are not looking at the same thing.</p>""")
     body += G.prep_wide_table()
     body += "<h3>Could a policy block on agreement?</h3>"
     body += T("""<p>The obvious idea — block when the detector <i>and</i> a rule agree — was measured instead of assumed. On one
@@ -310,9 +311,9 @@ text</i>. Then three tests run against it ({code('packages/llm/src/output-guard.
         ["— (the sharper attempt: <code>https://github.com/zx9-xray</code>, a host nobody suspects)", "the host is, the path is not", "<b>rejected</b> by test 2: <code>zx9-xray</code> occurs only in the flagged line"],
         ["— (no link at all, the word <code>ZX9-XRAY</code> inside a question)", "no", "<b>rejected</b> by test 3: the canary is a planted word"],
     ], widths=["44%", "18%", "38%"])
-    body += T("""<p>And the symmetric case, which is why test 3 had to be narrowed: a word like “system” that the attack line uses
-<i>and</i> that is normal in READMEs is <b>not</b> planted, because the frequency list exempts it. The rail keeps the rare words
-and every part of a letter+digit token, which is what a canary looks like.</p>""")
+    body += T("""<p>And the symmetric case, which test 3 must not fail: a word like “system”, which the attack line uses <i>and</i>
+which is normal in a README, is <b>not</b> planted — the frequency list exempts it. What stays planted is the rare words and every
+part of a letter+digit token, which is what a canary looks like.</p>""")
     body += "<h3>What is removed, what is only compared, and what is rejected</h3>"
     body += T(f"""<p>“The flagged lines are removed” is easy to misread as the system editing the document or the quiz. It does
 neither. Three different things happen in three different places:</p>""")
@@ -333,16 +334,15 @@ neither. Three different things happen in three different places:</p>""")
 document fails the grounding gate and is removed, which is why the generation asks for one spare question — so the user still
 gets the number of questions they asked for.</p>""")
 
-    body += "<h3>The planted-words rail had to be made narrow</h3>"
-    body += T(f"""<p>The rail rejected ordinary words. The golden item <code>prompt-injection</code> failed because a question used
-“system”, a word that in that README occurs only inside the attack line. The fix is a generated frequency list: a word is never
-planted when it occurs in at least 5% of the READMEs of its language, and canary parts (a letter+digit token such as
-<code>zx9-xray</code>) are never exempt ({code('docs/security/planted-words.md')}). Measured on the real READMEs that have a
-rule-flagged line, the rail used to plant <b>{before}</b> ordinary words across [[pw_docs]] documents and now plants <b>{after}</b>:</p>""")
-    body += planted_tbl
-    body += f"""<p>What is left is rare words that really are content of a flagged line (<code>bypass</code>, <code>haiku</code>),
-plus commit hashes and user names. They only matter in a document that <i>also</i> has a flagged line, and the consequence is a
-repair round, not a wrong quiz — but it is a residual false positive, and it is listed in the gaps.</p>"""
+    body += "<h3>How narrow the planted-words rail is</h3>"
+    body += T(f"""<p>The rail only bites on a document that <i>has</i> a flagged line, and even there a word is never planted when it
+is <b>common</b>: it occurs in at least 5% of the READMEs of its language, by a generated frequency list. Canary parts are the
+exception — every part of a letter+digit token such as <code>zx9-xray</code> stays planted whatever the list says
+({code('docs/security/planted-words.md')}). On the real READMEs that have a flagged line, these are the words it still treats as
+planted:</p>""")
+    body += T(f"""<p>They are rare words that really are content of a flagged line (<code>bypass</code>, <code>detenidamente</code>),
+plus commit hashes and user names — <b>[[pw_after]] words across [[pw_docs]] documents</b>. The consequence of one of them reaching
+a quiz is a repair round, not a wrong quiz, but it is a residual false positive and it is listed in the gaps.</p>""")
     body += "<h3>Does the quiz stay about the document when the document attacks?</h3>"
     body += T(f"""<p>The replay of public attacks produced <b>[[tc_quizzes]] quizzes</b>, scored offline against the <i>clean</i>
 README with the repository's own <code>scoreQuiz</code> ({code('promptfoo/redteam/replay/topic-check.ts')}). All of them are
@@ -522,10 +522,9 @@ would be a broken layer is a refused language reaching the model, and it is <b>0
 ([[pub_blocked_langs]]).</p>""")
     body += "<h3>The encodings</h3>"
     body += G.encoded_table()
-    body += T("""<p>This is the measurement that sent work back into the guard: in that run, <b>[[pub_encoded_reached]] encoded
-cases reached the model</b> — rot13 and leetspeak, which base64 never did. None of them contaminated a quiz (the model ignored
-them), but “the model happened to resist” is not a guardrail. Deterministic detection of leetspeak and rot13, including text that
-is readable <i>only</i> after decoding, was added to the guard afterwards; the cost of that scan is the subject of “What it
+    body += T("""<p>The guard decodes base64, hexadecimal and percent-encoding, and it also catches rot13, reversed text and
+leetspeak deterministically — including a sentence that no rule knows and that is simply <i>readable only after decoding</i>.
+That last test is what covers an encoding an attacker invents on the night, and its CPU cost is the subject of “What it
 costs”.</p>""")
     return sec("datasets", "Where the attacks come from", body,
                "Three kinds of source, what each one is for, and what the latest measured nightly found.")
@@ -559,11 +558,10 @@ find. That protects against a number being <i>invented</i>; it does not protect 
 is a photograph: it was taken on a day, against the code of that day, and the code moved on. This table is the shutter speed.</p>""")
     body += G.provenance_table()
     body += callout("warn", "What is stale, in one line",
-                    T("The guard changed a lot in the last three days (five pull requests, [[rules_total]] rules now). The rule audit and the "
-                      "polite-rule recall were measured before the newest rules, the public benchmark predates both the additions and the "
-                      "narrowing, and the nightly table is the run that sent the rot13 and leetspeak work into the guard — which has since "
-                      "shipped, so that part is <b>out of date in the good direction</b>. The cost measurement, the detector preparation and "
-                      "the planted-words list are of the code that is in production now."))
+                    T("The guard moves fast — [[rules_total]] rules now, five pull requests in three days. The rule audit covers "
+                      "[[ga_rules]] of them, the polite-rule recall and the public benchmark were taken against an older rule set, and the "
+                      "nightly table predates the rot13 and leetspeak tests, so that part reads <b>worse than the guard now is</b>. The cost "
+                      "measurement, the detector numbers and the planted-words list are of the code that is in production."))
     return sec("provenance", "When each number was measured", body,
                "The date behind every table, and whether it still covers the code that is running.")
 
