@@ -294,6 +294,16 @@ rather than serve a quiz that obeyed an attacker.</p>"""
     ], widths=["14%", "45%", "41%"])
     body += "<h3>Strict link mode, drawn</h3>" + d.strict_link()
     body += "<h3>Strict mode, test by test</h3>"
+    body += T(f"""<p><b>The principle.</b> A plain check compares the reply against the document — but the document belongs to the
+attacker, so any comparison he can satisfy by writing is no check at all. Strict mode shrinks what counts as the source: the parts
+of the document that <b>give orders</b> lose the right to be cited. The document is split into two classes, content and
+instruction, and the reply may only be supported by the first. The property it buys is narrow and checkable: <b>nothing enters the
+quiz because it was ordered to</b>. It is not a judgement about whether a link is malicious — no deterministic check could make
+that one — and that is exactly why it holds.</p>
+<p><b>Which parts are the instruction.</b> {code('packages/core/src/guard.ts', '<code>flaggedSegments</code>')} returns the parts
+that give an order (only the imperative rules count; a rule that merely mentions a system prompt does not). A short line is taken
+<b>whole</b>, deliberately: an attacker can put the order in one sentence and the payload — a URL — in the next one. Inside a long
+paragraph, only the flagged sentences are taken, so one bad sentence does not disqualify a page of prose.</p>""")
     body += T(f"""<p><b>What turns it on:</b> any flag on the document — a keyword rule matching a line, or the semantic detector
 flagging a window. Not the severity of the flag, not a score: one flag is enough, from either layer.</p>
 <p><b>What it builds:</b> a copy of the document with the flagged lines and the detector excerpt taken out, called the <i>clean
