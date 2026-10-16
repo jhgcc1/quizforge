@@ -1,3 +1,4 @@
+import { readableAfterDecoding } from "./obfuscation";
 import { IMPERATIVE_RULES, MODEL_MARKUP, matchingRules, type RuleCategory } from "./injection-rules";
 
 /**
@@ -56,7 +57,7 @@ const CONFUSABLE: Record<string, string> = {
   ο: "o", ν: "v", ρ: "p", α: "a", ε: "e", ι: "i", κ: "k", τ: "t", υ: "u", χ: "x", β: "b", η: "n", μ: "u",
 };
 
-const LEET: Record<string, string> = { "0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "7": "t", "@": "a", $: "s", "!": "i" };
+const LEET: Record<string, string> = { "0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "7": "t", "@": "a", $: "s", "!": "i", "8": "b", "9": "g", "+": "t" };
 
 const rot13 = (s: string): string =>
   s.replace(/[a-z]/gi, (c) => { const base = c <= "Z" ? 65 : 97; return String.fromCharCode(((c.charCodeAt(0) - base + 13) % 26) + base); });
@@ -78,7 +79,7 @@ export function normalizeForMatching(s: string): string {
   return out;
 }
 
-const deLeet = (s: string): string => s.replace(/[0134578@$!]/g, (c) => LEET[c] ?? c);
+const deLeet = (s: string, one = "i"): string => s.replace(/[01345789@$!+]/g, (c) => (c === "1" ? one : (LEET[c] ?? c)));
 
 /** "i g n o r e   p r e v i o u s" -> "ignore previous" (single letters separated by single spaces/dots/dashes). */
 function collapseSpaced(s: string): string {
@@ -129,13 +130,24 @@ function fromHex(token: string): string | undefined {
   return tryUtf8(bytes);
 }
 
-/** Every decoded candidate found in the text: [encoding, decoded text]. */
-export function decodeCandidates(text: string): [string, string][] {
-  const out: [string, string][] = [];
-  const add = (enc: string, decoded: string | undefined) => {
-    if (decoded && decoded.length >= 8 && printableRatio(decoded) >= 0.9) out.push([enc, decoded]);
+/** True when the run at `index` is part of a link (https://host/path?x=<run>, a data: URI): the chunk before it, up to a space or bracket, has "://". */
+function insideUrl(text: string, index: number): boolean {
+  let start = index;
+  while (start > 0 && index - start < 300 && !/[\s()<>"'[\]]/.test(text[start - 1]!)) start--;
+  return text.slice(start, index).includes("://");
+}
+
+/**
+ * Every decoded candidate found in the text: [encoding, decoded text, inUrl]. `inUrl` marks a base64 run inside a link target
+ * (a tracking parameter, a shared selector, an embedded badge): such a run is only an attack when it decodes to an INSTRUCTION,
+ * a readable sentence alone is normal there (see inspectText).
+ */
+export function decodeCandidates(text: string): [string, string, boolean?][] {
+  const out: [string, string, boolean?][] = [];
+  const add = (enc: string, decoded: string | undefined, inUrl = false) => {
+    if (decoded && decoded.length >= 8 && printableRatio(decoded) >= 0.9) out.push([enc, decoded, inUrl]);
   };
-  for (const m of text.matchAll(/(?<![A-Za-z0-9+/_-])[A-Za-z0-9+/_-]{24,}={0,2}(?![A-Za-z0-9+/_-])/g)) add("base64", fromBase64(m[0]));
+  for (const m of text.matchAll(/(?<![A-Za-z0-9+/_-])[A-Za-z0-9+/_-]{24,}={0,2}(?![A-Za-z0-9+/_-])/g)) add("base64", fromBase64(m[0]), insideUrl(text, m.index));
   for (const m of text.matchAll(/(?<![0-9a-fA-F])(?:[0-9a-fA-F]{2}){12,}(?![0-9a-fA-F])/g)) add("hex", fromHex(m[0]));
   for (const m of text.matchAll(/(?:%[0-9a-fA-F]{2}){8,}/g)) {
     try { add("percent-encoding", decodeURIComponent(m[0])); } catch { /* not valid UTF-8: ignore */ }
@@ -160,7 +172,7 @@ export function decodeCandidates(text: string): [string, string][] {
 
 const COMMENT = /<!--[\s\S]*?-->/g;
 /** An image embedded in the text (a badge, a logo, a diagram): `data:image/...;base64,<bytes>`. Group 1 is the base64 payload. */
-const INLINE_IMAGE = /data:image\/[a-z0-9.+-]+(?:;[a-z0-9=._+-]+)*;base64,([A-Za-z0-9+/_-]+={0,2})/gi;
+const INLINE_IMAGE = /data:image\/(?:[a-z0-9.-]|\+|%2b)+(?:;[a-z0-9=._+-]+)*;base64,([A-Za-z0-9+/_-]+={0,2})/gi;
 const HIDDEN_ELEMENT = /<([a-z][a-z0-9]*)\b[^>]*(?:\bhidden\b|aria-hidden\s*=\s*["']?true|style\s*=\s*["'][^"']*(?:display\s*:\s*none|visibility\s*:\s*hidden|font-size\s*:\s*0|opacity\s*:\s*0|color\s*:\s*(?:white|#fff(?:fff)?))[^"']*["'])[^>]*>([\s\S]*?)<\/\1>/gi;
 
 export interface InspectOptions {
@@ -231,9 +243,9 @@ export function inspectText(input: string, _opts: InspectOptions = {}): InspectR
   if (MODEL_MARKUP.test(text)) add({ kind: "model_markup", severity: "block", detail: "contains chat-template markers (for example <|im_start|>)" });
 
   // 6. encoded payloads: decode, then look for instructions or plain sentences
-  for (const [enc, decoded] of decodeCandidates(text)) {
+  for (const [enc, decoded, inUrl] of decodeCandidates(text)) {
     if (hasInjection(decoded) || MODEL_MARKUP.test(decoded)) add({ kind: "encoded_payload", severity: "block", detail: `an instruction is hidden in ${enc}`, sample: excerpt(decoded) });
-    else if (decoded.length >= 40 && looksLikeSentence(decoded)) add({ kind: "encoded_payload", severity: "block", detail: `a readable sentence is hidden in ${enc}`, sample: excerpt(decoded) });
+    else if (!inUrl && decoded.length >= 40 && looksLikeSentence(decoded)) add({ kind: "encoded_payload", severity: "block", detail: `a readable sentence is hidden in ${enc}`, sample: excerpt(decoded) });
   }
 
   // 7. obfuscated instructions in the visible text: rot13, reversed, leetspeak, spaced letters, look-alike letters
@@ -242,10 +254,20 @@ export function inspectText(input: string, _opts: InspectOptions = {}): InspectR
     ["rot13", rot13(norm)],
     ["reversed text", reverse(norm)],
     ["leetspeak", deLeet(norm)],
+    ["leetspeak", deLeet(norm, "l")],
     ["spaced letters", collapseSpaced(norm)],
   ];
+  const seen = new Set<string>();
   for (const [name, v] of variants) {
-    if (hasInjection(v) && !hasInjection(norm)) add({ kind: "obfuscated_instruction", severity: "block", detail: `an instruction is written in ${name}` });
+    if (!seen.has(name) && hasInjection(v) && !hasInjection(norm)) {
+      seen.add(name);
+      add({ kind: "obfuscated_instruction", severity: "block", detail: `an instruction is written in ${name}` });
+    }
+  }
+  // not an instruction the rules know, but a sentence that is readable ONLY after decoding (rot13, reversed, leetspeak): hidden text
+  if (!seen.size) {
+    const readable = readableAfterDecoding(norm);
+    if (readable) add({ kind: "obfuscated_instruction", severity: "block", detail: `readable text is hidden in ${readable.encoding}`, sample: excerpt(readable.segment) });
   }
   // look-alike letters (Cyrillic/Greek inside a Latin word): only matters if it changes the meaning into an instruction
   const mixed = [...text.matchAll(/\b[\p{L}]{4,}\b/gu)].filter((m) => /\p{Script=Latin}/u.test(m[0]) && /[\p{Script=Cyrillic}\p{Script=Greek}]/u.test(m[0]));
