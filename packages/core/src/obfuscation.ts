@@ -19,6 +19,9 @@ numa pelos elas qual nós lhe deles essas esses pelas este fosse dele tu te voc�
 la el en y los del las un con una su al lo pero sus le ya este sí porque esta cuando muy sin sobre también hasta hay donde quien desde
 todo nos durante todos uno les ni contra otros ese eso ante ellos esto mí antes algunos qué unos yo otro otras otra él tanto esa estos
 mucho quienes nada muchos cual poco ella estar estas algunas algo nosotros mi mis tú te ti tu tus ellas
+foi são está ser era pode deve cada aqui onde isto sido será podem devem fazer ainda sobre
+es son fue puede debe aquí será pueden deben hacer aún
+please may shall here now been being could
 ` + " a e o y").split(/\s+/).filter(Boolean);
 const STOP = new Set(WORDS);
 

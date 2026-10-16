@@ -1,4 +1,5 @@
 import { readableAfterDecoding } from "./obfuscation";
+import { topicOrder } from "./topic-rules";
 import { IMPERATIVE_RULES, MODEL_MARKUP, matchingRules, type RuleCategory } from "./injection-rules";
 
 /**
@@ -337,6 +338,6 @@ export function checkShortText(s: string): TextIssue | undefined {
   if (r.findings.some((f) => f.kind === "encoded_payload" || f.kind === "obfuscated_instruction" || f.kind === "mixed_script_word" || f.kind === "model_markup" || f.kind === "hidden_html")) {
     return { code: "encoded", message: "looks like encoded or disguised text" };
   }
-  if (r.findings.some((f) => f.kind === "injection_phrase")) return { code: "injection", message: "looks like an instruction to the AI, not a topic" };
+  if (r.findings.some((f) => f.kind === "injection_phrase") || topicOrder(s) !== undefined) return { code: "injection", message: "looks like an instruction to the AI, not a topic" };
   return undefined;
 }

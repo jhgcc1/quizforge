@@ -5,3 +5,5 @@ export * from "./catalog.js";
 export * from "./guard.js";
 export * from "./attacks.js";
 export * from "./injection-rules.js";
+export * from "./topic-rules.js";
+export * from "./obfuscation.js";
