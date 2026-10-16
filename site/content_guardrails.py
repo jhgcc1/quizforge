@@ -17,7 +17,7 @@ INFRA = "https://github.com/jhgcc1/quizforge-infra"
 NAV = [("summary", "In short"), ("input", "Input guard"), ("rules", "The rules"), ("detector", "Prompt Guard 2"),
        ("cost", "What it costs"), ("output", "Output rails"), ("promptfoo", "promptfoo"), ("redteam", "Red team"),
        ("nightly", "Nightly and alerts"), ("datasets", "Where the attacks come from"), ("prompts", "The prompts"),
-       ("gaps", "Open gaps")]
+       ("provenance", "When it was measured"), ("gaps", "Open gaps")]
 
 EXTRA_FACTS = G.all_facts()
 
@@ -89,7 +89,8 @@ in layers, and each layer is measured separately, because a layer that is only b
         ["<b>Input guard</b> (deterministic)", T("Hidden text, encodings, chat markup and [[rules_total]] keyword rules over the text and over its decoded variants"), "<b>Blocks</b> hidden or encoded instructions; <b>flags</b> a plain-text instruction (a tutorial may quote one)", "“Input guard”, “The rules”"],
         ["<b>Semantic detector</b>", T("[[dp_model]], threshold [[dp_threshold]], windows of [[det_chars]] characters"), "Only <b>flags</b>. The flag switches the output rails to strict mode", "“Prompt Guard 2”"],
         ["<b>The prompts</b>", "The document arrives inside <code>&lt;document&gt;</code> tags, declared as data, with the task rules", "Nothing by itself: it makes the model resist", "“The prompts”"],
-        ["<b>Output rails</b>", "Grounding, quote check, links, echoed instructions, planted words, prompt leak, reply shape", "<b>Rejects</b> the reply, after one repair round", "“Output rails”"],
+        ["<b>Grounding gate</b>", "Every question must quote the document, and the quote must occur in it as a reader sees it", "<b>Drops</b> a question that does not; fails the job when too few are left", "“Output rails”"],
+        ["<b>Output rails</b>", "Reply shape, prompt leak, markup, links, echoed instructions, planted words, looks-like-a-quiz", "<b>Rejects</b> the reply, after one repair round", "“Output rails”"],
     ], widths=["16%", "34%", "34%", "16%"])
     body += callout("ok", "Rules first, the model second, and both measured",
                     T("On a public benchmark of [[all_inj]] injections and [[all_ben]] benign rows, the rules caught [[all_rules_pct]], "
@@ -227,11 +228,16 @@ And it grows with the bytes:</p>""")
 
 def output():
     planted_tbl, before, after = G.planted_table()
-    body = f"""<p>The reply of the model is checked by {code('packages/llm/src/output-guard.ts')} before it becomes a quiz. A first
+    body = f"""<p>Two different things check the reply, and they are worth keeping apart.</p>
+<p><b>The grounding gate</b> ({code('packages/core/src/quiz-schema.ts', '<code>checkGrounding</code>')}, applied in
+{code('packages/llm/src/quiz-graph.ts')}) asks whether each question quotes the document: the <code>sourceQuote</code> must occur
+in the document <i>as a reader sees it</i>. A question that does not is <b>dropped</b> — one spare candidate is generated so the
+quiz still has the requested number — and the job fails when too few grounded questions are left. It is the reason an invented
+question cannot reach a user.</p>
+<p><b>The output rails</b> ({code('packages/llm/src/output-guard.ts')}) are seven deterministic checks, no second model. A first
 list of problems goes back to the model for <b>one repair round</b>; anything still wrong afterwards is rejected and the job fails
 rather than serve a quiz that obeyed an attacker.</p>"""
-    body += table(["Rail", "What it rejects", "Why an attacker tries it"], [
-        ["<b>Grounding</b>", "A question or an answer that the document does not support, and a <code>sourceQuote</code> that is not in the document as a reader sees it", "Invented content is how a hijacked quiz carries the attacker's message"],
+    body += table(["Rail (output-guard.ts)", "What it rejects", "Why an attacker tries it"], [
         ["<b>Reply shape</b>", "Anything but the JSON object (a little text around it is tolerated, beyond that it is refused)", "“Answer in plain text instead of JSON” breaks the contract and the checks downstream"],
         ["<b>Prompt leak</b>", "An 8-word run of our own system prompts appearing in the reply", "“Repeat your instructions” — the classic"],
         ["<b>Markup</b>", "Script, iframe, event handlers, chat-template tokens, unless the document itself contains them", "The quiz is rendered in a browser"],
@@ -271,7 +277,7 @@ the model invent content: those quizzes are grounded ([[tc_live_grounded]]) and 
 document wins. The gap there is in the product, not in the guard — the user is not told that the topic was not found
 ({code('docs/security/guard-audit.md')}), and it is listed in the gaps.</p>""")
     return sec("output", "The output rails", body,
-               "Eight checks on the reply, one repair round, then rejection — and the two rails that needed measuring to stay honest.")
+               "The grounding gate, the seven deterministic rails, one repair round — and the two rails that needed measuring to stay honest.")
 
 
 # ---------------------------------------------------------------------------- 7. promptfoo
@@ -291,6 +297,10 @@ says they do. The suites are described in {code('promptfoo/README.md')}.</p>""")
         [T("<code>redteam-sample</code>"), T("[[pf_sample]] (+[[pf_policy]])"), "fake, then MiniMax", T("[[pf_sample]] frozen attacks in en ([[pf_sample_en]]), pt ([[pf_sample_pt]]) and es ([[pf_sample_es]]) never make the agent print a canary or its prompts; plus READMEs in five refused languages"), "Job <code>redteam-sample</code>, pull requests of this repository and every merge to main"],
         [T("<code>redteam-nightly</code>"), T("≈[[pf_nightly]] canary cases + ≈[[pub_cases]] public-dataset cases"), "MiniMax", "The same checks with a fresh, larger set every night, plus encodings and public datasets. It reports; it does not fail", T("A Fargate task, [[redteam_time]]")],
     ], widths=["14%", "12%", "11%", "45%", "18%"])
+    body += T(f"""<p>The suites do not stand alone: the guard, the rails and the helpers of promptfoo itself are also covered by
+<b>[[tests_total]] unit and integration tests</b> ([[cov_stmt]] of statements, [[tests_skipped]] skipped, measured on
+[[tests_date]] by {code('scripts/measure-facts.sh')}). promptfoo answers a question those cannot: whether the <i>real</i> model,
+behind the <i>real</i> prompts, still refuses.</p>""")
     body += T(f"""<h3>Where the gates sit</h3>
 <p>The merge needs [[ci_required]] required checks. <code>promptfoo</code> is one of them; <code>redteam-sample</code> is
 deliberately <b>not</b> required (the maintainer decides, because it calls a real model). After the merge, the real-model
@@ -415,6 +425,21 @@ lands and part of the defence. There are <b>[[prompts_n]] prompts</b> in the cat
 # ---------------------------------------------------------------------------- 12. gaps
 
 
+def provenance():
+    body = T(f"""<p>Every figure on this page is read from a file when the page is built, and the build fails on a token it cannot
+find. That protects against a number being <i>invented</i>; it does not protect against a number being <i>old</i>. A measurement
+is a photograph: it was taken on a day, against the code of that day, and the code moved on. This table is the shutter speed.</p>""")
+    body += G.provenance_table()
+    body += callout("warn", "What is stale, in one line",
+                    T("The guard changed a lot in the last three days (five pull requests, [[rules_total]] rules now). The rule audit and the "
+                      "polite-rule recall were measured before the newest rules, the public benchmark predates both the additions and the "
+                      "narrowing, and the nightly table is the run that sent the rot13 and leetspeak work into the guard — which has since "
+                      "shipped, so that part is <b>out of date in the good direction</b>. The cost measurement, the detector preparation and "
+                      "the planted-words list are of the code that is in production now."))
+    return sec("provenance", "When each number was measured", body,
+               "The date behind every table, and whether it still covers the code that is running.")
+
+
 def gaps():
     _, _, after = G.planted_table()
     body = "<p>What this report cannot claim, stated as plainly as the rest.</p>"
@@ -447,7 +472,7 @@ def gaps():
 
 
 def all_sections():
-    return [summary(), input_guard(), rules(), detector(), cost(), output(), promptfoo(), redteam(), nightly(), datasets(), prompts(), gaps()]
+    return [summary(), input_guard(), rules(), detector(), cost(), output(), promptfoo(), redteam(), nightly(), datasets(), prompts(), provenance(), gaps()]
 
 
 TITLE = "QuizForge: guardrails and promptfoo"

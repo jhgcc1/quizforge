@@ -347,3 +347,57 @@ def all_facts():
         out.update(f())
     out["rt_alarms"] = len(nightly_alarms())
     return out
+
+
+# ---------------------------------------------------------------- provenance: when each number was measured
+
+import subprocess  # noqa: E402
+
+
+def _measured_on(rel):
+    """The date of the last commit that touched a measured file: when that measurement was taken."""
+    try:
+        out = subprocess.run(["git", "log", "-1", "--format=%cs %h", "--", rel], cwd=ROOT, capture_output=True, text=True, timeout=10)
+        return out.stdout.strip() or "not committed yet"
+    except Exception:
+        return "unknown"
+
+
+def provenance_table():
+    """Every measurement this report stands on: the file, the day it was taken, and whether it still covers today's code.
+
+    This is the honest part of a report whose numbers come from files: a measurement is a photograph, and the code moved on.
+    """
+    import facts as F  # local import: facts imports facts_repo, never this module
+
+    rules_now = F.RULES_TOTAL
+    rules_audited = len({r["id"] for r in AUDIT["rules"]})
+    polite_then = POLITE["totalRules"]
+    rows = [
+        ["CPU cost of the guard", "<code>guard-cost.json</code>", _measured_on("docs/security/guard-cost.json"),
+         f"The guard as it is now (commit <code>{COST['commit']}</code>), two CPU profiles", "<b>current</b>"],
+        ["Public benchmark: recall and false positives", "<code>benchmark.json</code>", _measured_on("docs/security/benchmark.json"),
+         "500 sampled rows of a public dataset against the rules and the detector", "<b>partial</b>: rules were added <i>and</i> some were narrowed since, so this is the recall of that day, not of today"],
+        ["Detector input preparation", "<code>detector-prep.json</code>", _measured_on("docs/security/detector-prep.json"),
+         "415 benign documents, 8 attack sets, the two-signal policy table", "<b>current</b>: the preparation shipped with it"],
+        ["Wide benign measurement", "<code>detector-prep.json</code> (<code>wideBenign</code>)", _measured_on("docs/security/detector-prep.json"),
+         "722 real READMEs in en, pt and es", "<b>current</b> for the detector; the rule column predates the newest rules"],
+        ["Rule audit (does each rule earn its place)", "<code>guard-audit.json</code>", _measured_on("docs/security/guard-audit.json"),
+         f"{rules_audited} rules against {len(AUDIT['groups'])} corpora", f"<b>partial</b>: there are {rules_now} rules today, so {rules_now - rules_audited} have never been audited"],
+        ["Polite and passive rules", "<code>polite-rules.json</code>", _measured_on("docs/security/polite-rules.json"),
+         f"Recall on one nightly run, false positives on 415 benign documents, at {polite_then} rules", f"<b>partial</b>: measured at {polite_then} rules, today there are {rules_now}"],
+        ["Planted-words rail on benign READMEs", "<code>planted-words-benign.json</code>", _measured_on("docs/security/planted-words-benign.json"),
+         "The real READMEs that have a rule-flagged line, before and after the frequency list", "the rail itself is unchanged since, but the rules that decide which lines are flagged are not, so the count can have moved"],
+        ["The quiz under attack, and the topic field", "<code>topic-check.json</code>", _measured_on("docs/security/topic-check.json"),
+         "235 replay quizzes offline, 15 quizzes through the real model", "<b>predates the topic rules</b>: <code>topic-rules.ts</code> shipped later, so this measures the quiz, not those rules"],
+        ["Public datasets at night", "<code>public-datasets-nightly.json</code>", _measured_on("docs/security/public-datasets-nightly.json"),
+         "One nightly run: 420 cases from 5 pinned sources", "<b>superseded</b>: this is what sent the rot13 and leetspeak work into the guard, which has since shipped"],
+        ["Replay through the real pipeline", "<code>replay-deepset.json</code>, <code>replay-ptes.json</code>", _measured_on("docs/security/replay-deepset.json"),
+         "Public attacks embedded in READMEs and run against the real model", "<b>partial</b>: predates the newest rules"],
+        ["Test counts, coverage, suite sizes", "<code>site/measured.json</code>", _measured_on("site/measured.json"),
+         "What only a run can give: tests, coverage, the size of the promptfoo suites", "see the date: re-run <code>scripts/measure-facts.sh</code> after a code change"],
+        ["Rules, settings, alarms, CI, prompts", "the repository and <code>terraform/</code>", "read at build time",
+         "Counted from the source files every time this page is built", "<b>always current</b>"],
+    ]
+    return table(["Measurement", "File", "Measured on", "What it covers", "Does it cover today's code?"], rows,
+                 widths=["20%", "16%", "11%", "28%", "25%"])
