@@ -586,7 +586,7 @@ def gaps():
          T("[[pub_passed]] public cases passed both layers, and the measurement does not say which of them are instructions aimed at the agent and which are requests for harmful content — out of scope by design, since the product only makes a quiz about a document. Without that split the number invites the wrong reading"),
          "Classify stage A by what the attack asks for, and report the two groups apart; only the first group is an argument for a new rule"],
         [T("<b>A foreign-language attack inside a supported document</b>"),
-         T("The language policy judges the document, so an attack written in another language inside an English, Portuguese or Spanish README is not refused by it: [[pub_foreign_passed]] of [[pub_foreign_cases]] such cases passed every layer in the measured run. None contaminated a quiz"),
+         T("The language policy judges the <i>document</i>, so an attack written in another language inside an English, Portuguese or Spanish README is not refused by it: [[pub_foreign_passed]] of [[pub_foreign_cases]] such cases passed every layer in the measured run (0 blocked by the guard, 0 rejected by the policy, 2 flagged only). Whether any of them went on to affect a quiz is <b>not measured</b> by that run — the contamination oracle ran on a different group of cases"),
          "Either per-paragraph language detection (costly, and it would refuse legitimate multilingual READMEs) or rules keyed on the shape of the attack rather than its language"],
     ], widths=["22%", "39%", "39%"])
     body += callout("", "How to re-generate this report",
