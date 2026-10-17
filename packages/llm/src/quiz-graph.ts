@@ -46,6 +46,11 @@ export interface QuizGraphInput {
   /** "plan-then-write": plan the facts to test first, then write one question per fact (instead of generating directly). */
   planFirst?: boolean;
   /**
+   * Language of the document, as the language policy detected it ("en" | "pt" | "es"). Passed on to the generator so it is
+   * told the language instead of inferring it from the text; absent means "could not tell", and the prompt stays generic.
+   */
+  language?: string | undefined;
+  /**
    * Excerpts the semantic detector flagged (an entry may be empty when it gave none). Any entry puts the output rails in STRICT
    * link mode, like a keyword finding does (see output-guard.ts).
    */
@@ -184,9 +189,9 @@ export function buildQuizGraph(deps: QuizGraphDeps, checkpointer?: BaseCheckpoin
           budget: deps.budget,
           schema: Candidates,
           system: generationSystem(s.input.promptVariant),
-          user: sectionUser({ heading: sec.heading, text: sec.text, n: 2, topic }),
+          user: sectionUser({ heading: sec.heading, text: sec.text, n: 2, topic, language: s.input.language }),
           options: { name: `generate:section:${sec.heading.slice(0, 40)}`, temperature: 0.4 },
-          check: quizReplyCheck(sourceText, s.input.flaggedExcerpts),
+          check: quizReplyCheck(sourceText, s.input.flaggedExcerpts, s.input.language),
         });
         usage = addUsage(usage, r.usage);
         repairs += r.repairs;
@@ -212,9 +217,9 @@ export function buildQuizGraph(deps: QuizGraphDeps, checkpointer?: BaseCheckpoin
       budget: deps.budget,
       schema: Quiz,
       system: generationSystem(s.input.promptVariant),
-      user: singleShotUser({ doc, n: withSpare(n), topic }),
+      user: singleShotUser({ doc, n: withSpare(n), topic, language: s.input.language }),
       options: { name: "generate:single-shot", temperature: 0.4 },
-      check: quizReplyCheck(sourceText, s.input.flaggedExcerpts),
+      check: quizReplyCheck(sourceText, s.input.flaggedExcerpts, s.input.language),
     });
     return {
       questions: sortByDifficulty(r.value.questions),
@@ -257,7 +262,7 @@ export function buildQuizGraph(deps: QuizGraphDeps, checkpointer?: BaseCheckpoin
       system: generationSystem(s.input.promptVariant),
       user: writeUser({ doc: s.context, facts: s.facts }),
       options: { name: "generate:write", temperature: 0.4 },
-      check: quizReplyCheck(s.input.sourceText, s.input.flaggedExcerpts),
+      check: quizReplyCheck(s.input.sourceText, s.input.flaggedExcerpts, s.input.language),
     });
     return { questions: sortByDifficulty(r.value.questions), repairs: s.repairs + r.repairs, ...track(r.usage, s), trail: [...s.trail, "generate:plan-write"] };
   };
@@ -312,7 +317,7 @@ export function buildQuizGraph(deps: QuizGraphDeps, checkpointer?: BaseCheckpoin
       system: REVISE_SYSTEM,
       user: reviseUser({ context: s.context, flagged }),
       options: { name: `revise:round-${s.round + 1}`, temperature: 0.3 },
-      check: quizReplyCheck(s.input.sourceText, s.input.flaggedExcerpts),
+      check: quizReplyCheck(s.input.sourceText, s.input.flaggedExcerpts, s.input.language),
     });
     const questions = [...s.questions];
     indexes.forEach((qi, k) => (questions[qi - 1] = r.value.questions[k]!));

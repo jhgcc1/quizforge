@@ -1,4 +1,5 @@
 import { IMPERATIVE_RULES, MODEL_MARKUP, flaggedSegments, type GeneratedQuestion } from "@quizforge/core";
+import { SUPPORTED_LANGUAGES, detectLanguage } from "./language.js";
 import { COMMON_WORDS } from "./common-words.generated.js";
 import { UnsafeOutputError } from "./errors.js";
 import { firstBalancedJson, stripThink } from "./json.js";
@@ -16,6 +17,7 @@ import { CRITIQUE_SYSTEM, GENERATION_SYSTEM, JUDGE_SYSTEM, PLAN_SYSTEM, REVISE_S
  *   echoed attack   no instruction-like sentence that is not in the document
  *   planted words   when the document has a flagged line, no word that ONLY that line contains (a canary, a token an instruction asks for)
  *   looks like a quiz  most prompts are questions or "complete / select" tasks
+ *   language        the quiz is in the language of the document (when the caller knows it)
  *
  * The first problem list goes back to the model for ONE repair round (see structured.ts, `check`); anything left after the
  * generation is rejected by `assertQuizOutput`.
@@ -158,8 +160,27 @@ export function linkTrust(sourceText: string, extraFlagged?: readonly string[]):
 const fieldsOf = (q: GeneratedQuestion): string[] => [q.prompt, ...q.options, q.explanation];
 
 /** What is wrong with these questions as an OUTPUT (empty = fine). `sourceText` is the document they must come from. */
-export function quizOutputProblems(questions: readonly GeneratedQuestion[], ctx: { sourceText: string; flaggedExcerpts?: readonly string[] | undefined }): string[] {
+/**
+ * The quiz must be in the language of the document.
+ *
+ * The prompt says so and the generator is told which language it is, and the model still drifts: measured on a Portuguese
+ * README, about 40% of the quizzes came out in English before this. "The model usually gets it right" is not a guarantee,
+ * so this is a rail like the others — one repair round, then the job fails rather than serve a quiz nobody asked for.
+ *
+ * Only a CONFIDENT disagreement counts: a short quiz can be too little prose to judge (`unknown`), and that is let through.
+ */
+function languageProblem(questions: readonly GeneratedQuestion[], expected: string | undefined): string | undefined {
+  if (!expected || !(SUPPORTED_LANGUAGES as readonly string[]).includes(expected)) return undefined;
+  const text = questions.flatMap((q) => [q.prompt, ...q.options, q.explanation]).join("\n");
+  const got = detectLanguage(text);
+  if (got === "unknown" || got === expected) return undefined;
+  return `the quiz is written in ${got === "other" ? "another language" : got} but the document is in ${expected}: write every question, option and explanation in ${expected}`;
+}
+
+export function quizOutputProblems(questions: readonly GeneratedQuestion[], ctx: { sourceText: string; flaggedExcerpts?: readonly string[] | undefined; language?: string | undefined }): string[] {
   const problems: string[] = [];
+  const wrongLanguage = languageProblem(questions, ctx.language);
+  if (wrongLanguage) problems.push(wrongLanguage);
   const doc = ctx.sourceText.toLowerCase();
   const trust = linkTrust(ctx.sourceText, ctx.flaggedExcerpts);
 
@@ -225,17 +246,17 @@ export function replyFormatProblem(raw: string): string | undefined {
 }
 
 /** For `generateStructured({ check })`: the feedback for the repair round, or undefined. */
-export function quizReplyCheck(sourceText: string, flaggedExcerpts?: readonly string[]) {
+export function quizReplyCheck(sourceText: string, flaggedExcerpts?: readonly string[], language?: string) {
   return (value: { questions: GeneratedQuestion[] }, raw: string): string | undefined => {
     const format = replyFormatProblem(raw);
     if (format) return format;
-    const problems = quizOutputProblems(value.questions, { sourceText, flaggedExcerpts });
+    const problems = quizOutputProblems(value.questions, { sourceText, flaggedExcerpts, language });
     return problems.length ? `The questions have problems:\n${problems.map((p) => `- ${p}`).join("\n")}\nFix them and return ONLY the corrected JSON object.` : undefined;
   };
 }
 
 /** Last line of defence after the whole graph: throws if what is about to be saved is not a clean quiz. */
-export function assertQuizOutput(questions: readonly GeneratedQuestion[], ctx: { sourceText: string; flaggedExcerpts?: readonly string[] | undefined }): void {
+export function assertQuizOutput(questions: readonly GeneratedQuestion[], ctx: { sourceText: string; flaggedExcerpts?: readonly string[] | undefined; language?: string | undefined }): void {
   const problems = quizOutputProblems(questions, ctx);
   if (problems.length) throw new UnsafeOutputError(problems);
 }

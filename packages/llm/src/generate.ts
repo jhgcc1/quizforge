@@ -83,7 +83,7 @@ export async function generateQuiz(params: GenerateQuizParams): Promise<Generate
         ...(p.checkpointer ? { checkpointer: p.checkpointer } : {}),
         ...(ctx.callbacks.length ? { callbacks: ctx.callbacks } : {}),
       });
-      assertQuizOutput(run.questions, { sourceText: p.input.sourceText, flaggedExcerpts: p.input.flaggedExcerpts }); // last line of defence: only a clean quiz is saved
+      assertQuizOutput(run.questions, { sourceText: p.input.sourceText, flaggedExcerpts: p.input.flaggedExcerpts, language: p.input.language }); // last line of defence: only a clean quiz is saved
       const metrics = quizMetrics(run.questions);
       let judge: JudgeResult | undefined;
       let judgeFailed = false;

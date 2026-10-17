@@ -39,6 +39,7 @@ export const QuizInputSchema = z
     critique: z.boolean().optional(),
     promptVariant: z.enum(PROMPT_VARIANTS as [string, ...string[]]).optional(),
     planFirst: z.boolean().optional(),
+    language: z.enum(SUPPORTED_LANGUAGES).optional(),
     flaggedExcerpts: z.array(z.string().max(2_000)).max(10).optional(),
   })
   .strict();
@@ -83,7 +84,8 @@ export function parseQuizInput(input: QuizGraphInput, opts: AdmitOptions = {}): 
   const parsed = QuizInputSchema.safeParse(Object.fromEntries(Object.entries(input).filter(([, v]) => v !== undefined)));
   if (!parsed.success) throw new InvalidLlmInputError(parsed.error.issues.map((i) => `${i.path.join(".") || "input"}: ${i.message}`).join("; "));
   const doc = admitDocument(parsed.data.sourceText, opts);
-  return { ...input, sourceText: doc.text };
+  // the language was detected two lines ago; passing it on is what stops the generator from guessing it
+  return { ...input, sourceText: doc.text, ...(doc.language === "unknown" ? {} : { language: doc.language }) };
 }
 
 const MessageSchema = z
