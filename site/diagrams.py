@@ -177,7 +177,7 @@ def prep_flow():
 
 
 def repos():
-    """The three repositories: two publish images, the infrastructure repository deploys them (full or web-only)."""
+    """The three repositories: two publish images, the infrastructure repository deploys them (scope all, api or web)."""
     b = ""
     b += group(10, 10, 400, 250, "github.com/jhgcc1/quizforge-web (public)", "grp")
     b += box(26, 50, 368, 56, "Next.js front end + BFF", "login with Cognito · error boundary · POST /bff/client-log", "compute", small=True)
@@ -189,7 +189,7 @@ def repos():
     b += box(978, 50, 186, 56, "tests", "unit · integration · e2e · promptfoo", "ci", small=True)
     b += box(556, 120, 200, 56, "images to ECR", "publish job · push-only role", "sec", small=True)
     b += box(772, 120, 392, 56, "CI/CD", f"{len(F.CI_PR_JOBS)} jobs on a PR ({len(F.CI_REQUIRED)} required) · publishes images · deploys nothing", "ci", small=True)
-    b += box(556, 190, 608, 56, "web.ref", "the front end commit that the e2e test builds (a PR in this repository changes it)", "edge", small=True)
+    b += box(556, 190, 608, 56, "each side tests the main of the other", "the e2e here builds the front end's main; its CI runs this suite against this main", "edge", small=True)
     b += arrow(540, 80, 394, 80, "", dash=True)
     b += text(404, 40, "API contract", "note", "middle")
     b += text(404, 56, "(tarball of a", "note", "middle")
@@ -203,7 +203,7 @@ def repos():
     b += group(605, 290, 575, 230, "B · Deploy: quizforge-infra, manual (deploy.yml)", "grp")
     for i, s in enumerate(["One approval: environment production (OIDC role)", "Refused while paused; images verified in ECR first",
                            "scope all: newest green commit, or the tags you give", "Drift check, migration BEFORE the new code, one apply",
-                           "scope web-only: targeted apply of the web service only", "web-only refuses a plan that deletes anything but a revision", f"Smoke test ({F.SMOKE_FULL} checks, {F.SMOKE_WEB} for web only)"]):
+                           "scope web: targeted apply of the web service only", "scope web refuses a plan that deletes anything but a revision", f"Smoke test ({F.SMOKE_FULL} checks, {F.SMOKE_WEB} for web only)"]):
         b += text(623, 326 + i * 26, s, "note")
     b += arrow(700, 246, 400, 290)
     b += arrow(1000, 246, 880, 290)
@@ -431,8 +431,8 @@ def cicd():
     b += path("M645 408 L 130 408 L 130 428", "", 0, 0)
     b += text(750, 345, "publish: needs every gate · push to main only", "note")
     b += text(750, 365, "publish role: ECR push only, `main` only", "note")
-    b += group(10, 512, 1160, 92, "Front end repository: publish on main, then a web-only Deploy in quizforge-infra (approval, refused while paused)", "grp")
-    fe = [("quality · build", "own CI, no AWS role"), ("docker-build + Trivy", "own CI"), ("publish (main)", "web-<12 chars of the commit>"), ("Deploy, scope web-only", "web_tag · no delete except a revision"), ("smoke test", "4 checks through CloudFront")]
+    b += group(10, 512, 1160, 92, "Front end repository: e2e against the back end's main, publish, then a Deploy (scope web) in quizforge-infra (approval, refused while paused)", "grp")
+    fe = [("quality · build", "own CI, no AWS role"), ("e2e vs back end main", "the same Playwright suite"), ("docker-build + Trivy", "own CI"), ("publish (main)", "web-<12 chars of the commit>"), ("Deploy, scope web", "resolved from its main · no delete except a revision"), ("smoke test", "4 checks through CloudFront")]
     for i, (n, s) in enumerate(fe):
         x = 30 + i * 226
         b += box(x, 540, 206, 52, n, s, "compute", small=True)
