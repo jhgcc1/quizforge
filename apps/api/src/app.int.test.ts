@@ -50,6 +50,7 @@ afterAll(async () => {
 });
 
 const token = (sub: string) => signLocalToken(SECRET, sub);
+const adminToken = (sub: string) => signLocalToken(SECRET, sub, 3600, ["admin"]);
 const call = async (sub: string | null, method: string, url: string, body?: unknown, headers: Record<string, string> = {}) => {
   const res = await app.inject({
     method: method as "GET", url,
@@ -546,5 +547,99 @@ describe("edge cases", () => {
     expect(junk).toMatch(/^[0-9a-f-]{36}$/);
     const none = (await call(null, "GET", "/healthz")).headers["x-request-id"] as string;
     expect(none).toMatch(/^[0-9a-f-]{36}$/);
+  });
+});
+
+describe("asking for a document the classifier rejected", () => {
+  /** A quiz that failed the way the classifier makes it fail: that is what a request points at. */
+  const refusedQuiz = async (sub: string, url = "https://github.com/elastic/elasticsearch/blob/main/README.asciidoc") => {
+    const quizId = (await create(sub, randomUUID(), { sourceUrl: url })).body.quiz.id as string;
+    await failQuiz(ctx.db, { quizId, error: "unsafe_document: the classifier scored 0.97 for prompt injection (1/1 windows scanned)" });
+    return quizId;
+  };
+  const post = async (sub: string, payload: Record<string, unknown>) =>
+    app.inject({ method: "POST", url: "/v1/document-requests", headers: { authorization: `Bearer ${await token(sub)}`, "content-type": "application/json" }, payload });
+
+  it("takes the document and the score from the quiz, so the reviewer sees evidence and the user types nothing", async () => {
+    const quizId = await refusedQuiz("u-req-1");
+    const res = await post("u-req-1", { quizId, title: "Elasticsearch", description: "Search engine", note: "Real project README" });
+    expect(res.statusCode).toBe(201);
+    expect(res.json()).toMatchObject({ status: "pending", title: "Elasticsearch", description: "Search engine", note: "Real project README", detectorScore: 0.97 });
+    expect(res.json().url).toContain("elasticsearch");
+    expect(res.json().excerpt).toContain("the classifier scored");
+  });
+
+  it("a second request for the same document is refused while the first waits", async () => {
+    const again = await post("u-req-2", { quizId: await refusedQuiz("u-req-2"), title: "Elasticsearch again" });
+    expect(again.statusCode).toBe(409);
+    expect(again.json().error.code).toBe("request_already_open");
+  });
+
+  it("refuses a quiz that is not yours, and one that failed for another reason", async () => {
+    const someoneElses = await refusedQuiz("u-owner", "https://github.com/o/r/blob/main/OTHER.md");
+    expect((await post("u-intruder", { quizId: someoneElses, title: "Not mine" })).statusCode).toBe(404);
+    expect((await post("u-x", { quizId: randomUUID(), title: "No such quiz" })).statusCode).toBe(404);
+
+    const otherId = (await create("u-other-reason", randomUUID(), { sourceUrl: "https://github.com/o/r/blob/main/X.md" })).body.quiz.id as string;
+    await failQuiz(ctx.db, { quizId: otherId, error: "QualityGateError: only 3 grounded question(s)" });
+    const res = await post("u-other-reason", { quizId: otherId, title: "Quality failure" });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe("not_refused_by_classifier");
+  });
+
+  it("a user sees only their own requests; an admin sees what is waiting", async () => {
+    await post("u-mine", { quizId: await refusedQuiz("u-mine", "https://github.com/BurntSushi/ripgrep/blob/master/README.md"), title: "ripgrep" });
+    const mine = await app.inject({ method: "GET", url: "/v1/document-requests", headers: { authorization: `Bearer ${await token("u-mine")}` } });
+    expect(mine.json().items.every((r: { title: string }) => r.title === "ripgrep")).toBe(true);
+
+    const asAdmin = await app.inject({ method: "GET", url: "/v1/document-requests", headers: { authorization: `Bearer ${await adminToken("u-admin")}` } });
+    expect(asAdmin.json().items.length).toBeGreaterThan(1);
+  });
+
+  it("only an admin may review, and a request is decided once", async () => {
+    const created = (await post("u-review", { quizId: await refusedQuiz("u-review", "https://github.com/fastify/fastify/blob/main/docs.md"), title: "Fastify docs" })).json();
+    const review = async (id: string, action: string, sub = "u-admin", admin = true) =>
+      app.inject({ method: "POST", url: `/v1/document-requests/${id}/review`, headers: { authorization: `Bearer ${admin ? await adminToken(sub) : await token(sub)}`, "content-type": "application/json" }, payload: { action } });
+    expect((await review(created.id, "approve", "u-review", false)).statusCode).toBe(403);
+    expect((await review(created.id, "approve")).statusCode).toBe(200);
+    expect((await review(created.id, "approve")).statusCode).toBe(404); // already decided
+    expect((await review(created.id, "nonsense")).statusCode).toBe(400);
+  });
+
+  it("an approved document joins the catalogue everyone sees; a rejected one does not", async () => {
+    const yes = (await post("u-ok", { quizId: await refusedQuiz("u-ok", "https://github.com/pipecat-ai/pipecat/blob/main/docs.md"), title: "Pipecat docs", description: "Voice agents" })).json();
+    const no = (await post("u-no", { quizId: await refusedQuiz("u-no", "https://github.com/mastra-ai/mastra/blob/main/SECURITY.md"), title: "Mastra security" })).json();
+    const review = async (id: string, action: string) =>
+      app.inject({ method: "POST", url: `/v1/document-requests/${id}/review`, headers: { authorization: `Bearer ${await adminToken("u-admin")}`, "content-type": "application/json" }, payload: { action, note: "checked by hand" } });
+    expect((await review(yes.id, "approve")).statusCode).toBe(200);
+    expect((await review(no.id, "reject")).statusCode).toBe(200);
+
+    const catalog = await app.inject({ method: "GET", url: "/v1/catalog", headers: { authorization: `Bearer ${await token("u-anyone")}` } });
+    const items = catalog.json().items as { title: string; kind: string; tests: string; description: string }[];
+    expect(items.map((i) => i.title)).toContain("Pipecat docs");
+    expect(items.map((i) => i.title)).not.toContain("Mastra security");
+    const approved = items.find((i) => i.title === "Pipecat docs")!;
+    expect(approved.kind).toBe("approved"); // the dropdown can say where it came from
+    expect(approved.description).toBe("Voice agents");
+    expect(approved.tests).toMatch(/Let in by review .*classifier had scored 0\.97/);
+  });
+
+  it("refuses a body that is not what the contract says, on both routes", async () => {
+    const noBody = await app.inject({ method: "POST", url: "/v1/document-requests", headers: { authorization: `Bearer ${await token("u-empty")}`, "content-type": "application/json" } });
+    expect(noBody.statusCode).toBe(400);
+    expect((await post("u-bad", { quizId: "not-a-uuid", title: "x" })).statusCode).toBe(400); // title too short, id not a uuid
+    const review = await app.inject({ method: "POST", url: `/v1/document-requests/${randomUUID()}/review`, headers: { authorization: `Bearer ${await adminToken("u-admin")}`, "content-type": "application/json" } });
+    expect(review.statusCode).toBe(400);
+  });
+
+  it("an unexpected failure is a 500, not a user error", async () => {
+    const cfg = loadConfig({ NODE_ENV: "test", DATABASE_URL: dbUrl.toString(), AUTH_MODE: "local", LOCAL_JWT_SECRET: SECRET, QUEUE_MODE: "memory", LOG_LEVEL: "fatal" });
+    const broken = await buildApp({ config: cfg, db: {} as never, queue, verifier: localVerifier(SECRET) });
+    const res = await broken.inject({
+      method: "POST", url: "/v1/document-requests", payload: JSON.stringify({ quizId: randomUUID(), title: "Anything" }),
+      headers: { authorization: `Bearer ${await token("u-req-500")}`, "content-type": "application/json" },
+    });
+    expect(res.statusCode).toBe(500);
+    await broken.close();
   });
 });

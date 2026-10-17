@@ -631,3 +631,91 @@ export async function deleteOldCheckpointThreads(db: Db, olderThan: Date): Promi
     delete from langgraph.checkpoints where thread_id in (select thread_id from old) returning thread_id`);
   return new Set(res.rows.map((r) => (r as { thread_id: string }).thread_id)).size;
 }
+
+/* ------------------------------ documents a reviewer let in ------------------------------ */
+
+export type DocumentRequestRow = typeof t.documentRequests.$inferSelect;
+
+/** What the API returns: dates as ISO strings and the score as a number, per the contract. */
+const toDocumentRequest = (r: DocumentRequestRow) => ({
+  id: r.id,
+  url: r.url,
+  title: r.title,
+  description: r.description,
+  note: r.note,
+  status: r.status as "pending" | "approved" | "rejected",
+  detectorScore: r.detectorScore === null ? null : Number(r.detectorScore),
+  excerpt: r.excerpt,
+  createdAt: r.createdAt.toISOString(),
+  reviewedAt: r.reviewedAt ? r.reviewedAt.toISOString() : null,
+  reviewNote: r.reviewNote,
+});
+
+export interface CreateDocumentRequestInput {
+  url: string;
+  title: string;
+  description?: string | undefined;
+  note?: string | undefined;
+  requestedBy: string;
+  detectorScore?: number | undefined;
+  excerpt?: string | undefined;
+}
+
+/** `undefined` when a request for the same URL is already waiting: the second asker joins the queue instead of duplicating it. */
+export async function createDocumentRequest(db: Db, input: CreateDocumentRequestInput): Promise<ReturnType<typeof toDocumentRequest> | undefined> {
+  try {
+    const [row] = await db
+      .insert(t.documentRequests)
+      .values({
+        url: input.url,
+        title: input.title,
+        description: input.description ?? null,
+        note: input.note ?? null,
+        requestedBy: input.requestedBy,
+        detectorScore: input.detectorScore === undefined ? null : String(input.detectorScore),
+        excerpt: input.excerpt ?? null,
+      })
+      .returning();
+    return row ? toDocumentRequest(row) : undefined;
+  } catch (err) {
+    if (isUniqueViolation(err)) return undefined;
+    throw err;
+  }
+}
+
+export async function listDocumentRequests(db: Db, filter: { status?: string; requestedBy?: string }): Promise<ReturnType<typeof toDocumentRequest>[]> {
+  const where = filter.requestedBy ? eq(t.documentRequests.requestedBy, filter.requestedBy) : eq(t.documentRequests.status, filter.status ?? "pending");
+  const rows = await db.select().from(t.documentRequests).where(where).orderBy(desc(t.documentRequests.createdAt)).limit(200);
+  return rows.map(toDocumentRequest);
+}
+
+/** Decide one request. `undefined` when there is no request with that id still waiting (already reviewed, or never existed). */
+export async function reviewDocumentRequest(
+  db: Db,
+  p: { id: string; action: "approve" | "reject"; reviewedBy: string; note?: string },
+): Promise<ReturnType<typeof toDocumentRequest> | undefined> {
+  const [row] = await db
+    .update(t.documentRequests)
+    .set({ status: p.action === "approve" ? "approved" : "rejected", reviewedBy: p.reviewedBy, reviewedAt: new Date(), reviewNote: p.note ?? null })
+    .where(and(eq(t.documentRequests.id, p.id), eq(t.documentRequests.status, "pending")))
+    .returning();
+  return row ? toDocumentRequest(row) : undefined;
+}
+
+/**
+ * The approved documents, shaped as catalogue entries. They carry `kind: "approved"` so the dropdown can say where they
+ * came from: a human let them in after the classifier rejected them, which is not the same as a document nobody questioned.
+ */
+export async function approvedCatalogEntries(db: Db): Promise<{ id: string; title: string; description: string; url: string; kind: "approved"; language: "en" | "pt" | "es"; size: "short" | "medium" | "long"; tests: string }[]> {
+  const rows = await db.select().from(t.documentRequests).where(eq(t.documentRequests.status, "approved")).orderBy(desc(t.documentRequests.reviewedAt)).limit(100);
+  return rows.map((r) => ({
+    id: `approved-${r.id.slice(0, 8)}`,
+    title: r.title,
+    description: r.description ?? "Approved after review",
+    url: r.url,
+    kind: "approved" as const,
+    language: "en" as const,
+    size: "medium" as const,
+    tests: `Let in by review on ${r.reviewedAt ? r.reviewedAt.toISOString().slice(0, 10) : "?"}${r.detectorScore ? ` (classifier had scored ${Number(r.detectorScore).toFixed(2)})` : ""}`,
+  }));
+}

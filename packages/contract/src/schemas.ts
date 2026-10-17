@@ -160,8 +160,11 @@ export const CatalogEntrySchema = z.object({
   title: z.string(),
   description: z.string(),
   url: z.string().url(),
-  /** `readme` = a real project README; `test` = a document written to exercise one behaviour of the generator */
-  kind: z.enum(["readme", "test"]),
+  /**
+   * `readme` = a real project README; `test` = a document written to exercise one behaviour of the generator;
+   * `approved` = a document the classifier rejected and an admin reviewed and let in (see DocumentRequestSchema).
+   */
+  kind: z.enum(["readme", "test", "approved"]),
   language: z.enum(["en", "pt", "es"]),
   size: z.enum(["short", "medium", "long"]),
   /** what this document is good for testing */
@@ -169,3 +172,49 @@ export const CatalogEntrySchema = z.object({
 });
 export type CatalogEntry = z.output<typeof CatalogEntrySchema>;
 export const CatalogResponseSchema = z.object({ items: z.array(CatalogEntrySchema) });
+
+/**
+ * Asking for a document the semantic classifier rejected.
+ *
+ * The classifier scores real READMEs high now and then (measured: 6 of 722 above 0.9), so a rejection is not proof of an
+ * attack. Rather than loosening the threshold for everybody, the user may ask for that one document to be reviewed: an
+ * admin sees the score and the excerpt that triggered it and decides. An approved document joins the catalogue, where
+ * everyone can pick it — which is why the review has to show what was found, not just the URL.
+ */
+export const DOCUMENT_REQUEST_STATUSES = ["pending", "approved", "rejected"] as const;
+
+/**
+ * The request names the QUIZ that was refused, not a URL. Two reasons: the user never has to retype anything, and the API
+ * takes the document and the classifier's score from that quiz, so the reviewer sees the evidence instead of a claim.
+ * It also means you can only ask about a document you actually tried.
+ */
+export const CreateDocumentRequestBodySchema = z
+  .object({
+    quizId: z.string().uuid(),
+    title: z.string().min(2).max(80),
+    description: z.string().max(200).optional(),
+    /** Why the user believes the document is legitimate. Shown to the reviewer. */
+    note: z.string().max(500).optional(),
+  })
+  .strict();
+export type CreateDocumentRequestBody = z.output<typeof CreateDocumentRequestBodySchema>;
+
+export const ReviewDocumentRequestBodySchema = z.object({ action: z.enum(["approve", "reject"]), note: z.string().max(500).optional() }).strict();
+export type ReviewDocumentRequestBody = z.output<typeof ReviewDocumentRequestBodySchema>;
+
+export const DocumentRequestSchema = z.object({
+  id: z.string().uuid(),
+  url: z.string().url(),
+  title: z.string(),
+  description: z.string().nullable(),
+  note: z.string().nullable(),
+  status: z.enum(DOCUMENT_REQUEST_STATUSES),
+  /** What the guard found, so the reviewer judges the document and not the request. */
+  detectorScore: z.number().min(0).max(1).nullable(),
+  excerpt: z.string().nullable(),
+  createdAt: z.string(),
+  reviewedAt: z.string().nullable(),
+  reviewNote: z.string().nullable(),
+});
+export type DocumentRequest = z.output<typeof DocumentRequestSchema>;
+export const DocumentRequestListSchema = z.object({ items: z.array(DocumentRequestSchema) });

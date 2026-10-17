@@ -18,6 +18,8 @@ describe("userFacingError", () => {
     ["SourceError: credentials in URL are not allowed", /not a valid https/],
     ["SourceError: custom ports are not allowed", /not a valid https/],
     ["SourceError: too_large", /too large \(limit 512 KB\)/],
+    ["UnsafeDocumentError: unsafe_document: the classifier scored 0.97 for prompt injection (1/1 windows scanned)", /ask for it to be reviewed/],
+    ["UnsafeDocumentError: unsafe_document: an instruction is hidden in base64", /hidden or encoded text/],
     ["UnsafeDocumentError: unsafe_document: hidden text", /hidden or encoded text/],
     ["unsupported_language: ru", /not in a supported language/],
     ["invalid_llm_input: topic", /could not be processed safely/],

@@ -39,6 +39,9 @@ const Schema = z
     ALLOWED_LANGUAGES: z.string().default("en,pt,es"),
     /** Optional semantic prompt-injection classifier (Llama Prompt Guard 2, multilingual): off | flag | block. Needs the detector package in the image. */
     INJECTION_DETECTOR: z.enum(["off", "flag", "block"]).default("off"),
+    // In `block` mode: the score that REJECTS a document. The flag threshold (INJECTION_DETECTOR_THRESHOLD, read by the
+    // detector itself) stays lower, so documents between the two still mark and still put the output rails in strict mode.
+    INJECTION_DETECTOR_BLOCK_THRESHOLD: z.coerce.number().min(0.5).max(1).default(0.9),
     /** Jobs processed at once by this task (the fleet cap is this x max tasks). */
     WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(4).default(1),
     HEALTH_PORT: z.coerce.number().int().default(8081),

@@ -78,7 +78,7 @@ if (config.WORKER_ROLE === "score") {
     ...common,
     transport,
     parse: (raw) => QuizJobMessageSchema.parse(raw),
-    handler: (msg, receive) => processQuizJob({ db, llm, publishScore, checkpointer, log, allowedHosts: config.allowedHosts, allowedLanguages: parseAllowedLanguages(config.ALLOWED_LANGUAGES), detector, detectorMode: config.INJECTION_DETECTOR, pricing }, msg, { count: receive.count, max: config.SQS_MAX_RECEIVE }),
+    handler: (msg, receive) => processQuizJob({ db, llm, publishScore, checkpointer, log, allowedHosts: config.allowedHosts, allowedLanguages: parseAllowedLanguages(config.ALLOWED_LANGUAGES), detector, detectorMode: config.INJECTION_DETECTOR, detectorBlockAt: config.INJECTION_DETECTOR_BLOCK_THRESHOLD, pricing }, msg, { count: receive.count, max: config.SQS_MAX_RECEIVE }),
   });
 }
 

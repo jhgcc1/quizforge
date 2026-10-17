@@ -25,8 +25,24 @@ export interface InjectionDetector {
   detect(text: string): Promise<DetectorResult>;
 }
 
-/** off: not run. flag: a finding is recorded and the document goes on. block: the document is rejected. */
+/** off: not run. flag: a finding is recorded and the document goes on. block: a high score rejects the document. */
 export type DetectorMode = "off" | "flag" | "block";
+
+/**
+ * In `block` mode there are TWO thresholds, and the distance between them is the point.
+ *
+ * The detector's score is not a probability of attack: real READMEs sit at the top of its scale (measured: 12 of 722 real
+ * READMEs score above 0.5, and six of those above 0.9 -- elasticsearch, youtube-dl, pure-bash-bible). So a single threshold
+ * either marks a lot of legitimate documents or catches nothing.
+ *
+ *   score >= blockAt (0.9)   the document is REJECTED, and the user is offered a review request
+ *   score >= flagAt  (0.5)   the document goes on, marked: that is what puts the output rails in strict mode
+ *   below              nothing
+ *
+ * Keeping the flag at 0.5 matters: raising it to the block threshold would silently drop the strict rails for everything
+ * between the two, which is where most of the real attacks the detector sees actually land.
+ */
+export const DEFAULT_BLOCK_THRESHOLD = 0.9;
 
 export const parseDetectorMode = (raw: string | undefined): DetectorMode => (raw === "flag" || raw === "block" ? raw : "off");
 
@@ -36,16 +52,23 @@ export type ScreenOutcome =
   | { status: "flagged" | "blocked"; result: DetectorResult; finding: Finding };
 
 /** Run the detector on an already admitted document. Never throws: a broken detector must not take the service down. */
-export async function screenWithDetector(text: string, language: Lang, detector: InjectionDetector | undefined, mode: DetectorMode): Promise<ScreenOutcome> {
+export async function screenWithDetector(
+  text: string,
+  language: Lang,
+  detector: InjectionDetector | undefined,
+  mode: DetectorMode,
+  blockAt: number = DEFAULT_BLOCK_THRESHOLD,
+): Promise<ScreenOutcome> {
   if (!detector || mode === "off") return { status: "skipped", reason: "off" };
   if (language !== "unknown" && !detector.languages.includes(language)) return { status: "skipped", reason: "language" };
   const result = await detector.detect(text);
   if (!result.flagged) return { status: "clean", result };
+  const blocks = mode === "block" && result.score >= blockAt;
   const finding: Finding = {
     kind: "semantic_injection",
-    severity: mode === "block" ? "block" : "flag",
+    severity: blocks ? "block" : "flag",
     detail: `the classifier scored ${result.score.toFixed(2)} for prompt injection (${result.scanned}/${result.total} windows scanned)`,
     ...(result.excerpt ? { sample: result.excerpt } : {}),
   };
-  return { status: mode === "block" ? "blocked" : "flagged", result, finding };
+  return { status: blocks ? "blocked" : "flagged", result, finding };
 }

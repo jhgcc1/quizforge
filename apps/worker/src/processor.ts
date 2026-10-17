@@ -49,6 +49,8 @@ export interface ProcessDeps {
   /** Optional semantic classifier (Llama Prompt Guard 2, multilingual) and what to do with its verdict. Default: not used. */
   detector?: InjectionDetector | undefined;
   detectorMode?: DetectorMode | undefined;
+  /** In block mode, the score from which a document is rejected (see screenWithDetector). */
+  detectorBlockAt?: number | undefined;
   pricing: { inPerM: number; outPerM: number };
   log: Logger;
   checkpointer?: BaseCheckpointSaver | undefined;
@@ -102,7 +104,7 @@ export async function processQuizJob(
       emit({ InjectionFlagged: { value: 1, unit: "Count" } });
     }
     // Optional second opinion from a classifier model (multilingual; skipped for a language the model does not declare). Never throws.
-    const screened = await screenWithDetector(doc.text, doc.language, d.detector, d.detectorMode ?? "off").catch((err: unknown) => {
+    const screened = await screenWithDetector(doc.text, doc.language, d.detector, d.detectorMode ?? "off", d.detectorBlockAt).catch((err: unknown) => {
       log.error({ err }, "semantic detector failed; continuing without it");
       emit({ DetectorFailed: { value: 1, unit: "Count" } });
       return undefined;
