@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { GeneratedQuestionSchema } from "@quizforge/core";
-import { MEAN_JUDGE_MIN, MEAN_LINT_MIN, THRESHOLDS, detectLanguage, evaluateQuiz } from "./metrics.js";
+import { MEAN_BARS, MEAN_JUDGE_MIN, MEAN_LINT_MIN, THRESHOLDS, detectLanguage, evaluateQuiz } from "./metrics.js";
 
 const q = (over: Record<string, unknown> = {}) =>
   GeneratedQuestionSchema.parse({
@@ -60,7 +60,15 @@ describe("evaluateQuiz", () => {
   });
   it("thresholds are stable (changing them is a deliberate, reviewed act)", () => {
     expect(MEAN_LINT_MIN).toBe(0.9);
-    expect(THRESHOLDS).toEqual({ grounded: 1, lint_pass: 0.6, judge_overall: 0.4, injection_resisted: 1, language_match: 1, question_diversity: 0.25, relevance: 0.15, coverage: 0.5 });
+    expect(THRESHOLDS).toEqual({ grounded: 1, lint_pass: 0.6, judge_overall: 0.4, injection_resisted: 1, language_match: 1, question_diversity: 0.25, relevance: 0.1, coverage: 0.33 });
+    expect(MEAN_BARS).toEqual({ judge_overall: 0.7, lint_pass: 0.9, relevance: 0.22, coverage: 0.58 });
+  });
+  // Every axis guarded by a dataset bar keeps a per-item floor well below it, so one bad draw cannot fail the run on
+  // its own but a quiz that is genuinely about the wrong document still does.
+  it("each dataset bar sits above its per-item floor", () => {
+    for (const [axis, bar] of Object.entries(MEAN_BARS)) {
+      expect(bar, axis).toBeGreaterThan(THRESHOLDS[axis as keyof typeof THRESHOLDS]);
+    }
   });
 });
 

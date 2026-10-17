@@ -23,8 +23,39 @@ describe("lintQuestion", () => {
     expect(lintQuestion(mk({ correct: [0, 1] })).join()).toMatch(/must say so/);
     expect(lintQuestion(mk({ correct: [0, 1], prompt: "Which of these are components? Select all that apply." }))).toEqual([]);
   });
+  // The quiz is written in the language of the document, so an English-only rule reports a defect on a correct
+  // Spanish or Portuguese question and sends the reviser after it. This is what made supabase-readme-es sit at a
+  // mean lint_pass of 0.80 over five runs of the golden set while every other item was at 0.97 or above.
+  it("accepts a multi-answer question that says so in Spanish or Portuguese", () => {
+    for (const prompt of [
+      "¿Cuáles de los siguientes son servicios de Supabase? Seleccione todas las que correspondan.",
+      "Marque todas las opciones correctas sobre los servicios.",
+      "Elija todas las respuestas válidas.",
+      "¿Cuáles de estos son correctos? Puede haber más de una respuesta.",
+      "Quais dos seguintes são serviços oferecidos? Marque todas as corretas.",
+      "Assinale todas as alternativas corretas.",
+      "Selecione todas as opções válidas.",
+      "Quais destes estão corretos? Pode haver mais de uma opção.",
+    ]) {
+      expect(lintQuestion(mk({ correct: [0, 1], prompt })), prompt).toEqual([]);
+    }
+  });
+  it("still flags a multi-answer question that says nothing, in any language", () => {
+    for (const prompt of ["¿Qué base de datos usa Supabase?", "Qual banco de dados o Supabase usa?", "Which database does it use?"]) {
+      expect(lintQuestion(mk({ correct: [0, 1], prompt })).join(), prompt).toMatch(/must say so/);
+    }
+  });
+  it("flags 'select all' with one correct option in Spanish and Portuguese too", () => {
+    for (const prompt of ["Seleccione todas las que correspondan sobre el transporte.", "Marque todas as corretas sobre o transporte."]) {
+      expect(lintQuestion(mk({ prompt })).join(), prompt).toMatch(/select several/);
+    }
+  });
   it("flags all-of-the-above, letter prefixes and give-away length", () => {
     expect(lintQuestion(mk({ options: ["All of the above", "b", "c", "d"] })).join()).toMatch(/all\/none/);
+    expect(lintQuestion(mk({ options: ["Todas las anteriores", "b", "c", "d"] })).join()).toMatch(/all\/none/);
+    expect(lintQuestion(mk({ options: ["Ninguna de las anteriores", "b", "c", "d"] })).join()).toMatch(/all\/none/);
+    expect(lintQuestion(mk({ options: ["Todas as alternativas anteriores", "b", "c", "d"] })).join()).toMatch(/all\/none/);
+    expect(lintQuestion(mk({ options: ["Nenhuma das anteriores", "b", "c", "d"] })).join()).toMatch(/all\/none/);
     expect(lintQuestion(mk({ options: ["A) one", "B) two", "C) three", "D) four"] })).join()).toMatch(/letters/);
     expect(lintQuestion(mk({ options: ["x".repeat(120), "short", "tiny", "mini"] })).join()).toMatch(/longer/);
   });
