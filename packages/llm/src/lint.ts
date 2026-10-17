@@ -1,7 +1,15 @@
 import type { GeneratedQuestion } from "@quizforge/core";
 
-const SELECT_ALL = /select all|choose all|all that apply|which of the following (?:are|statements are)|mark all|pick all/i;
-const ALL_NONE = /\b(all|none) of the above\b/i;
+// The quiz is written in the language of the document (en, pt or es), so every rule that reads the prompt has to be
+// written in all three. An English-only pattern does not merely miss a defect: it REPORTS one, because a Spanish
+// "Seleccione todas las que correspondan" looks to it like a multi-answer question that forgot to say so. The reviser
+// is then told to fix a question that was already correct.
+const SELECT_ALL =
+  /select all|choose all|all that apply|which of the following (?:are|statements are)|mark all|pick all|seleccione? todas|selecciona todas|marque todas|marca todas|elija todas|elige todas|todas las que correspondan|todas las correctas|cu[áa]les de (?:los|las) siguientes|assinale todas|marque todas as|selecione todas|quais (?:dos|das) seguintes|todas as corretas|todas as que se aplicam/i;
+/** "more than one answer" said in any of the three languages, as a looser fallback to SELECT_ALL. */
+const SAYS_SEVERAL = /more than one|multiple|several|m[áa]s de una|varias opciones|varias respuestas|m[úu]ltiples|mais de uma|v[áa]rias op[çc][õo]es|v[áa]rias respostas|m[úu]ltiplas/i;
+const ALL_NONE =
+  /\b(?:all|none) of the above\b|\b(?:todas|ninguna)\s+(?:de\s+)?las\s+(?:opciones\s+|respuestas\s+)?anteriores\b|\b(?:todas|nenhuma)\s+(?:d?[ae]s\s+)?(?:alternativas\s+|op[çc][õo]es\s+)?(?:anteriores|acima)\b/i;
 const LETTER_PREFIX = /^\s*(?:[A-Da-d]|[1-4])[).:]\s+/;
 
 /** Question-level defects that are cheap to detect deterministically. Messages are fed to the reviser. */
@@ -10,7 +18,7 @@ export function lintQuestion(q: GeneratedQuestion): string[] {
   if (SELECT_ALL.test(q.prompt) && q.correct.length < 2) {
     issues.push('the prompt asks to select several answers ("select all that apply") but only one option is marked correct; mark every correct option or rephrase as a single-answer question');
   }
-  if (q.correct.length > 1 && !SELECT_ALL.test(q.prompt) && !/more than one|multiple|several/i.test(q.prompt)) {
+  if (q.correct.length > 1 && !SELECT_ALL.test(q.prompt) && !SAYS_SEVERAL.test(q.prompt)) {
     issues.push('several options are correct, so the prompt must say so (e.g. "Select all that apply")');
   }
   if (q.options.some((o) => ALL_NONE.test(o))) issues.push('options must not use "all/none of the above"');
