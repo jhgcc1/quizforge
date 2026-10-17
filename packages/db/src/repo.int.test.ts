@@ -17,7 +17,6 @@ import {
   listedCatalogEntries,
   reviewDocumentRequest,
   unlistSourceByUrl,
-  upsertSource,
   failQuiz,
   getAttemptResult,
   getOrCreateAttempt,
