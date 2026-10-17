@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { MemorySaver } from "@langchain/langgraph";
-import { createDb, createDocumentRequest, createQuizIdempotent, eq, getPublicQuestions, migrate, reviewDocumentRequest, schema, setQuizPhase } from "@quizforge/db";
+import { createDb, createDocumentRequest, createQuizIdempotent, eq, getPublicQuestions, listedCatalogEntries, migrate, reviewDocumentRequest, schema, setQuizPhase } from "@quizforge/db";
 import { JobBudget, QualityGateError, SourceError, createFakeLlm, type LlmClient } from "@quizforge/llm";
 import { createLogger } from "./log.js";
 import { processQuizJob, type ProcessDeps } from "./processor.js";
@@ -335,6 +335,32 @@ describe("the input guard in the worker (door 1)", () => {
         const out = await processQuizJob(deps({ detector: stub(true), detectorMode: "block" }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
         expect(out.kind, `action=${action ?? "pending"}`).toBe("failed");
       }
+    });
+
+    it("a document that generated cleanly joins the catalogue; a flagged one does not", async () => {
+      const clean = "https://github.com/o/clean/blob/main/README.md";
+      const q1 = await newQuiz({ sourceUrl: clean, numQuestions: 5 });
+      expect((await processQuizJob(deps({ detector: stub(false) }), { v: 1, quizId: q1.id }, { count: 1, max: 3 })).kind).toBe("done");
+      expect((await listedCatalogEntries(ctx.db)).map((e) => e.url)).toContain(clean);
+
+      // Flagged, not blocked: it still generates for whoever asked, but it is not promoted to everyone's dropdown.
+      const flaggedUrl = "https://github.com/o/flagged/blob/main/README.md";
+      const q2 = await newQuiz({ sourceUrl: flaggedUrl, numQuestions: 5 });
+      expect((await processQuizJob(deps({ detector: stub(true), detectorMode: "flag" }), { v: 1, quizId: q2.id }, { count: 1, max: 3 })).kind).toBe("done");
+      expect((await listedCatalogEntries(ctx.db)).map((e) => e.url)).not.toContain(flaggedUrl);
+    });
+
+    // The case that makes a shared catalogue different from a private bookmark: a listed README can be edited and
+    // start being refused, and the stale entry would then fail for every user who picks it.
+    it("a listed document that starts being refused is dropped from the catalogue", async () => {
+      const url = "https://github.com/o/changed/blob/main/README.md";
+      const q1 = await newQuiz({ sourceUrl: url, numQuestions: 5 });
+      expect((await processQuizJob(deps({ detector: stub(false) }), { v: 1, quizId: q1.id }, { count: 1, max: 3 })).kind).toBe("done");
+      expect((await listedCatalogEntries(ctx.db)).map((e) => e.url)).toContain(url);
+
+      const q2 = await newQuiz({ sourceUrl: url, numQuestions: 5 });
+      expect((await processQuizJob(deps({ detector: stub(true), detectorMode: "block" }), { v: 1, quizId: q2.id }, { count: 1, max: 3 })).kind).toBe("failed");
+      expect((await listedCatalogEntries(ctx.db)).map((e) => e.url)).not.toContain(url);
     });
 
     it("a detector that crashes never takes the job down", async () => {

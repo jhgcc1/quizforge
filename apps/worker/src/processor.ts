@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { BaseCheckpointSaver } from "@langchain/langgraph";
-import type { QuizJobMessage, ScoreJobMessage } from "@quizforge/core";
-import { claimQuiz, completeQuiz, failQuiz, isApprovedDocument, saveJobBudget, setQuizPhase, upsertSource, type Db } from "@quizforge/db";
+import { titleForDocument, type QuizJobMessage, type ScoreJobMessage } from "@quizforge/core";
+import { claimQuiz, completeQuiz, failQuiz, isApprovedDocument, listSource, saveJobBudget, setQuizPhase, unlistSourceByUrl, upsertSource, type Db } from "@quizforge/db";
 import {
   BudgetExceededError,
   NonRetryableError,
@@ -170,6 +170,15 @@ export async function processQuizJob(
       evals: [], // scores come later, from the scorer service
     });
     await saveJobBudget(d.db, job.id, result.budget);
+
+    // The document worked: put it in the shared catalogue so nobody has to paste the URL again. Only a document no
+    // guard had anything to say about — a flagged one still generates for whoever chose it, but it is not something to
+    // suggest to everybody. A failure here must never fail a quiz that is already saved.
+    if (!flagged.length && !flaggedExcerpts) {
+      await listSource(d.db, { sourceId, title: titleForDocument(doc.text, quiz.sourceUrl), language: doc.language })
+        .catch((err: unknown) => log.warn({ err }, "could not add the document to the catalogue"));
+    }
+
     // The quiz is saved: the checkpoints have done their job (resuming an interrupted run), so they go now instead of piling up.
     await d.checkpointer?.deleteThread(threadId).catch((e: unknown) => log.warn({ err: e }, "could not delete checkpoint thread"));
 
@@ -208,8 +217,14 @@ export async function processQuizJob(
     const exhausted = receive.count >= receive.max;
     log.error({ err, permanent, exhausted }, "quiz generation failed");
     // A rejected document is the guard doing its job (and a user typo is not an outage): it has its own metric and does not feed the job-failure alarm.
-    if (err instanceof UnsafeDocumentError || err instanceof UnsupportedLanguageError || err instanceof NotTextError) emit({ DocumentRejected: { value: 1, unit: "Count" } });
-    else emit({ JobFailed: { value: 1, unit: "Count" }, JobPermanentFailure: { value: permanent ? 1 : 0, unit: "Count" } });
+    const rejected = err instanceof UnsafeDocumentError || err instanceof UnsupportedLanguageError || err instanceof NotTextError;
+    if (rejected) {
+      emit({ DocumentRejected: { value: 1, unit: "Count" } });
+      // A README that was in the catalogue can be edited and start being refused. Leaving the entry there would hand
+      // every user a suggestion that fails for them, so it comes out of the list; the document can earn its way back
+      // in the moment it generates cleanly again.
+      await unlistSourceByUrl(d.db, [quiz.sourceUrl]).catch((e: unknown) => log.warn({ err: e }, "could not remove the document from the catalogue"));
+    } else emit({ JobFailed: { value: 1, unit: "Count" }, JobPermanentFailure: { value: permanent ? 1 : 0, unit: "Count" } });
 
     if (permanent || exhausted) {
       await failQuiz(d.db, { quizId: quiz.id, jobId: job.id, error: message });

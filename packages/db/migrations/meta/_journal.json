@@ -43,6 +43,13 @@
       "when": 1792193098540,
       "tag": "0005_flawless_rhodey",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792270566002,
+      "tag": "0006_purple_misty_knight",
+      "breakpoints": true
     }
   ]
 }

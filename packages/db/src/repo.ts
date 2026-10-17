@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { computeFinalScore, scoreQuestion, SCORING_VERSION } from "@quizforge/core";
 import type { Db } from "./index.js";
 import * as t from "./schema.js";
@@ -700,6 +700,62 @@ export async function reviewDocumentRequest(
     .where(and(eq(t.documentRequests.id, p.id), eq(t.documentRequests.status, "pending")))
     .returning();
   return row ? toDocumentRequest(row) : undefined;
+}
+
+/**
+ * Put a document in the shared catalogue, so the next person does not have to paste the URL again.
+ *
+ * Only called for a document that produced a quiz AND had nothing said about it by any guard — a flagged document is
+ * still usable by whoever chose it, but promoting it to a suggestion shown to everyone is a different act.
+ */
+export async function listSource(db: Db, p: { sourceId: string; title: string; language: string }): Promise<void> {
+  await db
+    .update(t.sources)
+    .set({ listedAt: new Date(), listTitle: p.title.slice(0, 80), listLanguage: p.language })
+    .where(and(eq(t.sources.id, p.sourceId), isNull(t.sources.listedAt)));
+}
+
+/**
+ * Drop a document from the catalogue. A listed README can change under us and start being refused by the guards; the
+ * entry would then sit in everyone's dropdown and fail for each of them. Removing it is better than leaving it broken.
+ */
+export async function unlistSourceByUrl(db: Db, urls: readonly string[]): Promise<void> {
+  const wanted = [...new Set(urls.filter((u) => u.length > 0))];
+  if (!wanted.length) return;
+  await db.update(t.sources).set({ listedAt: null }).where(inArray(t.sources.url, wanted));
+}
+
+/**
+ * The catalogue entries earned by use: documents that generated a quiz cleanly. Newest first, because a document
+ * somebody just used is the one most likely to be wanted again.
+ */
+export async function listedCatalogEntries(
+  db: Db,
+  limit = 200,
+): Promise<{ id: string; title: string; description: string; url: string; kind: "used"; language: "en" | "pt" | "es"; size: "short" | "medium" | "long"; tests: string }[]> {
+  const rows = await db
+    .select({
+      id: t.sources.id,
+      url: t.sources.url,
+      title: t.sources.listTitle,
+      language: t.sources.listLanguage,
+      listedAt: t.sources.listedAt,
+      chars: sql<number>`length(${t.sources.contentText})`,
+    })
+    .from(t.sources)
+    .where(isNotNull(t.sources.listedAt))
+    .orderBy(desc(t.sources.listedAt))
+    .limit(limit);
+  return rows.map((r) => ({
+    id: `used-${r.id.slice(0, 8)}`,
+    title: r.title ?? r.url,
+    description: "Added automatically after a quiz was generated from it",
+    url: r.url,
+    kind: "used" as const,
+    language: (r.language === "pt" || r.language === "es" ? r.language : "en") as "en" | "pt" | "es",
+    size: (r.chars < 4000 ? "short" : r.chars < 20000 ? "medium" : "long") as "short" | "medium" | "long",
+    tests: `First used on ${r.listedAt ? r.listedAt.toISOString().slice(0, 10) : "?"}`,
+  }));
 }
 
 /**
