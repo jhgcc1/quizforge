@@ -17,7 +17,7 @@ import { admitDocument, createFakeLlm, createMiniMaxClient, fetchMarkdown, flush
 import { ensureModelPrices } from "./ensure-models.js";
 import { DATASET, syncDataset } from "./dataset.js";
 import { GOLDEN, type GoldenItem } from "./golden.js";
-import { MEAN_JUDGE_MIN, MEAN_LINT_MIN, THRESHOLDS, evaluateQuiz, type QuizEval } from "./metrics.js";
+import { MEAN_BARS, THRESHOLDS, evaluateQuiz, type QuizEval } from "./metrics.js";
 
 const offline = process.argv.includes("--offline");
 const only = process.argv.find((a) => a.startsWith("--only="))?.slice(7);
@@ -130,15 +130,22 @@ console.log(`\nmean judge_overall: ${judged.length ? (judged.reduce((a, b) => a 
 writeFileSync(`${root}report.json`, JSON.stringify({ model: llm.model, offline, at: new Date().toISOString(), thresholds: THRESHOLDS, results: rows }, null, 2));
 
 const failed = rows.filter((o) => !o.ok);
-// dataset-level judge bar: the mean is robust to a single noisy judgement, per-item floors are not
-const meanJudge = judged.length ? judged.reduce((a, b) => a + b, 0) / judged.length : undefined;
-const judgeBarFailed = !offline && meanJudge !== undefined && meanJudge < MEAN_JUDGE_MIN;
-if (judgeBarFailed) console.log(`\n✘ mean judge_overall ${meanJudge!.toFixed(3)} < ${MEAN_JUDGE_MIN}`);
-// the same for lint: one flagged question in five is 0.80, a model variation, not a regression; a drop of the AVERAGE is
-const lints = rows.map((o) => o.eval?.scores.lint_pass).filter((v): v is number => v !== undefined);
-const meanLint = lints.length ? lints.reduce((a, b) => a + b, 0) / lints.length : undefined;
-const lintBarFailed = meanLint !== undefined && meanLint < MEAN_LINT_MIN;
-if (lintBarFailed) console.log(`\n✘ mean lint_pass ${meanLint!.toFixed(3)} < ${MEAN_LINT_MIN}`);
-const barFailed = judgeBarFailed || lintBarFailed;
+/**
+ * The dataset-level bars (see MEAN_BARS). A per-item floor on a noisy continuous metric is a conjunction of one cell
+ * per item per axis, so it reports a failure whenever a single draw lands badly; the mean over the dataset is steady
+ * from run to run, so a drop in it is a regression rather than a bad sample.
+ */
+const meanOf = (axis: keyof typeof MEAN_BARS) => {
+  const vs = rows.map((o) => o.eval?.scores[axis]).filter((v): v is number => v !== undefined);
+  return vs.length ? vs.reduce((a, b) => a + b, 0) / vs.length : undefined;
+};
+const missedBars = (Object.keys(MEAN_BARS) as (keyof typeof MEAN_BARS)[]).flatMap((axis) => {
+  // offline is a harness check with a fake model: the judge says nothing meaningful, so its bar does not apply.
+  if (offline && axis === "judge_overall") return [];
+  const mean = meanOf(axis);
+  return mean !== undefined && mean < MEAN_BARS[axis] ? [{ axis, mean }] : [];
+});
+for (const { axis, mean } of missedBars) console.log(`\n✘ mean ${axis} ${mean.toFixed(3)} < ${MEAN_BARS[axis]}`);
+const barFailed = missedBars.length > 0;
 console.log(failed.length || barFailed ? `\n${failed.length} item(s) FAILED${barFailed ? " and a dataset-level bar was missed" : ""}: quality gate FAILED` : "\nquality gate PASSED");
 process.exit(failed.length || barFailed ? 1 : 0);
