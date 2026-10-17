@@ -60,6 +60,23 @@ describe("door 1: the quiz input is strict and the document is admitted or rejec
     expect(user).not.toMatch(/[\u202A-\u202E\u2060-\u206F\u{E0000}-\u{E007F}]/u); // only the single zero-width space that neutralises a fake <document> tag is allowed
   });
 
+  it("passes the detected language on, so the generator is told instead of guessing", async () => {
+    const llm = spy();
+    const pt = `O agendador executa tarefas em horários fixos definidos por quem administra o sistema.
+Quando uma tarefa falha, ela é reiniciada após um intervalo que dobra a cada nova tentativa.
+O histórico de cada execução fica guardado por trinta dias e pode ser exportado em CSV.
+O painel de controle escuta apenas na interface local, a menos que a configuração seja alterada.
+Cada sessão do painel expira depois de quinze minutos sem nenhuma atividade do usuário.
+As tarefas antigas são apagadas automaticamente quando o limite de mil execuções é atingido.`;
+    expect(parseQuizInput(input(pt)).language).toBe("pt");
+    await generateQuiz({ llm, input: input(pt), judge: false, score: false });
+    const user = llm.seen.flat().filter((m) => m.role === "user").map((m) => m.content).join("\n");
+    expect(user).toContain("in Portuguese");
+
+    // a document too short to judge says nothing, instead of asserting a language it does not know
+    expect(parseQuizInput(input("Short. Very short indeed.")).language).toBeUndefined();
+  });
+
   it("a document that is not text is rejected before the guard pays for it", () => {
     const elf = Buffer.concat([Buffer.from([0x7f, 0x45, 0x4c, 0x46]), Buffer.alloc(8192, 7)]).toString("utf8");
     expect(() => admitDocument(elf)).toThrow(NotTextError);

@@ -332,3 +332,39 @@ describe("output rails: planted words are narrow (ordinary words of a quoted att
     }
   });
 });
+
+describe("output rail: the quiz is in the language of the document", () => {
+  const PT_DOC = "O agendador tenta novamente um trabalho que falhou três vezes. O atraso dobra depois de cada falha, começando em cinco segundos.";
+  const ptQuestions = [
+    { prompt: "Quantas vezes o agendador tenta novamente um trabalho que falhou?", options: ["Três vezes", "Uma vez", "Nunca", "Dez vezes"], correct: [0], explanation: "O documento diz que ele tenta novamente três vezes antes de desistir por completo.", sourceQuote: "tenta novamente um trabalho que falhou três vezes", difficulty: "easy" as const, type: "single" as const },
+    { prompt: "O que acontece com o atraso depois de cada falha do trabalho agendado?", options: ["Dobra", "Fica igual", "Cai pela metade", "Some"], correct: [0], explanation: "O documento explica que o atraso dobra depois de cada falha registrada.", sourceQuote: "O atraso dobra depois de cada falha", difficulty: "easy" as const, type: "single" as const },
+  ];
+
+  it("accepts a quiz in the language the caller asked for", () => {
+    expect(quizOutputProblems(ptQuestions, { sourceText: PT_DOC, language: "pt" })).toEqual([]);
+  });
+
+  it("rejects the drift the model actually makes: an English quiz for a Portuguese document", () => {
+    // measured before this rail existed: about 40% of the quizzes for one Portuguese README came out in English
+    const problems = quizOutputProblems(five(), { sourceText: PT_DOC, language: "pt" });
+    expect(problems.some((p) => /written in en.*document is in pt/.test(p))).toBe(true);
+  });
+
+  it("says nothing when the caller does not know the language", () => {
+    expect(quizOutputProblems(five(), { sourceText: DOC })).toEqual([]);
+    expect(quizOutputProblems(five(), { sourceText: DOC, language: undefined })).toEqual([]);
+    expect(quizOutputProblems(five(), { sourceText: DOC, language: "unknown" })).toEqual([]); // not a supported language: not judged
+  });
+
+  it("lets a quiz through when there is too little prose to tell", () => {
+    const tiny = [{ ...q(), prompt: "Qual?", options: ["Sim", "Não", "Talvez", "Nunca"], explanation: "Sim.", sourceQuote: "Sim" }];
+    expect(quizOutputProblems(tiny, { sourceText: PT_DOC, language: "pt" })).toEqual([]);
+  });
+
+  it("goes through the repair round like any other problem, and fails the job if it is not fixed", () => {
+    const check = quizReplyCheck(PT_DOC, undefined, "pt");
+    const feedback = check({ questions: five() }, JSON.stringify({ questions: five() }));
+    expect(feedback).toMatch(/write every question, option and explanation in pt/i);
+    expect(() => assertQuizOutput(five(), { sourceText: PT_DOC, language: "pt" })).toThrow(UnsafeOutputError);
+  });
+});

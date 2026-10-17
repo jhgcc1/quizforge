@@ -59,15 +59,29 @@ const attr = (v: string): string => v.replace(/["<>\r\n]/g, " ").slice(0, 120);
 
 const topicLine = (topic?: string) => (topic ? `Focus on this topic where the document allows: ${topic}\n` : "");
 
-export const singleShotUser = (p: { doc: string; n: number; topic?: string | undefined }) =>
-  `${topicLine(p.topic)}Write exactly ${p.n} questions covering the document broadly.
+/**
+ * The language of the quiz, stated instead of inferred.
+ *
+ * The system prompt says "write in the same language as the document", and the model gets it wrong often: measured on a
+ * Portuguese README full of English identifiers and code, about 40% of the quizzes came out in English. The pipeline
+ * already knows the language (the language policy detects it before anything is sent), so there is no reason to make the
+ * model guess. Nothing is said when it is unknown — too little prose to tell — and the old rule still covers that.
+ */
+const LANGUAGE_NAME: Record<string, string> = { en: "English", pt: "Portuguese", es: "Spanish" };
+const languageLine = (language?: string) => {
+  const name = language ? LANGUAGE_NAME[language] : undefined;
+  return name ? `Write every question, option and explanation in ${name}, the language of the document.\n` : "";
+};
+
+export const singleShotUser = (p: { doc: string; n: number; topic?: string | undefined; language?: string | undefined }) =>
+  `${languageLine(p.language)}${topicLine(p.topic)}Write exactly ${p.n} questions covering the document broadly.
 
 <document>
 ${neutralize(p.doc)}
 </document>`;
 
-export const sectionUser = (p: { heading: string; text: string; n: number; topic?: string | undefined }) =>
-  `${topicLine(p.topic)}Write exactly ${p.n} question(s) about the section below. Each must be answerable from this section alone.
+export const sectionUser = (p: { heading: string; text: string; n: number; topic?: string | undefined; language?: string | undefined }) =>
+  `${languageLine(p.language)}${topicLine(p.topic)}Write exactly ${p.n} question(s) about the section below. Each must be answerable from this section alone.
 
 <document section="${attr(p.heading)}">
 ${neutralize(p.text)}
