@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { userFacingError } from "./user-errors.js";
+import { classifierFinding, userFacingError } from "./user-errors.js";
 
 describe("userFacingError", () => {
   it.each([
@@ -18,6 +18,8 @@ describe("userFacingError", () => {
     ["SourceError: credentials in URL are not allowed", /not a valid https/],
     ["SourceError: custom ports are not allowed", /not a valid https/],
     ["SourceError: too_large", /too large \(limit 512 KB\)/],
+    ["UnsafeDocumentError: unsafe_document: the classifier scored 0.97 for prompt injection (1/1 windows scanned)", /ask for it to be reviewed/],
+    ["UnsafeDocumentError: unsafe_document: an instruction is hidden in base64", /hidden or encoded text/],
     ["UnsafeDocumentError: unsafe_document: hidden text", /hidden or encoded text/],
     ["unsupported_language: ru", /not in a supported language/],
     ["invalid_llm_input: topic", /could not be processed safely/],
@@ -38,5 +40,23 @@ describe("userFacingError", () => {
     const m = userFacingError("SourceError: host not allowed: evil.example.com")!;
     expect(m).toMatch(/not allowed/i);
     expect(m).toMatch(/github\.com/);
+  });
+});
+
+describe("classifierFinding", () => {
+  it("reads the score and keeps the text it came from", () => {
+    const found = classifierFinding("unsafe_document: the classifier scored 0.97 for prompt injection (1/1 windows scanned)");
+    expect(found).toEqual({ score: 0.97, excerpt: "unsafe_document: the classifier scored 0.97 for prompt injection (1/1 windows scanned)" });
+  });
+
+  it("is undefined for a failure of any other kind, and for no failure at all", () => {
+    expect(classifierFinding("QualityGateError: only 3 grounded question(s)")).toBeUndefined();
+    expect(classifierFinding("unsafe_document: an instruction is hidden in base64")).toBeUndefined();
+    expect(classifierFinding(null)).toBeUndefined();
+  });
+
+  it("truncates a very long failure, because it is shown to a reviewer", () => {
+    const long = `the classifier scored 0.99 ${"x".repeat(900)}`;
+    expect(classifierFinding(long)!.excerpt).toHaveLength(500);
   });
 });

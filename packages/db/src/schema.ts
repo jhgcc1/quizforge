@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  index,
   integer,
   jsonb,
   numeric,
@@ -204,3 +205,35 @@ export const evalScores = pgTable("eval_scores", {
   meta: jsonb("meta"),
   createdAt: createdAt(),
 });
+
+/**
+ * A user asking for a document the semantic classifier rejected (score at or above the block threshold).
+ *
+ * It holds WHAT WAS FOUND, not only the URL: the reviewer has to judge the document, and the score plus the excerpt that
+ * triggered it are the evidence. An approved row becomes a catalogue entry for everyone, so the decision is recorded with
+ * who made it and when.
+ */
+export const documentRequests = pgTable(
+  "document_requests",
+  {
+    id: id(),
+    url: text("url").notNull(),
+    title: text("title").notNull(),
+    description: text("description"),
+    /** Why the requester believes the document is legitimate. */
+    note: text("note"),
+    requestedBy: text("requested_by").notNull(),
+    status: text("status").notNull().default("pending"),
+    detectorScore: numeric("detector_score", { precision: 5, scale: 4 }),
+    excerpt: text("excerpt"),
+    reviewedBy: text("reviewed_by"),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    reviewNote: text("review_note"),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("document_requests_status_idx").on(t.status, t.createdAt),
+    // one open request per document: a second user asking for the same URL joins the queue instead of duplicating it
+    uniqueIndex("document_requests_pending_url_idx").on(t.url).where(sql`status = 'pending'`),
+  ],
+);

@@ -4,9 +4,11 @@ import rateLimit from "@fastify/rate-limit";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { z } from "zod";
 import {
+  CreateDocumentRequestBodySchema,
   CreateQuizBodyStrictSchema,
   IdempotencyKeySchema,
   SAMPLE_CATALOG,
+  ReviewDocumentRequestBodySchema,
   SaveAnswerBodySchema,
   requestFingerprint,
 } from "@quizforge/core";
@@ -18,11 +20,15 @@ import {
   getAttemptProgress,
   getAttemptResult,
   getOrCreateAttempt,
+  approvedCatalogEntries,
+  createDocumentRequest,
   getOwnedQuiz,
   getPublicQuestions,
   listAttemptsByQuiz,
   listAttemptsForQuiz,
+  listDocumentRequests,
   listQuizzes,
+  reviewDocumentRequest,
   saveAnswer,
   submitAttempt,
   type AttemptSummary,
@@ -30,10 +36,10 @@ import {
   type QuizRow,
 } from "@quizforge/db";
 import { SourceError, assertAllowedUrl, toRawUrl } from "@quizforge/llm/source";
-import type { TokenVerifier } from "./auth.js";
+import { isAdmin, type AuthUser, type TokenVerifier } from "./auth.js";
 import type { Config } from "./config.js";
 import { openApiDocument, swaggerHtml } from "./openapi.js";
-import { userFacingError } from "./user-errors.js";
+import { classifierFinding, userFacingError } from "./user-errors.js";
 import type { QuizQueue } from "./queue.js";
 
 export interface AppDeps {
@@ -49,7 +55,7 @@ export interface AppDeps {
 
 declare module "fastify" {
   interface FastifyRequest {
-    user?: { sub: string };
+    user?: AuthUser;
   }
 }
 
@@ -80,6 +86,7 @@ function summary(q: QuizRow) {
     strategyUsed: q.strategyUsed,
     critique: q.critique,
     error: q.status === "failed" ? userFacingError(q.error) : null, // raw detail stays in the database and logs
+    reviewable: q.status === "failed" && classifierFinding(q.error) !== undefined, // the client offers the review path on this, not on the wording
     createdAt: q.createdAt,
     generationProgress: generationProgress(q),
   };
@@ -241,7 +248,50 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       return reply.status(202).header("location", `/v1/quizzes/${quiz.id}`).send({ quiz: summary(quiz) });
     });
 
-    v1.get("/catalog", async () => ({ items: SAMPLE_CATALOG }));
+    // The catalogue is the fixed list plus the documents an admin approved after the classifier rejected them.
+    v1.get("/catalog", async () => ({ items: [...SAMPLE_CATALOG, ...(await approvedCatalogEntries(db))] }));
+
+    /**
+     * Ask for a document the classifier rejected.
+     *
+     * The classifier scores some real READMEs above the block threshold (measured: 6 of 722), so a rejection is not proof
+     * of an attack and the user should not be left at a dead end. The request records WHAT WAS FOUND -- the score and the
+     * excerpt -- because an approval puts the document in everyone's dropdown, and the reviewer has to judge the document,
+     * not the asking.
+     */
+    v1.post("/document-requests", { config: { rateLimit: { max: config.CREATE_RATE_LIMIT_PER_MINUTE, timeWindow: "1 minute" } } }, async (req, reply) => {
+      const body = CreateDocumentRequestBodySchema.safeParse(req.body ?? {});
+      if (!body.success) return fail(reply, 400, "validation_error", "Invalid request body", body.error.issues.map((i: z.ZodIssue) => ({ path: i.path.join("."), message: i.message })));
+      const quiz = await getOwnedQuiz(db, body.data.quizId, req.user!.sub);
+      if (!quiz) return fail(reply, 404, "not_found", "No quiz of yours with that id");
+      const found = classifierFinding(quiz.error);
+      if (!found) return fail(reply, 422, "not_refused_by_classifier", "That quiz was not refused by the prompt-injection classifier, so there is nothing to review");
+      const created = await createDocumentRequest(db, {
+        url: quiz.sourceUrl,
+        title: body.data.title,
+        ...(body.data.description ? { description: body.data.description } : {}),
+        ...(body.data.note ? { note: body.data.note } : {}),
+        requestedBy: req.user!.sub,
+        detectorScore: found.score,
+        excerpt: found.excerpt,
+      });
+      if (!created) return fail(reply, 409, "request_already_open", "Somebody already asked for this document; it is waiting for review");
+      req.log.info({ documentRequestId: created.id, url: quiz.sourceUrl, score: found.score }, "document review requested");
+      return reply.code(201).send(created);
+    });
+
+    /** The admin sees everything waiting; everybody else sees what they asked for. */
+    v1.get("/document-requests", async (req) => ({ items: await listDocumentRequests(db, isAdmin(req.user!) ? { status: "pending" } : { requestedBy: req.user!.sub }) }));
+
+    v1.post<{ Params: { id: string } }>("/document-requests/:id/review", async (req, reply) => {
+      if (!isAdmin(req.user!)) return fail(reply, 403, "forbidden", "Only an administrator can review document requests");
+      const body = ReviewDocumentRequestBodySchema.safeParse(req.body ?? {});
+      if (!body.success) return fail(reply, 400, "validation_error", "Invalid request body", body.error.issues.map((i: z.ZodIssue) => ({ path: i.path.join("."), message: i.message })));
+      const reviewed = await reviewDocumentRequest(db, { id: req.params.id, action: body.data.action, reviewedBy: req.user!.sub, ...(body.data.note ? { note: body.data.note } : {}) });
+      if (!reviewed) return fail(reply, 404, "not_found", "No request waiting for review with that id");
+      req.log.info({ documentRequestId: reviewed.id, action: body.data.action, reviewedBy: req.user!.sub }, "document request reviewed");
+      return reviewed;
+    });
 
     v1.get("/quizzes", async (req) => {
       const sub = req.user!.sub;

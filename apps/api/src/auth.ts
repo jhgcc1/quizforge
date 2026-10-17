@@ -4,7 +4,16 @@ import type { Config } from "./config.js";
 
 export interface AuthUser {
   sub: string;
+  /** Cognito groups of the token. `admin` reviews the requests to add a blocked document to the catalogue. */
+  groups: readonly string[];
 }
+
+export const ADMIN_GROUP = "admin";
+export const isAdmin = (user: AuthUser): boolean => user.groups.includes(ADMIN_GROUP);
+
+/** The groups claim of an access token, as Cognito writes it. Anything else is treated as no groups. */
+const groupsOf = (payload: { "cognito:groups"?: unknown }): readonly string[] =>
+  Array.isArray(payload["cognito:groups"]) ? payload["cognito:groups"].filter((g): g is string => typeof g === "string") : [];
 
 /** Throws if the token is not acceptable. Implementations must never return a user for an invalid token. */
 export interface TokenVerifier {
@@ -26,7 +35,7 @@ export function cognitoVerifier(cfg: Pick<Config, "COGNITO_USER_POOL_ID" | "clie
     async verify(token) {
       const payload = await verifier.verify(token);
       if (!payload.sub) throw new Error("token has no sub");
-      return { sub: payload.sub };
+      return { sub: payload.sub, groups: groupsOf(payload) };
     },
   };
 }
@@ -41,13 +50,14 @@ export function localVerifier(secret: string): TokenVerifier {
     async verify(token) {
       const { payload } = await jwtVerify(token, key, { issuer: LOCAL_ISSUER, audience: LOCAL_AUDIENCE, algorithms: ["HS256"] });
       if (!payload.sub) throw new Error("token has no sub");
-      return { sub: payload.sub };
+      return { sub: payload.sub, groups: groupsOf(payload as { "cognito:groups"?: unknown }) };
     },
   };
 }
 
-export async function signLocalToken(secret: string, sub: string, ttlSeconds = 3600): Promise<string> {
-  return new SignJWT({})
+/** `groups` mirrors the Cognito claim, so local development and tests can exercise the admin path. */
+export async function signLocalToken(secret: string, sub: string, ttlSeconds = 3600, groups: readonly string[] = []): Promise<string> {
+  return new SignJWT(groups.length ? { "cognito:groups": [...groups] } : {})
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(sub)
     .setIssuer(LOCAL_ISSUER)
