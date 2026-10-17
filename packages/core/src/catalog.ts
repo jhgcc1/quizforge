@@ -22,3 +22,30 @@ export const SAMPLE_CATALOG: readonly CatalogEntry[] = [
   { id: "orbit-injection", kind: "test", title: "Orbit Scheduler (prompt injection)", description: "Test document that tries to hijack the AI with hidden instructions", url: `${REPO_RAW}/injection.md`, language: "en", size: "short", tests: "The quiz must ignore the injected instructions" },
   { id: "tiny-clock", kind: "test", title: "Tiny Clock (very short)", description: "Test document with barely enough content for a quiz", url: `${REPO_RAW}/minimal.md`, language: "en", size: "short", tests: "Edge case: almost nothing to ask about" },
 ];
+
+/**
+ * A name for a document that earned its place in the catalogue by being used.
+ *
+ * The first markdown heading is what a reader would call the document, so it is the first choice. Badge images and
+ * links are stripped, because a README title is very often `# [![badge](...)](...) Project`. Failing that, the
+ * owner/repo of the URL says more than the full raw.githubusercontent URL would.
+ */
+export function titleForDocument(text: string, url: string): string {
+  for (const line of text.split("\n", 40)) {
+    const m = /^#{1,2}\s+(.+?)\s*#*$/.exec(line.trim());
+    if (!m) continue;
+    // A README title is very often `# [![badge](img)](link) Project`. An image adds nothing to a name, so it goes
+    // entirely; a link keeps its text. Twice, because the two nest.
+    let clean = m[1]!;
+    for (let i = 0; i < 2; i++) {
+      clean = clean.replace(/!\[[^\]]*\]\([^)]*\)/g, "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1");
+    }
+    clean = clean
+      .replace(/[`*_~]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (clean.length >= 2) return clean.slice(0, 80);
+  }
+  const path = /github(?:usercontent)?\.com\/([^/]+)\/([^/]+)/.exec(url);
+  return path ? `${path[1]}/${path[2]}` : url.slice(0, 80);
+}

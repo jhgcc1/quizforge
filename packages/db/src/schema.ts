@@ -37,14 +37,28 @@ const id = () => uuid("id").primaryKey().default(sql`gen_random_uuid()`);
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 
 /** Fetched markdown documents; deduplicated by content hash so identical READMEs are stored once. */
-export const sources = pgTable("sources", {
-  id: id(),
-  url: text("url").notNull(),
-  rawUrl: text("raw_url").notNull(),
-  contentSha256: text("content_sha256").notNull().unique(),
-  contentText: text("content_text").notNull(),
-  fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const sources = pgTable(
+  "sources",
+  {
+    id: id(),
+    url: text("url").notNull(),
+    rawUrl: text("raw_url").notNull(),
+    contentSha256: text("content_sha256").notNull().unique(),
+    contentText: text("content_text").notNull(),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * Set once a quiz has been generated from this document without any guard raising a finding. That is what puts the
+     * document in the shared catalogue, so nobody has to paste the same URL twice. Null means "not offered to anyone":
+     * either no quiz has succeeded from it yet, or a guard had something to say about it.
+     */
+    listedAt: timestamp("listed_at", { withTimezone: true }),
+    /** Shown in the dropdown. Taken from the document's first heading, falling back to owner/repo. */
+    listTitle: text("list_title"),
+    /** The language the document was admitted as, so the dropdown can group and filter without re-reading the text. */
+    listLanguage: text("list_language"),
+  },
+  (t) => [index("sources_listed_idx").on(t.listedAt)],
+);
 
 export const quizzes = pgTable(
   "quizzes",

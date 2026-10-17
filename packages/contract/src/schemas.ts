@@ -170,7 +170,11 @@ export const CatalogEntrySchema = z.object({
    * `readme` = a real project README; `test` = a document written to exercise one behaviour of the generator;
    * `approved` = a document the classifier rejected and an admin reviewed and let in (see DocumentRequestSchema).
    */
-  kind: z.enum(["readme", "test", "approved"]),
+  /**
+   * Where the entry comes from: `readme`/`test` ship with the product, `approved` was let in by a reviewer after the
+   * classifier refused it, and `used` (contract 1.3.0) earned its place by generating a quiz with no guard finding.
+   */
+  kind: z.enum(["readme", "test", "approved", "used"]),
   language: z.enum(["en", "pt", "es"]),
   size: z.enum(["short", "medium", "long"]),
   /** what this document is good for testing */
