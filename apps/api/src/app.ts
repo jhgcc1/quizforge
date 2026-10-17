@@ -39,7 +39,7 @@ import { SourceError, assertAllowedUrl, toRawUrl } from "@quizforge/llm/source";
 import { isAdmin, type AuthUser, type TokenVerifier } from "./auth.js";
 import type { Config } from "./config.js";
 import { openApiDocument, swaggerHtml } from "./openapi.js";
-import { userFacingError } from "./user-errors.js";
+import { classifierFinding, userFacingError } from "./user-errors.js";
 import type { QuizQueue } from "./queue.js";
 
 export interface AppDeps {
@@ -86,7 +86,7 @@ function summary(q: QuizRow) {
     strategyUsed: q.strategyUsed,
     critique: q.critique,
     error: q.status === "failed" ? userFacingError(q.error) : null, // raw detail stays in the database and logs
-    reviewable: q.status === "failed" && /the classifier scored/.test(q.error ?? ""), // the client offers the review path on this, not on the wording
+    reviewable: q.status === "failed" && classifierFinding(q.error) !== undefined, // the client offers the review path on this, not on the wording
     createdAt: q.createdAt,
     generationProgress: generationProgress(q),
   };
@@ -115,16 +115,6 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       return v && /^[\w\-=;:.,/ ]{1,200}$/.test(v) ? v : randomUUID();
     },
   });
-
-  /**
-   * The classifier's verdict read back from the failure stored on a quiz: the score and the text it was read from, or
-   * undefined when the quiz failed for another reason. Both together, because a score without its evidence is useless to
-   * a reviewer — and because there is no case where one exists without the other.
-   */
-  const classifierFinding = (error: string | null): { score: number; excerpt: string } | undefined => {
-    const m = /the classifier scored ([0-9.]+)/.exec(error ?? "");
-    return m ? { score: Number(m[1]), excerpt: (error ?? "").slice(0, 500) } : undefined;
-  };
 
   const fail = (reply: FastifyReply, status: number, code: string, message: string, details?: unknown) =>
     reply.status(status).send({ error: { code, message, ...(details ? { details } : {}), requestId: reply.request.id } });

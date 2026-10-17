@@ -2,6 +2,16 @@
  * The worker stores the raw failure (class name + technical message) on the quiz for operators. Users get a sentence
  * they can act on, never an exception name or an internal detail.
  */
+/**
+ * The classifier's verdict read back from the failure stored on a quiz: the score and the text it came from, or undefined
+ * when the quiz failed for another reason. One place decides what "refused by the classifier" means — the flag on the quiz
+ * and the review request both ask this, and a client should never have to match on the wording of a message.
+ */
+export function classifierFinding(raw: string | null): { score: number; excerpt: string } | undefined {
+  const m = /the classifier scored ([0-9.]+)/.exec(raw ?? "");
+  return m ? { score: Number(m[1]), excerpt: (raw ?? "").slice(0, 500) } : undefined;
+}
+
 export function userFacingError(raw: string | null): string | null {
   if (!raw) return null;
   // problems the user can fix themselves are shown (they come from our own validation, not from stack traces)
