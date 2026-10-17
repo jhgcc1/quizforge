@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { MemorySaver } from "@langchain/langgraph";
-import { createDb, createQuizIdempotent, eq, getPublicQuestions, migrate, schema, setQuizPhase } from "@quizforge/db";
+import { createDb, createDocumentRequest, createQuizIdempotent, eq, getPublicQuestions, migrate, reviewDocumentRequest, schema, setQuizPhase } from "@quizforge/db";
 import { JobBudget, QualityGateError, SourceError, createFakeLlm, type LlmClient } from "@quizforge/llm";
 import { createLogger } from "./log.js";
 import { processQuizJob, type ProcessDeps } from "./processor.js";
@@ -308,6 +308,33 @@ describe("the input guard in the worker (door 1)", () => {
       const q2 = await newQuiz({ numQuestions: 5 });
       expect((await processQuizJob(deps({ detector: stub(true, seen), detectorMode: "off" }), { v: 1, quizId: q2.id }, { count: 1, max: 3 })).kind).toBe("done");
       expect(seen).toEqual([]);
+    });
+
+    // The review flow only means something if approval sticks: without this the admin approves a document, it joins the
+    // dropdown, and the classifier refuses it again on the very next generation.
+    it("block mode: a document a reviewer approved is generated anyway, and the finding is still recorded", async () => {
+      const url = "https://github.com/o/approved/blob/main/README.md";
+      const quiz = await newQuiz({ sourceUrl: url });
+      const req = await createDocumentRequest(ctx.db, { url, title: "A real README", requestedBy: "owner", detectorScore: 0.97, excerpt: "..." });
+      await reviewDocumentRequest(ctx.db, { id: req!.id, action: "approve", reviewedBy: "admin" });
+
+      metrics.length = 0;
+      const out = await processQuizJob(deps({ detector: stub(true), detectorMode: "block" }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
+
+      expect(out.kind).toBe("done");
+      expect(metrics.some((m) => m.ApprovedDocumentAllowed === 1)).toBe(true);
+      // Approval says "not an attack", not "stop watching": the detection is still counted, so a spike still alarms.
+      expect(metrics.some((m) => m.InjectionDetected === 1)).toBe(true);
+    });
+
+    it("block mode: a request that was rejected, or still pending, does not let the document through", async () => {
+      for (const [action, url] of [["reject", "https://github.com/o/no/blob/main/README.md"], [undefined, "https://github.com/o/pending/blob/main/README.md"]] as const) {
+        const quiz = await newQuiz({ sourceUrl: url });
+        const req = await createDocumentRequest(ctx.db, { url, title: "Asked for", requestedBy: "owner" });
+        if (action) await reviewDocumentRequest(ctx.db, { id: req!.id, action, reviewedBy: "admin" });
+        const out = await processQuizJob(deps({ detector: stub(true), detectorMode: "block" }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
+        expect(out.kind, `action=${action ?? "pending"}`).toBe("failed");
+      }
     });
 
     it("a detector that crashes never takes the job down", async () => {
