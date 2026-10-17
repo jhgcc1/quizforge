@@ -5,11 +5,19 @@ import pg from "pg";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { computeFinalScore } from "@quizforge/core";
 import {
+  approvedCatalogEntries,
   claimQuiz,
   completeQuiz,
   countRecentQuizzes,
   createDb,
+  createDocumentRequest,
   createQuizIdempotent,
+  isApprovedDocument,
+  listSource,
+  listedCatalogEntries,
+  reviewDocumentRequest,
+  unlistSourceByUrl,
+  upsertSource,
   failQuiz,
   getAttemptResult,
   getOrCreateAttempt,
@@ -233,5 +241,72 @@ describe("attempts with no answers", () => {
     if (done.status !== "ok") throw new Error("submit failed");
     expect(done.result.finalScore).toBe(0);
     expect(done.result.questions.map((q) => q.score)).toEqual([0, 0, 0, 0, 0]);
+  });
+});
+
+describe("the catalogue entries a document earns by being used", () => {
+  const put = async (name: string, chars: number, language = "en") => {
+    const url = `https://github.com/o/${name}/blob/main/README.md`;
+    const id = await upsertSource(ctx.db, { url, rawUrl: url, sha256: randomUUID().replace(/-/g, "").padEnd(64, "0"), text: "x".repeat(chars) });
+    await listSource(ctx.db, { sourceId: id, title: name, language });
+    return url;
+  };
+
+  it("reports the size from the document length, and the language it was admitted as", async () => {
+    await put("tiny", 100);
+    await put("middling", 10_000, "pt");
+    await put("enormous", 30_000, "es");
+    const by = Object.fromEntries((await listedCatalogEntries(ctx.db)).map((e) => [e.title, e]));
+    expect(by.tiny!.size).toBe("short");
+    expect(by.middling!.size).toBe("medium");
+    expect(by.enormous!.size).toBe("long");
+    expect([by.tiny!.language, by.middling!.language, by.enormous!.language]).toEqual(["en", "pt", "es"]);
+    expect(by.tiny!.kind).toBe("used");
+    expect(by.tiny!.tests).toMatch(/^First used on \d{4}-\d{2}-\d{2}$/);
+  });
+
+  it("falls back to English for a language the catalogue does not offer", async () => {
+    const url = await put("mystery", 100, "de");
+    expect((await listedCatalogEntries(ctx.db)).find((e) => e.url === url)!.language).toBe("en");
+  });
+
+  it("lists nothing for a source that was never listed, and listing twice keeps the first date", async () => {
+    const url = "https://github.com/o/quiet/blob/main/README.md";
+    const id = await upsertSource(ctx.db, { url, rawUrl: url, sha256: randomUUID().replace(/-/g, "").padEnd(64, "0"), text: "x".repeat(50) });
+    expect((await listedCatalogEntries(ctx.db)).map((e) => e.url)).not.toContain(url);
+    await listSource(ctx.db, { sourceId: id, title: "First", language: "en" });
+    const first = (await listedCatalogEntries(ctx.db)).find((e) => e.url === url)!;
+    await listSource(ctx.db, { sourceId: id, title: "Second", language: "en" });
+    expect((await listedCatalogEntries(ctx.db)).find((e) => e.url === url)!.title).toBe(first.title);
+  });
+
+  it("unlisting an empty list of urls, or an unknown one, does nothing and does not throw", async () => {
+    const before = (await listedCatalogEntries(ctx.db)).length;
+    await unlistSourceByUrl(ctx.db, []);
+    await unlistSourceByUrl(ctx.db, [""]);
+    await unlistSourceByUrl(ctx.db, ["https://github.com/o/never-seen/blob/main/R.md"]);
+    expect((await listedCatalogEntries(ctx.db)).length).toBe(before);
+  });
+
+  it("the limit is honoured", async () => {
+    await put("one-of-two", 100);
+    await put("two-of-two", 100);
+    expect(await listedCatalogEntries(ctx.db, 1)).toHaveLength(1);
+  });
+});
+
+describe("approval lookups with nothing to look up", () => {
+  it("an empty or blank list of urls is not approved, without hitting the database", async () => {
+    expect(await isApprovedDocument(ctx.db, [])).toBe(false);
+    expect(await isApprovedDocument(ctx.db, ["", ""])).toBe(false);
+  });
+
+  it("an approved request with no score and no review date still renders a catalogue entry", async () => {
+    const url = "https://github.com/o/bare/blob/main/README.md";
+    const req = await createDocumentRequest(ctx.db, { url, title: "Bare request", requestedBy: "u" });
+    await reviewDocumentRequest(ctx.db, { id: req!.id, action: "approve", reviewedBy: "admin" });
+    const entry = (await approvedCatalogEntries(ctx.db)).find((e) => e.url === url)!;
+    expect(entry.kind).toBe("approved");
+    expect(entry.tests).toMatch(/Let in by review on \d{4}-\d{2}-\d{2}$/); // no score clause when there is no score
   });
 });

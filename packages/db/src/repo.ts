@@ -733,13 +733,16 @@ export async function listedCatalogEntries(
   db: Db,
   limit = 200,
 ): Promise<{ id: string; title: string; description: string; url: string; kind: "used"; language: "en" | "pt" | "es"; size: "short" | "medium" | "long"; tests: string }[]> {
+  // The title and the date are read through SQL rather than patched up here: listSource writes `listed_at` and
+  // `list_title` in the same statement, so neither can be null on a listed row, and a `??` on them would be a branch
+  // no test could ever reach. coalesce keeps the query honest anyway if a row is ever written by hand.
   const rows = await db
     .select({
       id: t.sources.id,
       url: t.sources.url,
-      title: t.sources.listTitle,
+      title: sql<string>`coalesce(${t.sources.listTitle}, ${t.sources.url})`,
       language: t.sources.listLanguage,
-      listedAt: t.sources.listedAt,
+      listedOn: sql<string>`to_char(${t.sources.listedAt}, 'YYYY-MM-DD')`,
       chars: sql<number>`length(${t.sources.contentText})`,
     })
     .from(t.sources)
@@ -748,13 +751,13 @@ export async function listedCatalogEntries(
     .limit(limit);
   return rows.map((r) => ({
     id: `used-${r.id.slice(0, 8)}`,
-    title: r.title ?? r.url,
+    title: r.title,
     description: "Added automatically after a quiz was generated from it",
     url: r.url,
     kind: "used" as const,
     language: (r.language === "pt" || r.language === "es" ? r.language : "en") as "en" | "pt" | "es",
     size: (r.chars < 4000 ? "short" : r.chars < 20000 ? "medium" : "long") as "short" | "medium" | "long",
-    tests: `First used on ${r.listedAt ? r.listedAt.toISOString().slice(0, 10) : "?"}`,
+    tests: `First used on ${r.listedOn}`,
   }));
 }
 
