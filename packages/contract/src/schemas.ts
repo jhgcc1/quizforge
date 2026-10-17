@@ -83,6 +83,12 @@ export const QuizSummarySchema = z.object({
   strategyUsed: z.string().nullable(),
   critique: z.boolean(),
   error: z.string().nullable(),
+  /**
+   * Added in contract 1.2.0: optional AND nullable, so old clients and old servers keep working. True when this quiz
+   * failed because the prompt-injection classifier refused the document — the one failure the user can do something
+   * about, by asking for a review. The client should not have to match on the wording of `error` to know that.
+   */
+  reviewable: z.boolean().nullish(),
   createdAt: iso,
   /**
    * Added in contract 1.1.0: optional AND nullable, so old clients and old servers keep working. Present (not null) only while

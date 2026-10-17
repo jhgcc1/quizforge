@@ -560,6 +560,17 @@ describe("asking for a document the classifier rejected", () => {
   const post = async (sub: string, payload: Record<string, unknown>) =>
     app.inject({ method: "POST", url: "/v1/document-requests", headers: { authorization: `Bearer ${await token(sub)}`, "content-type": "application/json" }, payload });
 
+  it("marks the refused quiz as reviewable, so the client does not have to read the message", async () => {
+    const quizId = await refusedQuiz("u-flag");
+    const body = (await call("u-flag", "GET", `/v1/quizzes/${quizId}`)).body;
+    expect(body.quiz).toMatchObject({ status: "failed", reviewable: true });
+    expect(body.quiz.error).toMatch(/ask for it to be reviewed/);
+
+    const otherId = (await create("u-flag2", randomUUID(), { sourceUrl: "https://github.com/o/r/blob/main/Y.md" })).body.quiz.id as string;
+    await failQuiz(ctx.db, { quizId: otherId, error: "BudgetExceededError: LLM call budget exceeded (16)" });
+    expect((await call("u-flag2", "GET", `/v1/quizzes/${otherId}`)).body.quiz.reviewable).toBe(false);
+  });
+
   it("takes the document and the score from the quiz, so the reviewer sees evidence and the user types nothing", async () => {
     const quizId = await refusedQuiz("u-req-1");
     const res = await post("u-req-1", { quizId, title: "Elasticsearch", description: "Search engine", note: "Real project README" });

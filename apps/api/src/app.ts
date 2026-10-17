@@ -86,6 +86,7 @@ function summary(q: QuizRow) {
     strategyUsed: q.strategyUsed,
     critique: q.critique,
     error: q.status === "failed" ? userFacingError(q.error) : null, // raw detail stays in the database and logs
+    reviewable: q.status === "failed" && /the classifier scored/.test(q.error ?? ""), // the client offers the review path on this, not on the wording
     createdAt: q.createdAt,
     generationProgress: generationProgress(q),
   };
