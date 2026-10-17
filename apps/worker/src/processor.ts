@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { BaseCheckpointSaver } from "@langchain/langgraph";
 import type { QuizJobMessage, ScoreJobMessage } from "@quizforge/core";
-import { claimQuiz, completeQuiz, failQuiz, saveJobBudget, setQuizPhase, upsertSource, type Db } from "@quizforge/db";
+import { claimQuiz, completeQuiz, failQuiz, isApprovedDocument, saveJobBudget, setQuizPhase, upsertSource, type Db } from "@quizforge/db";
 import {
   BudgetExceededError,
   NonRetryableError,
@@ -109,12 +109,21 @@ export async function processQuizJob(
       emit({ DetectorFailed: { value: 1, unit: "Count" } });
       return undefined;
     });
+    // A document an admin approved after review is never refused again by the classifier: the review exists precisely
+    // because the classifier is wrong often enough on real READMEs. Everything else stays on — the finding is still
+    // recorded, the metric still fires, and the output rails still go strict below. Approval says "this is not an
+    // attack", not "trust whatever it says".
     if (screened && screened.status !== "skipped") {
       emit({ DetectorMs: { value: screened.result.ms, unit: "Milliseconds" } });
       if (screened.status === "flagged" || screened.status === "blocked") {
         log.warn({ detector: d.detector?.name, score: screened.result.score }, "the semantic detector flags this document");
         emit({ InjectionDetected: { value: 1, unit: "Count" } });
-        if (screened.status === "blocked") throw new UnsafeDocumentError(screened.finding.detail);
+        if (screened.status === "blocked") {
+          const approved = await isApprovedDocument(d.db, [quiz.sourceUrl, src.rawUrl]);
+          if (!approved) throw new UnsafeDocumentError(screened.finding.detail);
+          log.warn({ score: screened.result.score }, "the classifier would block this document, but a reviewer approved it");
+          emit({ ApprovedDocumentAllowed: { value: 1, unit: "Count" } });
+        }
       }
     }
     // A flag from the classifier puts the output rails in strict link mode (like a keyword finding does): see packages/llm/src/output-guard.ts

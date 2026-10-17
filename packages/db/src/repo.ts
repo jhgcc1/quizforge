@@ -703,6 +703,24 @@ export async function reviewDocumentRequest(
 }
 
 /**
+ * Has a human already let this document in? Approval is what makes the review flow mean anything: without it the
+ * classifier would refuse the same URL again, right after an admin said it was a legitimate README.
+ *
+ * The match is on the URL as it was stored, in either the form the user typed or the raw form the fetcher resolved,
+ * because the request row copies the URL of the quiz that was refused and the catalogue hands that same string back.
+ */
+export async function isApprovedDocument(db: Db, urls: readonly string[]): Promise<boolean> {
+  const wanted = [...new Set(urls.filter((u) => u.length > 0))];
+  if (!wanted.length) return false;
+  const [row] = await db
+    .select({ id: t.documentRequests.id })
+    .from(t.documentRequests)
+    .where(and(eq(t.documentRequests.status, "approved"), inArray(t.documentRequests.url, wanted)))
+    .limit(1);
+  return row !== undefined;
+}
+
+/**
  * The approved documents, shaped as catalogue entries. They carry `kind: "approved"` so the dropdown can say where they
  * came from: a human let them in after the classifier rejected them, which is not the same as a document nobody questioned.
  */
