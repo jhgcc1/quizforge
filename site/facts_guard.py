@@ -386,6 +386,7 @@ def all_facts():
     out["log_days"] = LOG_RETENTION_DAYS
     out.update(link_facts())
     out.update(detector_why_facts())
+    out.update(detector_block_facts())
     return out
 
 
@@ -477,6 +478,36 @@ def flagged_readmes_table():
         rows.append([f"<code>{x['doc']}</code>", f"{x['after']:.3f}", below(x["after"]), "yes" if x.get("rules") else "no"])
     return table(["Real README, flagged with no attack in it", "Score", "Attacks of the benchmark scoring lower", "A keyword rule also matched"], rows,
                  widths=["42%", "12%", "26%", "20%"])
+
+
+# The score from which a document is refused, read from the code so this page cannot drift from production.
+BLOCK_AT = float(
+    _re.search(r"export const DEFAULT_BLOCK_THRESHOLD = ([\d.]+)", (ROOT / "packages" / "llm" / "src" / "detector.ts").read_text(encoding="utf8")).group(1)
+)
+
+
+def blocked_readmes_table():
+    """The real READMEs that the block threshold refuses: the whole case for the review flow, by name."""
+    rows = [
+        [f"<code>{x['doc']}</code>", f"{x['after']:.3f}", "yes" if x.get("rules") else "no"]
+        for x in sorted(PREP["wideBenign"]["flaggedAfter"], key=lambda x: -x["after"])
+        if x["after"] >= BLOCK_AT
+    ]
+    return table(["Real README refused by the classifier, with no attack in it", "Score", "A keyword rule also matched"], rows,
+                 widths=["58%", "18%", "24%"])
+
+
+def detector_block_facts():
+    flagged = PREP["wideBenign"]["flaggedAfter"]
+    blocked = [x for x in flagged if x["after"] >= BLOCK_AT]
+    docs = sum(v["documents"] for v in PREP["wideBenign"]["sets"].values())
+    return {
+        "db_at": f"{BLOCK_AT:g}",
+        "db_n": len(blocked),
+        "db_clean": sum(1 for x in blocked if not x.get("rules")),
+        "db_pct": f"{100 * len(blocked) / docs:.1f}%" if docs else "?",
+        "db_flagged_not_blocked": len(flagged) - len(blocked),
+    }
 
 
 def detector_why_facts():

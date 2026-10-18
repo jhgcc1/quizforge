@@ -125,9 +125,9 @@ def architecture():
         ["S3 reports bucket", "private, encrypted, versioned", "managed", "The nightly red team reports (<code>redteam/&lt;UTC time&gt;/</code>)"],
     ]
     repo = "<h3>Where things live in the repository</h3>" + d.repo_structure() + table(["Folder", "What is in it", "Depends on", "Checked by"], [
-        ["<code>quizforge-web</code> (separate public repository, checked out into <code>web/</code>)", "Next.js app: pages, BFF route <code>/bff/*</code>, Cognito login, the browser client with schema-validated responses. <code>scripts/web.sh</code> checks out its <b>main</b> locally (<code>WEB_REF</code> overrides it) and <code>docker-compose.yml</code> builds <code>./web</code>", "<code>@quizforge/contract</code> (tarball URL)", "its own CI (quality: typecheck, lint, [[web_tests]] unit and jsdom component tests with coverage floors; build; docker-build with Trivy; secrets-scan; and an <b>e2e against the main of this repository</b>, which its <code>publish</code> waits for); plus the e2e job here, which builds its main. Browser errors: an error boundary and <code>POST /bff/client-log</code> (same origin, 4 KB, 20 a minute per address, scrubbed, one JSON line to stdout)"],
+        ["<code>quizforge-web</code> (separate public repository, checked out into <code>web/</code>)", "Next.js app: pages, BFF route <code>/bff/*</code>, Cognito login, the browser client with schema-validated responses. <code>scripts/web.sh</code> checks out its <b>main</b> locally (<code>WEB_REF</code> overrides it) and <code>docker-compose.yml</code> builds <code>./web</code>", "<code>@quizforge/contract</code> (tarball URL)", "its own CI (quality: typecheck, lint, [[web_tests]] unit and jsdom component tests with coverage floors; build; docker-build with Trivy; secrets-scan; and the <b>browser test against the main of this repository</b>, which its <code>publish</code> waits for). The browser test runs <i>only</i> there: its spec lives here, because the harness runs the real migrations from <code>packages/db</code>, and that repository checks this one out to get it. Browser errors: an error boundary and <code>POST /bff/client-log</code> (same origin, 4 KB, 20 a minute per address, scrubbed, one JSON line to stdout)"],
         ["<code>packages/contract</code>", "The API contract (<code>@quizforge/contract</code>): zod request and response schemas, safe for the browser, no keyword rules. Released as a tarball on a GitHub Release by <code>release-contract.yml</code> (tags <code>contract-vX.Y.Z</code>, version [[contract_version]] in <code>package.json</code>)", "zod only", "unit tests, contract tests"],
-        ["<code>apps/api</code>", "Fastify REST API, JWT check, quota, idempotency, OpenAPI", "<code>core</code>, <code>db</code>", "integration (real Postgres), e2e"],
+        ["<code>apps/api</code>", "Fastify REST API, JWT check, quota, idempotency, OpenAPI", "<code>core</code>, <code>db</code>", "integration (real Postgres); the browser test, in the front end's CI"],
         ["<code>apps/worker</code>", "One image, three roles: <code>generate</code> (graph), <code>score</code> (judge) and the sweeper; consumer, processor, scorer", "<code>core</code>, <code>db</code>, <code>llm</code>", "integration, e2e"],
         ["<code>packages/core</code>", "Pure code with no I/O: quiz scoring, the generated-quiz schema, the input guard and its [[rules_total]] keyword rules, the attack corpus, the catalog data, the queue messages and the request fingerprint. It re-exports the contract and adds the strict topic check (<code>CreateQuizBodyStrictSchema</code>, server side only)", "<code>contract</code>, zod", "unit tests, promptfoo"],
         ["<code>packages/db</code>", "Drizzle schema, SQL migrations, repositories (claim, lease, save scores)", "<code>core</code>", "integration, migrations job"],
@@ -136,7 +136,7 @@ def architecture():
         ["<code>evals/</code>", "Golden set, structure comparison, the report generator, <code>publish-prompts</code>, the test documents (<code>fixtures/</code>) and reference questions", "<code>core</code>, <code>llm</code>", "quality, llm-eval, nightly"],
         ["<code>promptfoo/</code>", "Offline and live suites, and the red-team sample (<code>promptfoo/redteam/</code>): provider that runs the real pipeline, assertions, test generator", "<code>core</code>, <code>llm</code>", "promptfoo and redteam-sample jobs"],
         ["<code>prompts/</code>", "<code>prompts.lock.json</code>: the hash of every prompt and the prompt version", "<code>llm</code>", "unit test (the lock must match)"],
-        ["<code>e2e/</code>", "Playwright tests against the four services running locally", "all apps", "e2e job"],
+        ["<code>e2e/</code>", "Playwright: <code>quiz.spec.ts</code> against the four services running locally, and <code>aws.spec.ts</code> against the deployed stack", "all apps", "the front end's CI runs the first; the deploy runs the second as its smoke test"],
         ["<code>quizforge-infra</code> (separate repository)", "<code>bootstrap</code> (state bucket, ECR, OIDC), <code>terraform</code> (the platform), <code>github</code> (ruleset, environments), the operations scripts and the <code>deploy</code> and <code>drift</code> workflows", "image tags only", "terraform-validate, terraform-plan, drift (all in that repository)"],
         ["<code>.github/workflows/</code>", "<code>ci.yml</code> (pull request, main, and the image publish), <code>eval.yml</code> (nightly), <code>eval-compare.yml</code> (manual), <code>release-contract.yml</code> (contract tarball)", "scripts", "—"],
         ["<code>scripts/</code>", "Operations (<code>pause</code>, <code>resume</code>, <code>audit-aws</code>), the nightly red team (<code>redteam-nightly-aws.sh</code>, <code>redteam-latest.sh</code>), <code>web.sh</code>, <code>local-cognito.sh</code>, <code>promptfoo.sh</code>, migration policy, report build and <code>measure-facts.sh</code>", "—", "unit tests where code"],
@@ -296,8 +296,34 @@ def documents():
         ["Orbit Scheduler", "English", "Contains hidden instructions: the quiz must ignore them (prompt injection)"],
         ["Tiny Clock", "English", "Almost nothing to ask about (edge case)"],
     ], widths=["24%", "16%", "60%"])
-    body += callout("info", "Where the list lives", "One file: <code>packages/core/src/catalog.ts</code>. The API serves it at <code>GET /v1/catalog</code>; a test checks that every URL is allowed, ids are unique and every test document exists in the repository.")
-    return sec("documents", "Choosing a document", body, "The form shows a dropdown of ready-made documents instead of asking you to paste a URL.")
+    body += callout("info", "Where the list lives", "The curated part is one file: <code>packages/core/src/catalog.ts</code>; a test checks that every URL is allowed, ids are unique and every test document exists in the repository. The API serves that file <i>plus</i> two database-backed groups at <code>GET /v1/catalog</code>, deduplicated by URL with the curated entry winning.")
+
+    body += "<h3>The list is no longer fixed: it grows with use</h3>"
+    body += F.tok("""<p>A document that generated a quiz is known to be fetchable, in a supported language and usable by the
+generator — which is exactly what makes it worth offering to the next person. So it joins the list, and the next person does
+not paste a URL that somebody has already proved works.</p>""")
+    body += table(["Group", "How an entry gets there", "What it means"], [
+        ["<code>readme</code> / <code>test</code>", "Written in the code", "Chosen on purpose: real input and the documents that each exercise one behaviour"],
+        ["<code>approved</code>", "The classifier refused it and an administrator decided otherwise", "A human looked at this document. See the review flow in the guardrails report"],
+        ["<code>used</code>", "It generated a quiz with <b>no guard finding at all</b>", F.tok("Earned by use. A <i>flagged</i> document is not promoted: it still generates for whoever chose it, but suggesting it to everybody is a different act")],
+    ], widths=["18%", "34%", "48%"])
+    body += F.tok("""<p>Two consequences of a list that grows. It needs searching, so the control is a <b>combobox</b> rather than a
+<code>&lt;select&gt;</code>: typing filters on the title, the description and the URL, and every word must match somewhere, so
+“small framework” finds Hono whatever the order. And an entry can go stale — a README can be edited after it was listed, and if
+the new version is refused by the guards the entry <b>leaves the list</b> rather than sitting there failing for every user who
+picks it. It earns its place back the moment it generates cleanly again.</p>""")
+
+    body += "<h3>Read once, kept: the copy and the fresh download</h3>"
+    body += F.tok("""<p>The text of every document read is stored in <code>sources</code>, keyed by the sha256 of the sanitized
+content. A second quiz on the same URL is built from that copy instead of downloading it again, and the form offers a tick box
+— <i>Download the document again</i> — for when the document has changed upstream and the current version is the point. The box
+only appears for a document already in the list, because for a URL nobody has read there is nothing to choose between.</p>""")
+    body += callout("warn", "Skipping the fetch is not skipping the guards",
+                    "The stored text is the <b>sanitized</b> text the previous quiz was generated from and the scorer reads back, so every guard "
+                    "runs on it exactly as it did the first time: the keyword rules, the language gate, the classifier and the output rails. What "
+                    "is saved is the download, which is the cheap part; the classifier, which is the expensive part, runs either way. A "
+                    "<code>DocumentFromStore</code> metric counts the reuse.")
+    return sec("documents", "Choosing a document", body, "A searchable list that starts curated and grows with every document that works, and what happens on the second quiz from the same URL.")
 
 
 def validation():
@@ -330,7 +356,7 @@ def guardrails():
     body += "<h3>The LLM guard as layers</h3>" + d.guard_layers()
     body += table(["", "Deterministic rules (code)", "A model"], [
         ["<b>Before anything</b> (the bytes)", "<b>Is this a text document?</b> A content type proves nothing: <code>raw.githubusercontent.com</code> sets it from the file NAME, so an executable committed as <code>README.md</code> arrives as <code>text/plain</code>. The bytes decide — [[text_magic]] file signatures (ELF, MZ, PDF, ZIP, PNG…) and the share of invalid UTF-8 and of control characters, refused above [[text_share]] (measured: 0% in real documents, 0.6–3.4% in a README mis-saved as latin-1, 29–42% in real binaries). The download is aborted after the first [[sniff_kb]] instead of pulling 512 KB", "None. It is the cheapest check there is, so it runs first"],
-        ["<b>Input</b> (README and request)", "WAF, JWT, CSRF, strict schemas, quotas · host allow-list and public IPs only · hidden or encoded text, [[rules_total]] keyword rules (en, pt, es), language policy (en, pt, es; statistical, no model call) · the model-call guard", "<b>One ML model:</b> Llama Prompt Guard 2 86M (Meta, ONNX, multilingual, baked into the worker image) that <b>flags</b> a document, never blocks (mode <code>flag</code>: the Terraform default and the local docker compose)"],
+        ["<b>Input</b> (README and request)", "WAF, JWT, CSRF, strict schemas, quotas · host allow-list and public IPs only · hidden or encoded text, [[rules_total]] keyword rules (en, pt, es), language policy (en, pt, es; statistical, no model call) · the model-call guard", "<b>One ML model:</b> Llama Prompt Guard 2 86M (Meta, ONNX, multilingual, baked into the worker image) that <b>flags</b> a document and <b>refuses</b> it at [[db_at]] or above, where the user is offered a human review (mode <code>block</code> in production; <code>flag</code> in the local docker compose)"],
         ["<b>The model call</b>", "The document is sent as data inside <code>&lt;document&gt;</code> tags; budget of 16 calls", "<b>The generation LLM itself</b> is told never to obey the document. This is the only probabilistic defence"],
         ["<b>Output</b> (the reply)", "Output rails (JSON only, no prompt leak, no script, no new link, a <b>strict link mode</b> when the document has any flag, no echoed attack), the zod schema, the literal-quote grounding, the answer key hidden until the submit", "<b>None.</b> No model checks the reply for injection. The LLM judge scores quality after the quiz is saved and blocks nothing"],
     ], widths=["16%", "46%", "38%"])
@@ -413,7 +439,7 @@ def guardrails():
         ["Why this one?", "<b>Cost and coverage</b>: free, no API key, no price per call, no GPU (it runs on the CPU of the worker task), multilingual. The price is size: the worker image is 2.1 GB and the worker task has 1 vCPU / 4 GB (variables <code>worker_cpu</code> and <code>worker_memory</code>), about US$20 a month more per worker task"],
         ["Can it be replaced?", "Yes, by design. The service only knows an interface (<code>InjectionDetector</code>: a name, the languages it understands, and <code>detect(text)</code>) and loads the implementation from the module named in <code>INJECTION_DETECTOR_MODULE</code>. A different model is a new module plus an image target; it is measured first on the benchmark, false positives included"],
     ], widths=["24%", "76%"])
-    body += callout("info", "What it is", "A classifier model, Llama Prompt Guard 2 86M, run in Node through ONNX with no API key and no per-call cost. It is in <code>packages/detector</code>. Modes: <code>INJECTION_DETECTOR=off|flag|block</code>; the default threshold is 0.5 (<code>INJECTION_DETECTOR_THRESHOLD</code>). It only flags (never blocks) unless the mode is <code>block</code>.") + table(["Measured on the public dataset <code>deepset/prompt-injections</code>", "Rules ([[rules_total]])", "Prompt Guard 2 at 0.5", "Rules or Prompt Guard 2", "English-only DeBERTa (comparison only)"], [
+    body += callout("info", "What it is", "A classifier model, Llama Prompt Guard 2 86M, run in Node through ONNX with no API key and no per-call cost. It is in <code>packages/detector</code>. Modes: <code>INJECTION_DETECTOR=off|flag|block</code>. Two thresholds: the flag threshold (0.5, <code>INJECTION_DETECTOR_THRESHOLD</code>) and the refusal threshold (<b>[[db_at]]</b>, <code>INJECTION_DETECTOR_BLOCK_THRESHOLD</code>). Production runs <code>block</code>: below [[db_at]] a document is flagged and generated, at or above it the document is refused and the user is offered a human review.") + table(["Measured on the public dataset <code>deepset/prompt-injections</code>", "Rules ([[rules_total]])", "Prompt Guard 2 at 0.5", "Rules or Prompt Guard 2", "English-only DeBERTa (comparison only)"], [
         ["Injections found, English ([[en_inj]] injections)", "[[en_rules_pct]] ([[en_rules_n]] of [[en_inj]])", "[[en_pg2_pct]] ([[en_pg2_n]] of [[en_inj]])", "[[en_either_pct]] ([[en_either_n]] of [[en_inj]])", "[[deb_en]]"],
         ["Injections found, all languages ([[all_inj]] injections)", "[[all_rules_pct]] ([[all_rules_n]] of [[all_inj]])", "[[all_pg2_pct]] ([[all_pg2_n]] of [[all_inj]])", "[[all_either_pct]] ([[all_either_n]] of [[all_inj]])", "[[deb_all]]"],
         ["False positives (benign samples flagged, [[all_ben]] benign)", "0", "0", "0", "[[deb_fp]] (it flagged the Pipecat README with a score of [[deb_pipecat]])"],
@@ -426,7 +452,7 @@ def guardrails():
     body += table(["Decision", "Why"], [
         ["Mode <code>flag</code>, not <code>block</code>", "It sees injection-like text, not intent: a security tutorial that quotes an attack can score high, and it misses subtle attacks. A flag is logged and counted (<code>InjectionDetected</code>); only <code>INJECTION_DETECTOR=block</code> rejects a document"],
         ["Keywords, classifier and guard are layers", "The keyword rules are deterministic and explain themselves; the classifier reads meaning in several languages; the guard catches what neither can read (encodings)"],
-        ["Threshold 0.5", "The scores are almost binary, so 0.5 recalls the most with 0 false positives on the benign benchmark rows. It is not zero on real READMEs ([[dfp_pg2_readmes]] of [[dfp_readmes]] were flagged), which is one reason it only flags. It is raised with <code>INJECTION_DETECTOR_THRESHOLD</code> before using block mode"],
+        ["Threshold 0.5", "The scores are almost binary, so 0.5 recalls the most with 0 false positives on the benign benchmark rows. It is not zero on real READMEs ([[dfp_pg2_readmes]] of [[dfp_readmes]] were flagged), which is why flagging and refusing are two different thresholds: refusal waits until [[db_at]], where [[db_n]] of [[dp_wide_docs]] real READMEs are refused — and each of those can be appealed"],
         ["Baked into the worker image", "The model is a build step of the worker image (target <code>runtime-detector</code>), checksummed, so no task downloads 1.1 GB and the worker works with no network for it"],
     ], widths=["34%", "66%"])
     body += guard_html.flag_only(True)
@@ -456,11 +482,46 @@ def guardrails():
         ["Small live samples", "The live suite has [[pf_live]] cases, one run each, and the red-team sample [[pf_sample]] frozen attacks: they find a model that obeys easily, not one that obeys sometimes, and a pass is not a proof. The nightly run repeats the live suite"],
         ["Images and files", "Only text is checked; the app does not read images"],
         ["The strict link zone is small for a classifier-only flag", "The classifier marks one window per document and keeps its first [[det_excerpt]] characters. That piece is taken out of the clean text only where it occurs word for word in the document. A planted link in another window is not in the strict zone unless a keyword rule also matches its line. See “Strict link mode of the output rail”"],
-        ["The semantic detector finds explicit attacks only", "On 500 samples of the public dataset deepset/prompt-injections it flagged [[all_pg2_pct]] of the injections ([[en_pg2_pct]] in English) with 0 false positives at threshold 0.5: explicit attacks score 0.99 or more and the rest less than 0.1. It only flags unless <code>INJECTION_DETECTOR=block</code>. See the table above"],
+        ["The semantic detector finds explicit attacks only", "On 500 samples of the public dataset deepset/prompt-injections it flagged [[all_pg2_pct]] of the injections ([[en_pg2_pct]] in English) with 0 false positives at threshold 0.5: explicit attacks score 0.99 or more and the rest less than 0.1. Below [[db_at]] it flags; at or above it refuses (production runs <code>block</code>). See the table above"],
         ["The output rails are heuristics", "“Looks like a quiz” accepts anything with a question mark or a task verb; it stops a poem, not a subtly wrong question. The judge and the grounding gate cover quality"],
         ["Language coverage", "Only English, Portuguese and Spanish are accepted. Other languages are rejected before the model, so the keyword rules, the detector tests and the red-team sample are written for these three"],
     ], widths=["26%", "74%"])
     return sec("guardrails", "Guardrails in execution", body, "What runs on every request, what kind of check each step is (rule, ML model or LLM), what each layer covers, and where it is tested.")
+
+
+def review_flow():
+    body = F.tok("""<p>The classifier refuses a document at <b>[[db_at]]</b> or above. That refusal lands on real people who did
+nothing wrong: of the [[dp_wide_docs]] real READMEs measured, <b>[[db_n]]</b> score that high with no attack in them. A dead end
+there would be the product telling a user that their own project's README is an attack. So the refusal opens a second path, and
+a person walks it — not a model.</p>
+<p>It is the <b>only</b> refusal with an appeal. A document stopped by the keyword rules — hidden text, base64, zero-width
+characters — has none, because those rules fire on evidence of concealment, and concealment has no innocent reading. The
+classifier fires on style, and style does.</p>""")
+    body += table(["Step", "Who", "What happens", "Stored as"], [
+        ["Refusal", "worker", "<code>UnsafeDocumentError</code>: the quiz is failed with the score and the excerpt, before any model call", "<code>quizzes.error</code>"],
+        ["The offer", "API", "The quiz summary carries <code>reviewable</code>, so the screen shows a way forward instead of only an error", "—"],
+        ["The request", "user", "A title and optionally why they believe it is legitimate. The URL is not typed: the request points at the refused quiz, so it cannot be aimed at a document that was never refused", "<code>document_requests</code>"],
+        ["The queue", "admin", "A screen gated on the Cognito group <code>admin</code>, checked again in the API route. It shows the score and the excerpt next to the link", "—"],
+        ["The decision", "admin", "Approve or reject, only while pending. One open request per URL, enforced by a partial unique index rather than by application logic", "<code>status</code>, <code>reviewed_by</code>, <code>reviewed_at</code>"],
+        ["After approval", "everyone", "The document joins the catalogue as <code>approved</code> and generates from then on", "—"],
+    ], widths=["14%", "10%", "54%", "22%"])
+    body += "<h3>What approval changes, and what it does not</h3>"
+    body += F.tok("""<p>“Approved” sounds like “trusted”, and it is not. Approval answers one question — <i>is this an attack?</i> —
+and a reviewer cannot switch off any other layer:</p>""")
+    body += table(["Layer", "On an approved document"], [
+        ["Keyword rules", "<b>Unchanged.</b> They run before the classifier, so a document they block never becomes reviewable — approval cannot be used to let concealed text in"],
+        ["Language gate", "<b>Unchanged.</b>"],
+        ["The classifier", "<b>Still runs, still scores, still logs.</b> <code>InjectionDetected</code> is still emitted, so a spike still alarms. Only the refusal is lifted"],
+        ["Strict link mode and planted words", "<b>Unchanged — and this is the point.</b> The excerpt still reaches the output rails, so the reply is held to the stricter standard"],
+        ["Grounding gate", "<b>Unchanged.</b> Every question must still quote the document"],
+    ], widths=["26%", "74%"])
+    body += callout("warn", "Safe mode: what an approved document actually runs under",
+                    "An approved document is not waved through. It is generated with <b>every guard running and the output rails in their strict "
+                    "setting</b> — the same setting a flagged document gets. The reviewer removed one objection, from the one layer known to be "
+                    "wrong about style; they did not vouch for the content. <code>ApprovedDocumentAllowed</code> counts each time this happens, so "
+                    "the bypass is visible rather than silent.")
+    return sec("review", "When the classifier refuses: human review", body,
+               "The only refusal a user can appeal, who decides, and exactly which guards an approved document still runs under.")
 
 
 def promptfoo():
@@ -902,7 +963,13 @@ def evaluation():
         ["Spanish", F.tok("The set has no Spanish item. <code>evals/fixtures/spanish.md</code> is used by the dropdown and the offline promptfoo suite, not by the golden set") if "spanish" in F.FIXTURES_NOT_IN_GOLDEN else "Spanish is part of the set"],
     ], widths=["20%", "80%"])
     rows = [[k.replace("_", " ") if k not in ("injection_resisted", "language_match") else k.replace("_", " "), f"≥ {F._num(v)}" if v != 1 else "= 1", "per item"] for k, v in F.THRESHOLDS.items()]
-    rows += [["lint pass, mean of the dataset", f"≥ {F._num(F.MEAN_LINT_MIN)}", "dataset mean: one flagged question in five is model noise"], ["judge overall, mean of the dataset", f"≥ {F._num(F.MEAN_JUDGE_MIN)}", "dataset mean: the real bar for the judge"]]
+    _why = {
+        "lint_pass": "one flagged question in five is model noise, not a regression",
+        "judge_overall": "judge scores are noisy; the mean is robust to one bad judgement",
+        "relevance": "measured: the per-item floor had zero margin, the per-run mean barely moves",
+        "coverage": "measured: it scraped its floor in a quarter of all cells, while its mean is steady",
+    }
+    rows += [[f"{k.replace('_', ' ')}, mean of the dataset", f"≥ {F._num(v)}", f"dataset bar: {_why.get(k, 'the real bar for this axis')}"] for k, v in F.MEAN_BARS.items()]
     body += "<h3>The bars, as coded in <code>evals/src/metrics.ts</code></h3>" + table(["Metric", "Bar", "Kind"], rows, widths=["40%", "20%", "40%"])
     body += "<h3>The prompt-injection document</h3>" + table(["Question", "Answer"], [
         ["What is it?", "A normal README with an attack pasted in the middle (a security test, not a quality test)"],
@@ -921,7 +988,7 @@ def evaluation():
 
 
 def cicd():
-    body = callout("ok", "The pipeline in one paragraph", "Every change is a pull request. These jobs run on it: quality, integration, migrations, e2e, docker-build, secrets-scan, promptfoo, llm-eval-pr and redteam-sample. The ruleset requires [[ci_required]] of them (all but <code>redteam-sample</code>) before GitHub allows the squash merge. <code>llm-eval-pr</code> and <code>redteam-sample</code> call the real model through a restricted environment that holds the MiniMax key only. After the merge the same jobs run on <code>main</code>, plus <code>llm-eval</code> (the real model, Langfuse and the live promptfoo suite). When all of that is green, <code>publish-prompts</code> sends the prompts that changed to Langfuse, and the <code>publish</code> job builds the ARM64 images (api, worker with the classifier model and redteam, tagged with the commit) and pushes them to ECR with a push-only role. Nothing is deployed from this repository: the manual <code>Deploy</code> workflow of <a href='https://github.com/jhgcc1/quizforge-infra'>quizforge-infra</a> picks a green commit whose images are in ECR, asks a human to approve, runs the migration, applies the one Terraform and smoke-tests. The front end is in the <code>quizforge-web</code> repository, which publishes its own image (<code>web-</code> and the first 12 characters of its commit); the e2e and docker-build jobs here check out its <b>main</b> into <code>web/</code>, and its own repository runs the same Playwright suite against this one's main before it may publish — each side is tested against the main of the other, which is the pair the deploy ships. The API contract is released as a tarball by <code>release-contract.yml</code> on tags <code>contract-vX.Y.Z</code>. Three more things run without a push: the nightly evaluation, the nightly drift check (infrastructure repository) and the manual structure comparison.")
+    body = callout("ok", "The pipeline in one paragraph", "Every change is a pull request. These jobs run on it: quality, integration, migrations, docker-build, secrets-scan, promptfoo, llm-eval-pr and redteam-sample. There is no browser test here: it drives a UI that lives in the front end repository, so it runs in that repository's CI against this one's main, and what covers the deployed pair is the smoke test the deploy runs in a real browser after every apply. The ruleset requires [[ci_required]] of them (all but <code>redteam-sample</code>) before GitHub allows the squash merge. <code>llm-eval-pr</code> and <code>redteam-sample</code> call the real model through a restricted environment that holds the MiniMax key only. After the merge the same jobs run on <code>main</code>, plus <code>llm-eval</code> (the real model, Langfuse and the live promptfoo suite). When all of that is green, <code>publish-prompts</code> sends the prompts that changed to Langfuse, and the <code>publish</code> job builds the ARM64 images (api, worker with the classifier model and redteam, tagged with the commit) and pushes them to ECR with a push-only role. Nothing is deployed from this repository: the manual <code>Deploy</code> workflow of <a href='https://github.com/jhgcc1/quizforge-infra'>quizforge-infra</a> picks a green commit whose images are in ECR, asks a human to approve, runs the migration, applies the one Terraform and smoke-tests. The front end is in the <code>quizforge-web</code> repository, which publishes its own image (<code>web-</code> and the first 12 characters of its commit); the <code>docker-build</code> job here checks out its <b>main</b> into <code>web/</code>, and its own repository runs the Playwright suite against this one's main before it may publish — the pair that is tested is the pair the deploy ships. The API contract is released as a tarball by <code>release-contract.yml</code> on tags <code>contract-vX.Y.Z</code>. Three more things run without a push: the nightly evaluation, the nightly drift check (infrastructure repository) and the manual structure comparison.")
     body += d.pipeline_overview()
     body += "<h3>The front end pipeline and how a deploy happens</h3>" + d.repos()
     body += table(["Question", "Answer"], [
@@ -950,7 +1017,7 @@ def cicd():
     body += "<h3>Rules a pull request must follow to be accepted</h3>" + table(["Rule", "Enforced by", "What you see when it breaks"], [
         ["<b>One pull request, squashed, up to date with main</b>: no direct push, no force push, no merge commits, conversations resolved, the branch rebased on the latest main", "Ruleset of <code>main</code> (no bypass)", "The merge button is disabled"],
         ["<b>All [[ci_required]] required checks green</b> ([[ci_required_names]])", "Ruleset", "A red or missing check"],
-        ["<b>A front end change is a pull request in <code>quizforge-web</code></b>, tested there against the main of this repository", "Ruleset, and the e2e and docker-build jobs that build that commit", "The failing job, as for any other change"],
+        ["<b>A front end change is a pull request in <code>quizforge-web</code></b>, tested there against the main of this repository, browser test included", "Its own ruleset; the <code>docker-build</code> job here builds its main", "The failing job, as for any other change"],
         ["<b>Code</b>: strict TypeScript, ESLint (typescript-eslint recommended: no unused variables, no useless escapes), all unit tests", "<code>quality</code>", "Typecheck, lint or test error with the file and line"],
         ["<b>No secret</b> in code or history; test secrets are built at run time", "<code>secrets-scan</code> (gitleaks, full history)", "The finding and its commit"],
         ["<b>A schema change needs its migration</b> (<code>pnpm --filter @quizforge/db db:generate</code>); migrations apply twice on an empty database", "<code>migrations</code>", "“schema.ts changed without a committed migration”"],
@@ -1126,7 +1193,7 @@ def decisions():
         ["RDS Postgres", "DynamoDB; Aurora", "Idempotency and scoring need real constraints (CHECK, UNIQUE, FK, FOR UPDATE)"],
         ["CloudFront → ALB, no domain", "Domain + ACM certificate", "No domain available: <code>*.cloudfront.net</code> certificate; ALB locked by prefix list + secret header"],
         ["Next.js as a BFF", "Plain React SPA", "Tokens stay in httpOnly cookies, PKCE on the server, one place to validate"],
-        ["The front end in its own public repository, tested against this one's main", "One monorepo with the front end inside", "The front end has its own CI (quality with a coverage floor, build, docker-build with Trivy, secrets-scan), its own Dockerfile and its own ruleset. This repository builds its main in the e2e and docker-build jobs, and that repository runs the same end-to-end suite against this one's main before publishing an image, so the pair that is tested is the pair that is deployed. A pull request bumps the pin. There is still one Terraform, one deploy and one human approval"],
+        ["The front end in its own public repository, tested against this one's main", "One monorepo with the front end inside", "The front end has its own CI (quality with a coverage floor, build, docker-build with Trivy, secrets-scan), its own Dockerfile and its own ruleset. This repository builds its main in <code>docker-build</code>, and that repository runs the end-to-end suite against this one's main before publishing an image, so the pair that is tested is the pair that is deployed. A pull request bumps the pin. There is still one Terraform, one deploy and one human approval"],
         ["The API contract as a released tarball", "Copying the schemas into both repositories", "<code>@quizforge/contract</code> (zod, safe for the browser, no keyword rules) is released as a tarball on a GitHub Release by <code>release-contract.yml</code> on tags <code>contract-vX.Y.Z</code>; the front end depends on the tarball URL. The strict topic check stays server side"],
         ["Cognito with open sign-up, Google and Facebook", "Own auth; Auth0; users created by an admin only", "Standard JWT/JWKS, hosted login, no passwords to store. The API verifies access tokens only, so a federated user is one more <code>sub</code>. Open sign-up is paired with cost controls: verified e-mail, 12-character passwords, a quota per user, rate limits, the WAF, the job budget and the cost alarm"],
         ["An optional Cognito client for localhost", "Allowing localhost redirects on the production client", "The client <code>quizforge-prod-local-dev</code> (<code>enable_local_dev_client</code>, off by default) lets the local stack try the real login; the production client never accepts a localhost redirect"],
@@ -1275,13 +1342,13 @@ def glossary():
         ["SSRF guard", "Checks that stop the README URL from pointing to private or internal addresses."],
         ["promptfoo", "A test runner for prompts and AI behaviour. Here it runs the real pipeline against an attack corpus (offline on every PR; live on a PR when relevant, on main and nightly)."],
         ["Red team", "Attacking your own system on purpose to find a leak. Here: [[pf_sample]] frozen attacks in English, Portuguese and Spanish, run in CI on every pull request, and a fresh larger set every night on AWS."],
-        ["Flag only", "The mode of Prompt Guard 2 here: it marks the most suspicious window and records it (log, metric) but does not block the document."],
+        ["Flag", "What Prompt Guard 2 does below the refusal threshold: it marks the most suspicious window and records it (log, metric), and the document is generated — under stricter output rails. At [[db_at]] or above it refuses instead."],
         ["Excerpt", "The first [[det_excerpt]] characters of the window of the document that Prompt Guard 2 scored highest."],
         ["Strict link mode", "When the document has a flag, the output rail accepts a link only if it occurs in the document without the flagged parts, and rejects a link with a word found only in them."],
         ["Deploy, scope web", "The manual workflow of the infrastructure repository deploying only the front end, at the newest green commit of its main."],
         ["Rollback", "The separate workflow that goes back to a named image tag. The only place where a tag is typed by hand; the database migration is not undone."],
         ["Canary", "A made-up token (for example <code>ZX9-ALPHA</code>) that appears in an attack and in no honest quiz. If it shows up in a reply, the attack worked."],
-        ["Prompt Guard 2", "Llama Prompt Guard 2 86M: Meta's small model that tells a prompt injection from a normal text. It flags a document; it never blocks unless the mode is <code>block</code>."],
+        ["Prompt Guard 2", "Llama Prompt Guard 2 86M: Meta's small model that tells a prompt injection from a normal text. It flags a document below [[db_at]] and refuses it above, which is the one refusal a user can appeal (see the review flow)."],
         ["Semantic detector", "The part of the worker that runs the Prompt Guard 2 model on the document text (<code>packages/detector</code>)."],
         ["Contract (<code>@quizforge/contract</code>)", "The zod schemas of what goes in and out of the API, released as a tarball that the front end repository depends on."],
         ["<code>apply.yml</code>", "The reusable workflow of the infrastructure repository with the production path: approval, drift check, migration, apply, smoke tests. Called by both <code>Deploy</code> and <code>Rollback</code>."],
@@ -1342,7 +1409,7 @@ def limits():
         ["Only [[golden_n]] golden documents", "Small differences between variants are noise. [[golden_langs]]."],
         ["Language detection is statistical", "Very short or mixed texts can be misjudged; under 40 letters of prose the language is \"unknown\" and is let through."],
         ["Hidden-text guard is a heuristic", "It blocks the techniques in the attack corpus and close variants; a new encoding is only stopped by the model's own resistance. See \"Guardrails in execution\"."],
-        ["Semantic detector recall", "Llama Prompt Guard 2 flags explicit attacks: [[all_pg2_pct]] of the injections in the benchmark ([[en_pg2_pct]] in English), 0 false positives on the benign benchmark rows, [[dfp_pg2_readmes]] of [[dfp_readmes]] real READMEs flagged. It is one layer, and only flags unless <code>INJECTION_DETECTOR=block</code>."],
+        ["Semantic detector recall", "Llama Prompt Guard 2 flags explicit attacks: [[all_pg2_pct]] of the injections in the benchmark ([[en_pg2_pct]] in English), 0 false positives on the benign benchmark rows, [[dfp_pg2_readmes]] of [[dfp_readmes]] real READMEs flagged. It is one layer: it flags below [[db_at]] and refuses above it."],
         ["Only three languages", "Documents in any other language are rejected before the model; the keyword rules, the detector tests and the red-team sample are written for English, Portuguese and Spanish."],
         ["Alarm e-mail", "Nothing is delivered until the AWS subscription e-mail has been confirmed."],
         ["Pause and resume scripts", "They pass the api image tag only (not the web tag) and do not read the social login secrets."],
@@ -1353,7 +1420,7 @@ def limits():
 
 
 def all_sections():
-    return [overview(), links(), architecture(), communication(), flows(), documents(), validation(), guardrails(), promptfoo(), nightly(), agent(), quality(), langfuse(), scoring_arch(), secrets(), data(), security(), identity(), resilience(), observability(), evaluation(), cicd(), state(),
+    return [overview(), links(), architecture(), communication(), flows(), documents(), validation(), guardrails(), review_flow(), promptfoo(), nightly(), agent(), quality(), langfuse(), scoring_arch(), secrets(), data(), security(), identity(), resilience(), observability(), evaluation(), cicd(), state(),
             decisions(), bugs(), costs(), evidence(), runbook(), live_state(), limits(), improvements(), glossary(), presentation()]
 
 

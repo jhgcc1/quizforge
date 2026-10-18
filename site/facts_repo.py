@@ -127,6 +127,12 @@ _metrics = _text("evals/src/metrics.ts")
 THRESHOLDS = {k: float(v) for k, v in re.findall(r"^\s{2}(\w+): ([\d.]+),", _metrics.split("export const THRESHOLDS")[1].split("} as const")[0], re.M)}
 MEAN_JUDGE_MIN = float(re.search(r"MEAN_JUDGE_MIN = ([\d.]+)", _metrics).group(1))
 MEAN_LINT_MIN = float(re.search(r"MEAN_LINT_MIN = ([\d.]+)", _metrics).group(1))
+# Every dataset bar, read from MEAN_BARS rather than named one by one: relevance and coverage joined lint and judge
+# once the measurement showed their per-item floors had no margin left, and a hand-written list missed them.
+MEAN_BARS = {
+    k: (MEAN_JUDGE_MIN if v == "MEAN_JUDGE_MIN" else MEAN_LINT_MIN if v == "MEAN_LINT_MIN" else float(v))
+    for k, v in re.findall(r"^\s{2}(\w+): ([\w.]+),", _metrics.split("export const MEAN_BARS")[1].split("} as const")[0], re.M)
+}
 FIXTURES = sorted(p.stem for p in (ROOT / "evals/fixtures").glob("*.md"))
 FIXTURES_NOT_IN_GOLDEN = [f for f in FIXTURES if f not in {Path(g["file"]).stem for g in GOLDEN}]
 
@@ -144,7 +150,7 @@ def golden_floors_html():
 
 
 def golden_means_html():
-    return f"mean judge_overall {_num(MEAN_JUDGE_MIN)} and mean lint_pass {_num(MEAN_LINT_MIN)}"
+    return ", ".join(f"mean {k} {_num(v)}" for k, v in MEAN_BARS.items())
 
 
 def golden_languages_text():
@@ -233,7 +239,15 @@ def r5(x):
 _det = _text("packages/detector/src/index.ts")
 _chunk = _text("packages/detector/src/chunk.ts")
 DETECTOR_THRESHOLD = float(re.search(r"DEFAULT_THRESHOLD = ([\d.]+)", _det).group(1))
+# The second threshold: the score from which the document is refused outright (and the user offered a review).
+DETECTOR_BLOCK_AT = float(re.search(r"DEFAULT_BLOCK_THRESHOLD = ([\d.]+)", _text("packages/llm/src/detector.ts")).group(1))
 DETECTOR_WINDOW_CHARS = int(re.search(r"maxChars \?\? (\d+)", _chunk).group(1))
+# How many real READMEs the refusal threshold costs, from the same measurement the guardrails report prints in full
+# (docs/security/detector-prep.json). Kept here as well so the architecture pages can state the price without
+# repeating a number by hand.
+_prep = json.loads(_text("docs/security/detector-prep.json"))["wideBenign"]
+WIDE_DOCS = sum(v["documents"] for v in _prep["sets"].values())
+BLOCKED_READMES = sum(1 for x in _prep["flaggedAfter"] if x["after"] >= DETECTOR_BLOCK_AT)
 DETECTOR_MAX_WINDOWS = int(re.search(r"maxChunks \?\? (\d+)", _chunk).group(1))
 DETECTOR_EXCERPT_CHARS = int(re.search(r"excerpt: chunks\[best\.index\]!\.slice\(0, (\d+)\)", _det).group(1))
 FLAGGED_ALARM = int(_var("flagged_documents_alarm"))
@@ -281,8 +295,22 @@ API_DB_FUNCS = [n for n in API_DB_FUNCS if re.search(rf"export (?:async )?functi
 _chunks = {m.group(1): m.group(0) for m in re.finditer(r"export (?:async )?function (\w+)\b.*?(?=\n(?:export |/\*\*|/\* ---)|\Z)", _repo, re.S)}
 API_DB_OWNER_SCOPED = [n for n in API_DB_FUNCS if re.search(r"t\.\w+\.(?:ownerSub|userSub)\b|getOwnedAttempt\(db, \w+, (?:userSub|p\.userSub)\)", _chunks[n])]
 API_DB_UNSCOPED = [n for n in API_DB_FUNCS if n not in API_DB_OWNER_SCOPED]
-assert API_DB_UNSCOPED == ["getPublicQuestions"], f"the identity rule of the API changed: unscoped repo functions called by the API are {API_DB_UNSCOPED}; update the section 'Who is the user on every request'"
-assert len(API_V1_ROUTES) == 9 and len(API_PUBLIC_ROUTES) == 4, (API_V1_ROUTES, API_PUBLIC_ROUTES)
+# A repo function the API calls without filtering by the signed-in user needs a reason, and the reason has to be one of
+# three. Anything else is a leak of one user's data to another, so a new name here fails the build on purpose.
+API_UNSCOPED_REASON = {
+    "getPublicQuestions": "reads by quiz id, and only after getOwnedQuiz has already proved ownership",
+    "approvedCatalogEntries": "the catalogue is the same list for everybody by design, and holds no user data",
+    "listedCatalogEntries": "the catalogue is the same list for everybody by design, and holds no user data",
+    "createDocumentRequest": "an insert, not a read: it stores the requester's own sub, taken from the token",
+    "listDocumentRequests": "the review queue, deliberately everyone's requests — the route is gated on the admin group and the API checks it again",
+    "reviewDocumentRequest": "an admin decision on a request id — same gate",
+}
+assert set(API_DB_UNSCOPED) == set(API_UNSCOPED_REASON), (
+    f"the identity rule of the API changed: unscoped repo functions called by the API are {API_DB_UNSCOPED}, "
+    f"documented ones are {sorted(API_UNSCOPED_REASON)}; give the new one a reason here and in the section "
+    "'Who is the user on every request'"
+)
+assert len(API_V1_ROUTES) == 12 and len(API_PUBLIC_ROUTES) == 4, (API_V1_ROUTES, API_PUBLIC_ROUTES)
 _repo_all = re.findall(r"export (?:async )?function (\w+)\b", _repo)
 REPO_FUNCS_N = len(_repo_all)
 REPO_OTHER_FUNCS_N = len([n for n in _repo_all if n not in API_DB_FUNCS])  # the worker, the scorer and the sweeper

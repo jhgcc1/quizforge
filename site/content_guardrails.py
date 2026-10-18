@@ -72,7 +72,7 @@ def suites_diagram():
 def summary():
     cards = [
         ("[[rules_total]]", "keyword rules: [[rules_per_lang]] in each of English, Portuguese and Spanish, [[rules_free]] language-free"),
-        ("1", "ML classifier, [[dp_model]], which only <b>flags</b> — it never blocks"),
+        ("1", "ML classifier, [[dp_model]]: it <b>flags</b> below [[db_at]] and <b>refuses</b> at or above, with a human review to appeal to"),
         ("[[pf_offline]] + [[pf_live]] + [[pf_sample]]", "promptfoo tests on a pull request: offline, live on the real model, frozen red team"),
         ("[[pf_nightly]]", "fresh canary attacks every night, plus about [[pub_cases]] cases from [[pub_sources]] public datasets"),
         ("[[gc_half_prose]]", "CPU the guard spends on a [[gc_max_kb]] README, on the 0.5 vCPU of a production task"),
@@ -127,7 +127,7 @@ the <b>sanitized</b> text (what the model will see), a list of <b>findings</b>, 
                     characters are link URLs</b> ([[ls_urls]] of them, up to [[ls_max]] of a single README), so the model also gets about
                     [[ls_tokens]] fewer tokens of noise per evaluation round and the guard scans a quarter fewer bytes."""))
     body += G.link_share_table()
-    body += callout("", "Why step 8 only flags, when the seven before it block",
+    body += callout("", "Why step 8 does not refuse on its own, when the seven before it do",
                     T("The difference is not how bad the sentence is, it is the <b>intent to hide</b>. An HTML comment, base64, rot13, invisible "
                       "characters, a <code>display:none</code> element: none of them has an honest use in a README, so the hiding itself is the "
                       "signal and the document is refused. Writing <i>“ignore all previous instructions”</i> in plain prose is what every document "
@@ -191,10 +191,11 @@ def detector():
 them, scores each one, and the document is <b>flagged</b> when the highest score reaches [[dp_threshold]]. The most suspicious
 window is kept as an excerpt of [[det_excerpt]] characters, for the output rails.</p>""")
     body += d.detector_flag()
-    body += callout("warn", "It flags, it does not block",
-                    T("<code>INJECTION_DETECTOR=flag</code> in Terraform (the production default, not overridden) and in the local stack. "
-                      "A flagged document still becomes a quiz; what changes is the output rails. <code>block</code> exists and is one variable "
-                      "away — the rest of this section is why it is not set."))
+    body += callout("warn", "Two thresholds, not one: it flags, and above [[db_at]] it refuses",
+                    T("<code>INJECTION_DETECTOR=block</code> in production, with <code>INJECTION_DETECTOR_BLOCK_THRESHOLD=[[db_at]]</code>; the local "
+                      "stack runs <code>flag</code>. Below [[db_at]] a flagged document still becomes a quiz and what changes is the output rails. "
+                      "At [[db_at]] or above the document is refused outright — and the user is offered a human review, which is the only reason "
+                      "refusing is defensible at all. The rest of this section is the measurement behind both numbers."))
     body += "<h3>What the flag actually changes</h3>"
     body += T(f"""<p>The flag is not a score in a log. The worker passes the excerpt of the most suspicious window on as
 <code>flaggedExcerpts</code> ({code('apps/worker/src/processor.ts')}), and the output rails treat the document as untrusted
@@ -209,7 +210,7 @@ window is kept as an excerpt of [[det_excerpt]] characters, for the output rails
 (the trace, the cost, the quality scores) and CloudWatch holds what the <i>guard</i> did (the findings, the metrics, the alarms).
 Someone looking only at a Langfuse trace cannot tell that the document was flagged — the log line and the metric are the record,
 and they are joined to the trace only through the quiz id.</p>""")
-    body += "<h3>Why it does not block: there is no threshold that separates</h3>"
+    body += "<h3>Why no threshold separates cleanly</h3>"
     body += T("""<p>The usual answer would be “raise the threshold until the false positives go away”. The measurements say that
 threshold does not exist. On the public benchmark, raising it from 0.5 to [[dw_sweep_high_t]] only costs recall — [[dw_sweep_low]]
 down to [[dw_sweep_high]] — because the benign rows there were never a problem:</p>""")
@@ -244,11 +245,29 @@ layers agree on only [[dp_wide_both]] — they are not looking at the same thing
     body += "<h3>Could a policy block on agreement?</h3>"
     body += T("""<p>The obvious idea — block when the detector <i>and</i> a rule agree — was measured instead of assumed. On one
 nightly run of attacks, “both agree” catches [[dp_both_recall]], which is <b>worse than the rules alone</b> ([[dp_rules_recall]]);
-“either” catches [[dp_either_recall]] but brings the detector's false positives back. No policy in the table is good enough to
-block on, so the detector stays a flag.</p>""")
+“either” catches [[dp_either_recall]] but brings the detector's false positives back. No policy in the table separates cleanly,
+which is why the threshold ended up where the next section explains rather than anywhere a measurement pointed to.</p>""")
     body += G.two_signals_table()
-    return sec("detector", "Llama Prompt Guard 2: the layer that only flags", body,
-               "What it does, why it does not block, and the measurement that keeps it that way.")
+    body += "<h3>Where it does block: [[db_at]], and the six documents that pays for</h3>"
+    body += T("""<p>Everything above is the case against blocking on this model, and none of it has been withdrawn. What changed is
+the answer to “and then what?”. Flagging alone means a document the classifier is <i>certain</i> about still reaches the model;
+blocking at any threshold the measurements support means refusing real READMEs. Neither is acceptable on its own, so the product
+does both: it refuses at <b>[[db_at]]</b> and gives the person refused a way through that does not involve the classifier.</p>
+<p>The price is exact and small enough to name document by document. Of the [[dp_wide_docs]] real READMEs,
+<b>[[db_n]] score [[db_at]] or above</b> ([[db_pct]]) and would be refused with no attack in them. The other
+[[db_flagged_not_blocked]] flagged documents are below the line: they are flagged, not refused, and they generate normally.</p>""")
+    body += G.blocked_readmes_table()
+    body += T("""<p>[[db_clean]] of the [[db_n]] carry no keyword match at all, so for those the classifier is the only thing
+objecting. For the rest a rule matches too, which is worth reading precisely: a rule <i>matching</i> is not a rule
+<i>blocking</i> — none of these six would be refused by the keyword rules alone, so the refusal is the classifier's in every
+case.</p>""")
+    body += callout("info", "Why a number, and not a better model",
+                    T("[[db_at]] is not where a measurement says the populations separate — the sweep above says they do not. It is "
+                      "the point where the classifier's certainty is high enough that a human being asked to look is being asked "
+                      "rarely: about [[db_pct]] of real documents. The design admits the classifier is wrong sometimes and puts a "
+                      "person on exactly those cases, rather than pretending a threshold exists that makes it right."))
+    return sec("detector", "Llama Prompt Guard 2: flags most of the time, refuses at [[db_at]]", body,
+               "What it does, why no threshold separates cleanly, and the six real READMEs that the one in use refuses.")
 
 
 # ---------------------------------------------------------------------------- 5. cost
@@ -509,6 +528,60 @@ the job fails, and no quiz is served with the offending part quietly deleted. An
                "A README with an attack in it, the exact prompt it produces, and the two replies — the one that is served and the one that is refused.")
 
 
+# ---------------------------------------------------------------------------- 6b. the review flow
+
+
+def review():
+    body = T(f"""<p>Refusing a document at <b>[[db_at]]</b> buys safety with a cost that lands on a real person: of the
+[[dp_wide_docs]] real READMEs measured, [[db_n]] are refused with no attack in them. A dead end there would be the product
+telling a user their own project's README is an attack, with nothing to do about it. So the refusal is not the end of the
+road — it is the start of a second one, and that road has a human on it, not a model.</p>""")
+    body += T("""<p>The classifier is the <b>only</b> layer with this door. A document stopped by the keyword rules — hidden
+text, base64, zero-width characters between letters — has no appeal, because those rules fire on evidence of concealment and
+concealment has no innocent reading. The classifier fires on <i>style</i>, and style does.</p>""")
+
+    body += "<h3>The path, step by step</h3>"
+    body += table(["Step", "Who", "What happens", "Where"], [
+        ["1. Refusal", "the worker", T("<code>UnsafeDocumentError</code>; the quiz is marked failed with the score and the excerpt. Nothing is generated and no model was called"), T(code('apps/worker/src/processor.ts'))],
+        ["2. The offer", "the API", T("The quiz summary carries <code>reviewable</code>, which is what makes the screen show a way forward rather than an error alone"), T(code('apps/api/src/app.ts'))],
+        ["3. The request", "the user", T("A title and, optionally, why they believe it is legitimate. The URL is <b>not</b> typed: the request points at the refused quiz and the API reads the URL and the score from it, so a request cannot be aimed at a document that was never refused"), T(code('packages/db/src/schema.ts', '<code>document_requests</code>'))],
+        ["4. The queue", "an admin", T("A separate screen, gated on the Cognito group <code>admin</code>, checked again by the API. It shows the score and the excerpt that triggered the refusal next to the link"), T(code('apps/api/src/app.ts'))],
+        ["5. The decision", "an admin", T("Approve or reject. One open request per URL: a second person asking for the same document joins the queue instead of duplicating it (a partial unique index, not application logic)"), T(code('packages/db/src/repo.ts'))],
+        ["6. After approval", "everyone", T("The document joins the catalogue as <code>approved</code> and generates from then on, for every user"), T(code('packages/db/src/repo.ts', '<code>approvedCatalogEntries</code>'))],
+    ], widths=["14%", "12%", "54%", "20%"])
+
+    body += "<h3>What approval actually changes — and what it does not</h3>"
+    body += T("""<p>This is the part worth being exact about, because “approved” sounds like “trusted” and it is not. Approval
+answers <b>one</b> question — <i>is this an attack?</i> — and nothing else. Every other layer stays on, and a reviewer cannot
+turn any of them off:</p>""")
+    body += table(["Layer", "On an approved document"], [
+        ["Keyword rules (hidden text, encodings, zero-width characters)", T("<b>Unchanged.</b> They run <i>before</i> the classifier, so a document they block never reaches a reviewer in the first place — approval cannot be used to let concealed text in")],
+        ["Language gate", T("<b>Unchanged.</b> A document in an unsupported language is still refused")],
+        ["The classifier itself", T("<b>Still runs, still scores, still logs.</b> The metric <code>InjectionDetected</code> is still written, so a spike still alarms. The only thing that changes is that the score no longer <i>refuses</i>")],
+        ["Strict link mode and planted words on the output", T("<b>Unchanged — and this is the point.</b> The classifier excerpt is still passed to the rails, so the reply is held to the stricter standard exactly as it would have been")],
+        ["The grounding gate", T("<b>Unchanged.</b> Every question must still quote the document")],
+    ], widths=["38%", "62%"])
+    body += callout("warn", "“Safe mode” is the accurate name for what an approved document gets",
+                    T("An approved document is not waved through. It is generated <b>with every guard running and the output rails in "
+                      "their strict setting</b> — the same setting a flagged document gets. The reviewer removed one objection, from "
+                      "the one layer that is known to be wrong about style; they did not vouch for the content. A metric, "
+                      "<code>ApprovedDocumentAllowed</code>, counts each time this happens, so the bypass is visible rather than silent."))
+
+    body += "<h3>Rejected, pending, and what is not possible</h3>"
+    body += table(["State", "What the document can do"], [
+        ["Pending", T("Nothing. It is refused exactly as before until somebody decides; asking again does not queue a second request")],
+        ["Rejected", T("Nothing. It stays refused, and the rejection is recorded with who decided and when")],
+        ["Approved", T("Generates, in safe mode, for every user")],
+        ["Approved, then the README changes", T("The copy kept from the last read is what a quiz is built from, so a change upstream is only seen when somebody asks for a fresh download. If the new version is refused, the entry leaves the catalogue rather than sitting there failing for everyone")],
+    ], widths=["26%", "74%"])
+    body += T("""<p>Two properties worth stating plainly. An approval is <b>per URL</b>, not per user: it is a decision about a
+document, which is why the reviewer is shown the document and the score and not who asked. And approval is <b>not</b> a way to
+reach a document the rules block — those never produce a reviewable refusal, so there is nothing to approve.</p>""")
+
+    return sec("review", "When the classifier refuses: the human review flow", body,
+               "What a refused user can do about it, who decides, and exactly which guards an approved document still runs under.")
+
+
 # ---------------------------------------------------------------------------- 7. promptfoo
 
 
@@ -747,7 +820,7 @@ def gaps():
 
 
 def all_sections():
-    return [summary(), input_guard(), rules(), detector(), cost(), output(), walkthrough(), promptfoo(), redteam(), nightly(), datasets(), prompts(), provenance(), gaps()]
+    return [summary(), input_guard(), rules(), detector(), cost(), output(), walkthrough(), review(), promptfoo(), redteam(), nightly(), datasets(), prompts(), provenance(), gaps()]
 
 
 TITLE = "QuizForge: guardrails and promptfoo"
