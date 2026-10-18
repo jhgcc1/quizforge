@@ -100,11 +100,20 @@ test("create -> generate -> answer (with reload) -> submit -> weighted score", a
 });
 
 /**
- * Choose a document. The picker is a combobox, not a `<select>`: it is filtered by typing, so the list can grow as
- * documents earn their place in the catalogue (see listedCatalogEntries).
+ * Choose a document.
+ *
+ * This job pairs THIS repository with the main of the front end, and the front end is replacing the document
+ * `<select>` with a filtered combobox (jhgcc1/quizforge-web#10). Neither side can merge first if the spec only
+ * speaks one of the two: this one would fail against the old front end, the old one fails against the new. So it
+ * handles both for one release, and the `<select>` arm comes out once the front end has merged.
  */
+async function isCombobox(page: Page) {
+  return (await page.getByLabel("Document").getAttribute("role")) === "combobox";
+}
+
 async function chooseDocument(page: Page, title: string) {
   const box = page.getByLabel("Document");
+  if (!(await isCombobox(page))) return box.selectOption({ label: title });
   await box.click();
   await box.fill(title === "Other: paste a URL…" ? "" : title);
   await page.getByRole("option", { name: title, exact: false }).first().click();
@@ -121,18 +130,24 @@ test("a bad source host is rejected with a clear message", async ({ page }) => {
 test("the document dropdown lists the sample catalog and explains each choice", async ({ page }) => {
   await login(page, "dave");
   const box = page.getByLabel("Document");
-  await box.click();
-  // Every curated document is offered, plus the paste-a-URL row. This is a FLOOR, not an exact count: earlier tests
-  // in this same run generate quizzes, and a document that generates cleanly joins the catalogue, so the list grows
-  // while the suite runs.
-  for (const e of SAMPLE_CATALOG) await expect(page.getByRole("option", { name: e.title, exact: false }).first()).toBeAttached();
-  expect(await page.getByRole("option").count()).toBeGreaterThanOrEqual(SAMPLE_CATALOG.length + 1);
+  const combobox = await isCombobox(page);
+  if (combobox) await box.click();
 
-  // Typing narrows it: that is the point of a combobox over a dropdown.
-  await box.fill("Aurora");
-  const narrowed = await page.getByRole("option").count();
-  expect(narrowed).toBeLessThan(SAMPLE_CATALOG.length);
-  await page.getByRole("option", { name: "Biblioteca Aurora" }).click();
+  // Every curated document is offered, plus the paste-a-URL row. This is a FLOOR, not an exact count: earlier tests
+  // in this same run generate quizzes, and a document that generates cleanly joins the catalogue (#98), so the list
+  // grows while the suite runs.
+  const rows = combobox ? page.getByRole("option") : box.locator("option");
+  for (const e of SAMPLE_CATALOG) await expect(rows.filter({ hasText: e.title }).first()).toBeAttached();
+  expect(await rows.count()).toBeGreaterThanOrEqual(SAMPLE_CATALOG.length + 1);
+
+  if (combobox) {
+    // Typing narrows it: that is the point of a combobox over a dropdown, and what the old test could not check.
+    await box.fill("Aurora");
+    expect(await page.getByRole("option").count()).toBeLessThan(SAMPLE_CATALOG.length);
+    await page.getByRole("option", { name: "Biblioteca Aurora" }).click();
+  } else {
+    await box.selectOption({ label: "Biblioteca Aurora" });
+  }
   await expect(page.locator("#doc-info")).toContainText("Portuguese");
   await expect(page.locator("#doc-info")).toContainText("Tests:");
   await expect(page.getByLabel("Markdown URL")).toHaveCount(0); // no URL to copy and paste
