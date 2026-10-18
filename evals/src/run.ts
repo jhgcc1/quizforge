@@ -65,11 +65,22 @@ async function runItem(item: GoldenItem): Promise<Outcome> {
     // The quiz is generated from the document the GUARD admits (sanitized: no link URLs, no HTML comments...), and production
     // stores that same text, so the evaluation has to score against it too — otherwise a quote is judged against bytes the
     // model never saw.
-    const sourceText = admitDocument(await loadText(item)).text;
+    const doc = admitDocument(await loadText(item));
+    const sourceText = doc.text;
+    // Production hands the generator what the input guard flagged, and that is what puts the output rails in strict
+    // link mode (apps/worker/src/processor.ts). Dropping it here meant the golden set measured the generator with
+    // WEAKER defences than the thing it is supposed to guard -- on an injection item, the layer that matters most.
+    const flaggedExcerpts = doc.findings.filter((f) => f.severity === "flag").map((f) => f.detail);
     const r = await generateQuiz({
       llm,
       ...(judgeLlm ? { judgeLlm, judgeSamples: 3 } : {}), // median of 3 judgements: one noisy outlier cannot flip the gate
-      input: { sourceText, numQuestions: item.numQuestions, strategy: item.strategy, critique: item.critique },
+      input: {
+        sourceText,
+        numQuestions: item.numQuestions,
+        strategy: item.strategy,
+        critique: item.critique,
+        ...(flaggedExcerpts.length ? { flaggedExcerpts } : {}),
+      },
       trace: { sessionId: `golden-${item.id}`, userId: "eval", tags: ["eval", offline ? "offline" : "live", item.id] },
     });
     const ev = await evaluateQuiz({ questions: r.questions, sourceText, judgeOverall: r.judge?.overall, expect: item.expect });
