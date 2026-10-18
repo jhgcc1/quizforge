@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { BaseCheckpointSaver } from "@langchain/langgraph";
 import { titleForDocument, type QuizJobMessage, type ScoreJobMessage } from "@quizforge/core";
-import { claimQuiz, completeQuiz, failQuiz, isApprovedDocument, listSource, saveJobBudget, setQuizPhase, unlistSourceByUrl, upsertSource, type Db } from "@quizforge/db";
+import { claimQuiz, completeQuiz, failQuiz, isApprovedDocument, listSource, saveJobBudget, setQuizPhase, storedSource, unlistSourceByUrl, upsertSource, type Db } from "@quizforge/db";
 import {
   BudgetExceededError,
   NonRetryableError,
@@ -93,8 +93,16 @@ export async function processQuizJob(
   const plan = { critique: quiz.critique, planFirst: false, revised: false };
   progress.report(progressFor("reading_document", plan));
   try {
+    // A document read once is kept, so a second quiz on it costs no download: the stored copy is the same sanitized
+    // text the previous quiz was built from. `refresh` on the quiz asks for the current version instead, which is
+    // what somebody wants when the document changed upstream. Either way the guards below run on the text in hand.
     const fetchSource = d.fetchMarkdown ?? defaultFetch;
-    const src = await fetchSource(quiz.sourceUrl, { allowedHosts: d.allowedHosts });
+    const cached = quiz.refresh ? undefined : await storedSource(d.db, [quiz.sourceUrl]).catch(() => undefined);
+    if (cached) {
+      log.info({ sha256: cached.sha256 }, "using the stored copy of the document (no fetch)");
+      emit({ DocumentFromStore: { value: 1, unit: "Count" } });
+    }
+    const src = cached ?? (await fetchSource(quiz.sourceUrl, { allowedHosts: d.allowedHosts }));
     // Door 1: reject hidden/encoded text and unsupported languages BEFORE anything is stored or sent to a model.
     // From here on only the sanitized text is used, and the scorer reads the same text back from Postgres.
     const doc = admitDocument(src.text, d.allowedLanguages ? { allowedLanguages: d.allowedLanguages } : {});

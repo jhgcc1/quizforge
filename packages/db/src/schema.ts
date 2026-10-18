@@ -73,6 +73,8 @@ export const quizzes = pgTable(
     strategyRequested: text("strategy_requested").notNull().default("auto"),
     strategyUsed: text("strategy_used"),
     critique: boolean("critique").notNull().default(true),
+    /** The user asked for the document to be downloaded again rather than read from the stored copy. */
+    refresh: boolean("refresh").notNull().default(false),
     status: quizStatus("status").notNull().default("queued"),
     error: text("error"),
     /**

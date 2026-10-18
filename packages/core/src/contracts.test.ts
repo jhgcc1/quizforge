@@ -9,7 +9,7 @@ describe("contracts", () => {
     expect(IdempotencyKeySchema).toBe(contract.IdempotencyKeySchema);
   });
   it("CreateQuizBodyStrictSchema = the contract body + the strict topic check", () => {
-    expect(CreateQuizBodyStrictSchema.parse({})).toEqual({ numQuestions: 6, strategy: "auto", critique: true });
+    expect(CreateQuizBodyStrictSchema.parse({})).toEqual({ numQuestions: 6, strategy: "auto", critique: true, refresh: false });
     expect(CreateQuizBodyStrictSchema.safeParse({ topic: "Retries and dead jobs" }).success).toBe(true);
     expect(CreateQuizBodyStrictSchema.safeParse({ admin: true }).success).toBe(false); // still strict
     expect(CreateQuizBodyStrictSchema.safeParse({ topic: "x" }).success).toBe(false); // basic rules still apply

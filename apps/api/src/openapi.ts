@@ -65,6 +65,7 @@ export const openApiDocument = {
           numQuestions: { type: "integer", minimum: 5, maximum: 8, default: 6 },
           strategy: { type: "string", enum: ["auto", "single-shot", "section-map-reduce"], default: "auto" },
           critique: { type: "boolean", default: true },
+          refresh: { type: "boolean", default: false, description: "Download the document again instead of using the copy kept from the last time it was read." },
         },
       },
       SaveAnswer: { type: "object", required: ["optionIds", "revision"], properties: { optionIds: { type: "array", items: { type: "string", format: "uuid" }, minItems: 1, maxItems: 4 }, revision: { type: "integer", minimum: 0 } } },

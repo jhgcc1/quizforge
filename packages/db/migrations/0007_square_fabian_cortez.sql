@@ -1,0 +1,1 @@
+ALTER TABLE "quizzes" ADD COLUMN "refresh" boolean DEFAULT false NOT NULL;

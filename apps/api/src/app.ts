@@ -233,6 +233,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
         numQuestions: body.data.numQuestions,
         strategy: body.data.strategy,
         critique: body.data.critique,
+        refresh: body.data.refresh,
         idempotencyKey: key,
         requestHash: hash,
       });

@@ -17,6 +17,7 @@ export interface CreateQuizInput {
   numQuestions: number;
   strategy: string;
   critique: boolean;
+  refresh?: boolean;
   idempotencyKey: string;
   requestHash: string;
 }
@@ -32,6 +33,7 @@ export async function createQuizIdempotent(db: Db, input: CreateQuizInput): Prom
       numQuestions: input.numQuestions,
       strategyRequested: input.strategy,
       critique: input.critique,
+      refresh: input.refresh ?? false,
       idempotencyKey: input.idempotencyKey,
       requestHash: input.requestHash,
     })
@@ -700,6 +702,26 @@ export async function reviewDocumentRequest(
     .where(and(eq(t.documentRequests.id, p.id), eq(t.documentRequests.status, "pending")))
     .returning();
   return row ? toDocumentRequest(row) : undefined;
+}
+
+/**
+ * The copy of a document kept from the last time it was read, newest first.
+ *
+ * Reading a document again costs a fetch of something that usually has not changed, so a quiz on a document already
+ * in the catalogue is built from this copy instead. What is stored is the SANITIZED text — the same bytes the
+ * previous quiz was generated from and the scorer reads back — so the guards see exactly what they saw before and
+ * reach the same verdict. `refresh` on the quiz asks for a download instead.
+ */
+export async function storedSource(db: Db, urls: readonly string[]): Promise<{ rawUrl: string; sha256: string; text: string } | undefined> {
+  const wanted = [...new Set(urls.filter((u) => u.length > 0))];
+  if (!wanted.length) return undefined;
+  const [row] = await db
+    .select({ rawUrl: t.sources.rawUrl, sha256: t.sources.contentSha256, text: t.sources.contentText })
+    .from(t.sources)
+    .where(inArray(t.sources.url, wanted))
+    .orderBy(desc(t.sources.fetchedAt))
+    .limit(1);
+  return row;
 }
 
 /**

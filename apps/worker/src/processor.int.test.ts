@@ -44,8 +44,21 @@ const deps = (over: Partial<ProcessDeps> = {}): ProcessDeps => ({
   emit: (m) => void metrics.push(Object.fromEntries(Object.entries(m).map(([k, v]) => [k, v.value]))),
   ...over,
 });
+// A URL of its own per quiz unless the test says otherwise: a document read once is kept and reused (see
+// storedSource), so a shared URL would hand the next test the previous test's document instead of its own stub.
 const newQuiz = async (over: Record<string, unknown> = {}) =>
-  (await createQuizIdempotent(ctx.db, { ownerSub: "owner", sourceUrl: "https://github.com/o/r/blob/main/README.md", numQuestions: 6, strategy: "single-shot", critique: true, idempotencyKey: randomUUID(), requestHash: "h", ...over })).quiz;
+  (
+    await createQuizIdempotent(ctx.db, {
+      ownerSub: "owner",
+      sourceUrl: `https://github.com/o/r-${randomUUID().slice(0, 8)}/blob/main/README.md`,
+      numQuestions: 6,
+      strategy: "single-shot",
+      critique: true,
+      idempotencyKey: randomUUID(),
+      requestHash: "h",
+      ...over,
+    })
+  ).quiz;
 const status = async (id: string) => (await ctx.db.select().from(schema.quizzes).where(eq(schema.quizzes.id, id)))[0]!;
 
 describe("checkpoints are not kept after a success", () => {
@@ -451,5 +464,51 @@ describe("generation progress (the phase the user sees)", () => {
     } finally {
       await ctx.pool.query(`drop trigger quiz_phase_refuse on quizzes`);
     }
+  });
+});
+
+describe("a document is read once and kept", () => {
+  it("the second quiz on the same URL does not download it again, and the guards still run", async () => {
+    const url = "https://github.com/o/kept/blob/main/README.md";
+    const fetched: string[] = [];
+    const counting = (async (u: string) => (fetched.push(u), okFetch(u))) as never;
+
+    const q1 = await newQuiz({ sourceUrl: url, numQuestions: 5 });
+    expect((await processQuizJob(deps({ fetchMarkdown: counting }), { v: 1, quizId: q1.id }, { count: 1, max: 3 })).kind).toBe("done");
+    expect(fetched).toHaveLength(1);
+
+    metrics.length = 0;
+    const seen: string[] = [];
+    const q2 = await newQuiz({ sourceUrl: url, numQuestions: 5 });
+    const out = await processQuizJob(
+      // The detector is given to prove the guards see the stored text too, not only freshly fetched text.
+      deps({ fetchMarkdown: counting, detector: { name: "stub", languages: ["en"] as const, detect: async (t: string) => (seen.push(t.slice(0, 8)), { flagged: false, score: 0.01, scanned: 1, total: 1, ms: 1 }) }, detectorMode: "block" }),
+      { v: 1, quizId: q2.id },
+      { count: 1, max: 3 },
+    );
+    expect(out.kind).toBe("done");
+    expect(fetched).toHaveLength(1); // still one: the second quiz read the stored copy
+    expect(seen).toHaveLength(1); // the classifier ran on it all the same
+    expect(metrics.some((m) => m.DocumentFromStore === 1)).toBe(true);
+  });
+
+  it("refresh downloads it again", async () => {
+    const url = "https://github.com/o/moving/blob/main/README.md";
+    const fetched: string[] = [];
+    const counting = (async (u: string) => (fetched.push(u), okFetch(u))) as never;
+
+    const q1 = await newQuiz({ sourceUrl: url, numQuestions: 5 });
+    await processQuizJob(deps({ fetchMarkdown: counting }), { v: 1, quizId: q1.id }, { count: 1, max: 3 });
+    const q2 = await newQuiz({ sourceUrl: url, numQuestions: 5, refresh: true });
+    expect((await processQuizJob(deps({ fetchMarkdown: counting }), { v: 1, quizId: q2.id }, { count: 1, max: 3 })).kind).toBe("done");
+    expect(fetched).toHaveLength(2);
+  });
+
+  it("a URL never read before is fetched, refresh or not", async () => {
+    const fetched: string[] = [];
+    const counting = (async (u: string) => (fetched.push(u), okFetch(u))) as never;
+    const q = await newQuiz({ sourceUrl: "https://github.com/o/brand-new/blob/main/README.md", numQuestions: 5 });
+    expect((await processQuizJob(deps({ fetchMarkdown: counting }), { v: 1, quizId: q.id }, { count: 1, max: 3 })).kind).toBe("done");
+    expect(fetched).toHaveLength(1);
   });
 });

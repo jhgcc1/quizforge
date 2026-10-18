@@ -34,6 +34,14 @@ export const CreateQuizBodySchema = z
     numQuestions: z.number().int().min(5).max(8).default(6),
     strategy: z.enum(STRATEGIES).default("auto"),
     critique: z.boolean().default(true),
+    /**
+     * Download the document again instead of using the copy kept from the last time it was read (contract 1.4.0).
+     *
+     * A document that has been read once is stored, so asking for another quiz on it costs no fetch. That copy is
+     * what the previous quiz was built from, which is usually what you want; tick this when the document has
+     * changed upstream and the new version is the point. The guards run either way.
+     */
+    refresh: z.boolean().default(false),
   })
   .strict();
 export type CreateQuizBody = z.output<typeof CreateQuizBodySchema>;
