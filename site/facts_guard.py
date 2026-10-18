@@ -114,6 +114,45 @@ def prep_recall_table():
     return table(["Attack set", "Documents", "Caught", "Recall"], rows, widths=["46%", "18%", "18%", "18%"])
 
 
+def endtoend_table():
+    """What reaches a quiz, not what one layer notices: attacks replayed through the whole pipeline, real model."""
+    dsr = _json("replay-deepset.json")
+    pte = _json("replay-ptes.json")
+    nig = _json("public-datasets-nightly.json")["stageB"]
+
+    runs = dsr["runs"]
+    ds_bad = [r for r in runs if (r.get("verdict") or {}).get("contaminated")]
+    pt = {k: sum(g.get(k, 0) for g in pte["replay"]) for k in ("runs", "rejectedBeforeModel", "rejectedByRails", "quizzes", "contaminated")}
+
+    rows = [
+        ["<b>deepset</b> (en), the attacks the keyword rules did <i>not</i> catch", str(len(runs)),
+         str(sum(1 for r in runs if r.get("status") == "no_quiz")), str(sum(1 for r in runs if r.get("outcome") == "quiz")), f"<b>{len(ds_bad)}</b>"],
+        ["<b>yanismiraoui, prevenia, zn</b> (pt and es), sampled per group", str(pt["runs"]),
+         str(pt["rejectedBeforeModel"] + pt["rejectedByRails"]), str(pt["quizzes"]), f"<b>{pt['contaminated']}</b>"],
+        ["<b>Nightly public datasets</b>, the cases that passed both input layers", str(nig["cases"]),
+         str(nig["rejectedBeforeModel"] + nig["rejectedByRails"]), str(nig["quizzes"]), f"<b>{nig['contaminated']}</b>"],
+    ]
+    total = len(runs) + pt["runs"] + nig["cases"]
+    bad = len(ds_bad) + pt["contaminated"] + nig["contaminated"]
+    rows.append([f"<b>All of them</b>", f"<b>{total}</b>", "", "", f"<b>{bad}</b>"])
+    return table(["Attacks replayed through the whole product, with the real model", "Replayed", "Refused (guard or rails)", "Became a quiz", "Reached the quiz"], rows,
+                 widths=["40%", "13%", "19%", "14%", "14%"])
+
+
+def endtoend_facts():
+    dsr = _json("replay-deepset.json")
+    pte = _json("replay-ptes.json")
+    nig = _json("public-datasets-nightly.json")["stageB"]
+    ds_bad = [r for r in dsr["runs"] if (r.get("verdict") or {}).get("contaminated")]
+    pt_runs = sum(g.get("runs", 0) for g in pte["replay"])
+    return {
+        "e2e_total": len(dsr["runs"]) + pt_runs + nig["cases"],
+        "e2e_bad": len(ds_bad) + sum(g.get("contaminated", 0) for g in pte["replay"]) + nig["contaminated"],
+        "e2e_lang_only": len(ds_bad),
+        "e2e_rails": sum(1 for r in dsr["runs"] if r.get("outcome") == "rejected_by_rails") + sum(g.get("rejectedByRails", 0) for g in pte["replay"]) + nig["rejectedByRails"],
+    }
+
+
 def layer_recall_facts():
     """What each layer catches on the same 640 attacks, so the detector's own recall is read next to the others."""
     n = PREP["twoSignals"]["nightly640"]
@@ -400,6 +439,7 @@ def all_facts():
     out.update(detector_why_facts())
     out.update(detector_block_facts())
     out.update(layer_recall_facts())
+    out.update(endtoend_facts())
     return out
 
 

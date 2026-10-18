@@ -267,7 +267,27 @@ them as “this share of attacks reaches a user” would be badly wrong:</p>""")
                       "the model does, which is the whole reason the model is the second opinion and not the gate.<br><br>"
                       "And an attack neither one catches has not succeeded: it still meets the output rails — strict link mode, planted words, "
                       "echoed instructions, the grounding gate — which is what decides whether anything of it reaches a quiz. “Not caught here” "
-                      "means “caught later, or harmless”, not “served to a user”."))
+                      "means “caught later, or harmless”, not “served to a user”. The next table is that claim, measured."))
+
+    body += "<h3>What gets through the product, which is the question that matters</h3>"
+    body += T("""<p>Every number above is one layer noticing something. This one is the whole thing: real attacks replayed
+through the actual pipeline with the real model — the guard, the classifier, the prompts, the output rails — and the column
+that counts is the last one, <b>whether anything of the attack reached the quiz</b>. The deepset rows are deliberately the
+hard case: only the attacks the keyword rules did <i>not</i> catch were replayed, so the first layer is removed on purpose.</p>""")
+    body += G.endtoend_table()
+    body += T("""<p><b>[[e2e_bad]] of [[e2e_total]]</b>. And the [[e2e_lang_only]] are not an injection getting through: both were
+marked because the quiz came out in a language that was not the document's, which the language rail catches and which is a
+quality failure, not an obeyed instruction. No canary, no planted link, no echoed instruction reached a quiz in any of these
+runs. [[e2e_rails]] replies were rejected by the output rails, which is the layer doing the work the input layers did
+not.</p>""")
+    body += callout("ok", "Why this table and the one above disagree so loudly",
+                    T("They measure different things, and only one of them is about users. “Recall” is <i>did this layer notice</i>. This table "
+                      "is <i>did the attack change the product's output</i>. A classifier that notices [[db_recall]] of chatbot-style attacks "
+                      "and a product that lets [[e2e_bad]] of [[e2e_total]] attacks affect a quiz are both true at once, because the layers are "
+                      "cumulative and the last one is deterministic code rather than a model's judgement.<br><br>"
+                      "What this table does <b>not</b> prove: that no attack can ever work. These are public datasets and generated variants, "
+                      "replayed on a sample; a novel attack shaped for this product is exactly what the nightly red team keeps looking for, and "
+                      "the canary is how it would be noticed."))
     body += "<h3>How often does it fire on a real README?</h3>"
     body += T("""<p>On <b>[[dp_wide_docs]] real READMEs</b> in three languages, the detector flags <b>[[dp_wide_after]]
 ([[dp_wide_after_pct]])</b>. The keyword rules flag [[dp_wide_rules]] of the same documents ([[dp_wide_rules_pct]]), and the two
