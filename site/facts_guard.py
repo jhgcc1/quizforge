@@ -114,6 +114,18 @@ def prep_recall_table():
     return table(["Attack set", "Documents", "Caught", "Recall"], rows, widths=["46%", "18%", "18%", "18%"])
 
 
+def layer_recall_facts():
+    """What each layer catches on the same 640 attacks, so the detector's own recall is read next to the others."""
+    n = PREP["twoSignals"]["nightly640"]
+    return {
+        "lr_docs": n["documents"],
+        "lr_rules": f"{n['rulesAlone']}%",
+        "lr_det": f"{n['detector>=0.5']}%",
+        "lr_either": f"{n['either(detector>=0.5 OR rules)']}%",
+        "lr_both": f"{n['both(detector>=0.5 AND rules)']}%",
+    }
+
+
 def prep_wide_table():
     """The wide benign measurement: real READMEs in three languages, detector and rules side by side."""
     rows = []
@@ -387,6 +399,7 @@ def all_facts():
     out.update(link_facts())
     out.update(detector_why_facts())
     out.update(detector_block_facts())
+    out.update(layer_recall_facts())
     return out
 
 

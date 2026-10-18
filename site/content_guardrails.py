@@ -255,8 +255,19 @@ classifier like a command, and that rubble is not content anyone wants scored. C
 its prose, costs recall ({code('docs/security/detector-prep.md')} measures [[dp_variants]] variants of this choice).</p>
 <p>With that input, on documents that carry no attack at all:</p>""")
     body += G.prep_fp_table()
-    body += T("<p>And on documents that <i>are</i> attacks, in every language and placement that is measured:</p>")
+    body += T("""<p>And on documents that <i>are</i> attacks, in every language and placement that is measured. <b>Read this
+table as what the classifier catches on its own</b> — it is one layer of several, and the numbers are low enough that reading
+them as “this share of attacks reaches a user” would be badly wrong:</p>""")
     body += G.prep_recall_table()
+    body += callout("warn", "What these percentages are not",
+                    T("A row here is <b>the classifier alone</b>, and the public sets are chatbot-style attacks (“ignore your instructions and "
+                      "say X”), which is not the shape of an attack buried in a README. On the [[lr_docs]] attacks built for this product's "
+                      "shape, the layers compare like this: keyword rules <b>[[lr_rules]]</b>, the classifier [[lr_det]], <b>either of them "
+                      "[[lr_either]]</b> (both agreeing, only [[lr_both]] — they are not looking at the same thing). The rules catch more than "
+                      "the model does, which is the whole reason the model is the second opinion and not the gate.<br><br>"
+                      "And an attack neither one catches has not succeeded: it still meets the output rails — strict link mode, planted words, "
+                      "echoed instructions, the grounding gate — which is what decides whether anything of it reaches a quiz. “Not caught here” "
+                      "means “caught later, or harmless”, not “served to a user”."))
     body += "<h3>How often does it fire on a real README?</h3>"
     body += T("""<p>On <b>[[dp_wide_docs]] real READMEs</b> in three languages, the detector flags <b>[[dp_wide_after]]
 ([[dp_wide_after_pct]])</b>. The keyword rules flag [[dp_wide_rules]] of the same documents ([[dp_wide_rules_pct]]), and the two
