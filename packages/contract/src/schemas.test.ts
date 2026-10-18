@@ -9,7 +9,7 @@ const id = "6f1d1e0c-9a0b-4c43-8a6e-1f2d3c4b5a69";
 
 describe("CreateQuizBody", () => {
   it("applies defaults and rejects unknown fields and out-of-range sizes", () => {
-    expect(CreateQuizBodySchema.parse({})).toEqual({ numQuestions: 6, strategy: "auto", critique: true });
+    expect(CreateQuizBodySchema.parse({})).toEqual({ numQuestions: 6, strategy: "auto", critique: true, refresh: false });
     expect(CreateQuizBodySchema.safeParse({ numQuestions: 4 }).success).toBe(false);
     expect(CreateQuizBodySchema.safeParse({ numQuestions: 9 }).success).toBe(false);
     expect(CreateQuizBodySchema.safeParse({ strategy: "magic" }).success).toBe(false);
