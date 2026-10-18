@@ -99,9 +99,20 @@ test("create -> generate -> answer (with reload) -> submit -> weighted score", a
   await other.close();
 });
 
+/**
+ * Choose a document. The picker is a combobox, not a `<select>`: it is filtered by typing, so the list can grow as
+ * documents earn their place in the catalogue (see listedCatalogEntries).
+ */
+async function chooseDocument(page: Page, title: string) {
+  const box = page.getByLabel("Document");
+  await box.click();
+  await box.fill(title === "Other: paste a URL…" ? "" : title);
+  await page.getByRole("option", { name: title, exact: false }).first().click();
+}
+
 test("a bad source host is rejected with a clear message", async ({ page }) => {
   await login(page, "carol");
-  await page.getByLabel("Document").selectOption({ label: "Other: paste a URL…" });
+  await chooseDocument(page, "Other: paste a URL…");
   await page.getByLabel("Markdown URL").fill("https://evil.example.com/readme.md");
   await page.getByRole("button", { name: "Generate quiz" }).click();
   await expect(page.locator("p.alert")).toContainText(/host not allowed/i);
@@ -109,17 +120,24 @@ test("a bad source host is rejected with a clear message", async ({ page }) => {
 
 test("the document dropdown lists the sample catalog and explains each choice", async ({ page }) => {
   await login(page, "dave");
-  const select = page.getByLabel("Document");
-  await expect(select.locator("optgroup")).toHaveCount(2); // real READMEs, test documents
-  await expect(select.locator("option")).toHaveCount(SAMPLE_CATALOG.length + 1); // + "Other: paste a URL…"
-  for (const e of SAMPLE_CATALOG) await expect(select.locator("option", { hasText: e.title }).first()).toBeAttached();
+  const box = page.getByLabel("Document");
+  await box.click();
+  // Every curated document is offered, plus the paste-a-URL row. This is a FLOOR, not an exact count: earlier tests
+  // in this same run generate quizzes, and a document that generates cleanly joins the catalogue, so the list grows
+  // while the suite runs.
+  for (const e of SAMPLE_CATALOG) await expect(page.getByRole("option", { name: e.title, exact: false }).first()).toBeAttached();
+  expect(await page.getByRole("option").count()).toBeGreaterThanOrEqual(SAMPLE_CATALOG.length + 1);
 
-  await select.selectOption({ label: "Biblioteca Aurora" });
+  // Typing narrows it: that is the point of a combobox over a dropdown.
+  await box.fill("Aurora");
+  const narrowed = await page.getByRole("option").count();
+  expect(narrowed).toBeLessThan(SAMPLE_CATALOG.length);
+  await page.getByRole("option", { name: "Biblioteca Aurora" }).click();
   await expect(page.locator("#doc-info")).toContainText("Portuguese");
   await expect(page.locator("#doc-info")).toContainText("Tests:");
   await expect(page.getByLabel("Markdown URL")).toHaveCount(0); // no URL to copy and paste
 
-  await select.selectOption({ label: "Other: paste a URL…" });
+  await chooseDocument(page, "Other: paste a URL…");
   await expect(page.getByLabel("Markdown URL")).toBeVisible();
 });
 
@@ -127,7 +145,7 @@ test("the browser refuses a malformed request before it reaches the network", as
   await login(page, "erin");
   let created = 0;
   await page.route("**/bff/v1/quizzes", (route) => (route.request().method() === "POST" ? (created++, route.abort()) : route.continue()));
-  await page.getByLabel("Document").selectOption({ label: "Other: paste a URL…" });
+  await chooseDocument(page, "Other: paste a URL…");
   await page.getByLabel("Markdown URL").fill("https://github.com/owner/repo/blob/main/README.md");
   await page.getByLabel("Topic (optional)").fill("x"); // the shared schema requires at least 2 characters
   await page.getByRole("button", { name: "Generate quiz" }).click();
