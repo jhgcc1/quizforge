@@ -99,6 +99,9 @@ test("create -> generate -> answer (with reload) -> submit -> weighted score", a
   await other.close();
 });
 
+/** The picker itself. `exact` matters: the open listbox is labelled "Documents", which a loose match also finds. */
+const documentBox = (page: Page) => page.getByLabel("Document", { exact: true });
+
 /**
  * Choose a document.
  *
@@ -108,11 +111,11 @@ test("create -> generate -> answer (with reload) -> submit -> weighted score", a
  * handles both for one release, and the `<select>` arm comes out once the front end has merged.
  */
 async function isCombobox(page: Page) {
-  return (await page.getByLabel("Document").getAttribute("role")) === "combobox";
+  return (await documentBox(page).getAttribute("role")) === "combobox";
 }
 
 async function chooseDocument(page: Page, title: string) {
-  const box = page.getByLabel("Document");
+  const box = documentBox(page);
   if (!(await isCombobox(page))) return box.selectOption({ label: title });
   await box.click();
   await box.fill(title === "Other: paste a URL…" ? "" : title);
@@ -129,7 +132,7 @@ test("a bad source host is rejected with a clear message", async ({ page }) => {
 
 test("the document dropdown lists the sample catalog and explains each choice", async ({ page }) => {
   await login(page, "dave");
-  const box = page.getByLabel("Document");
+  const box = documentBox(page);
   const combobox = await isCombobox(page);
   if (combobox) await box.click();
 
