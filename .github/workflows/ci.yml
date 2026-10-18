@@ -129,73 +129,18 @@ jobs:
         run: pnpm --filter @quizforge/db db:migrate
 
   # ---------------------------------------------------------------- end-to-end (real browser)
-  e2e:
-    name: e2e
-    runs-on: ubuntu-24.04
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
-      # The front end is a separate repository and production runs the main of both, so that is the pair this test is about.
-      # On main it always runs: it is the last gate before the deploy, and the back end is what can break the contract without
-      # anyone noticing (the front end pins @quizforge/contract to a published tarball, so a behaviour change is invisible to it).
-      # On a pull request it runs only when the change can reach the UI -- the job itself is always a check, green in seconds
-      # otherwise, so the required check is never missing.
-      - name: Can this change reach the UI?
-        id: scope
-        env:
-          BASE_REF: ${{ github.base_ref }}
-        run: |
-          if [ "${{ github.event_name }}" != pull_request ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"; echo "On main: the end-to-end test always runs before a deploy."; exit 0
-          fi
-          changed=$(git diff --name-only "origin/${BASE_REF}...HEAD" | grep -E '^(apps/api/|packages/contract/|packages/core/src/(contracts|quiz-schema|catalog)|packages/db/|e2e/|docker-compose\.yml|\.github/workflows/ci\.yml)' || true)
-          if [ -n "$changed" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; echo "::notice title=End-to-end test will run::$(echo $changed | tr '\n' ' ')"
-          else echo "run=false" >> "$GITHUB_OUTPUT"; echo "Nothing the front end consumes changed (API, contract, database, e2e): the browser test is not needed. It still runs on main."; fi
-      - if: steps.scope.outputs.run == 'true'
-        uses: pnpm/action-setup@v4
-      - if: steps.scope.outputs.run == 'true'
-        uses: actions/setup-node@v4
-        with: { node-version: "${{ env.NODE_VERSION }}", cache: pnpm }
-      - if: steps.scope.outputs.run == 'true'
-        run: pnpm install --frozen-lockfile
-      - name: Start Postgres and the SQS emulator
-        if: steps.scope.outputs.run == 'true' 
-        run: |
-          docker compose up -d postgres elasticmq
-          for i in $(seq 1 40); do docker compose ps postgres --format '{{.Health}}' | grep -q healthy && break; sleep 2; done
-          for i in $(seq 1 30); do curl -sf "http://localhost:9324/?Action=ListQueues" >/dev/null && break; sleep 2; done
-      - if: steps.scope.outputs.run == 'true'
-        run: pnpm exec playwright install --with-deps chromium
-      - name: Check out the front end (jhgcc1/quizforge-web at main) into web/
-        if: steps.scope.outputs.run == 'true'
-        uses: actions/checkout@v4
-        with:
-          repository: jhgcc1/quizforge-web
-          ref: main
-          path: web
-      - name: Say which front end commit this ran against
-        if: steps.scope.outputs.run == 'true'
-        run: echo "e2e against front end \`$(git -C web rev-parse --short HEAD)\` (main)" >> "$GITHUB_STEP_SUMMARY"
-      - name: Install and build the front end (standalone project, not part of this workspace)
-        if: steps.scope.outputs.run == 'true'
-        working-directory: web
-        run: |
-          pnpm install --ignore-workspace --frozen-lockfile
-          pnpm build
-        env: { AUTH_MODE: local, APP_URL: "http://localhost:13000" }
-      - name: Playwright (login -> generate -> answer -> reload -> submit -> score)
-        if: steps.scope.outputs.run == 'true'
-        run: pnpm test:e2e
-        env: { CI: "true" }
-      - uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: playwright-report
-          path: |
-            playwright-report
-            test-results
-          retention-days: 7
+  #
+  # There is no browser test in this repository's CI. The spec still lives here (e2e/quiz.spec.ts) because its harness
+  # is anchored here -- prepare.ts runs the real migrations from packages/db -- but it is RUN by the front end's CI
+  # (jhgcc1/quizforge-web), which checks this repository out to get it. The test drives a UI that lives there, so it
+  # belongs to the pull requests that change that UI.
+  #
+  # What covers this side instead: the API is pinned by packages/contract and its boundary tests, the integration
+  # suite exercises the API and the worker against a real Postgres, and e2e/aws.spec.ts drives the DEPLOYED stack in
+  # a browser after every deploy (the smoke step in quizforge-infra's apply.yml), with rollback.yml to go back.
+  #
+  # The trade: a back end change that breaks the UI is caught after the deploy rather than before it. That is the
+  # usual arrangement for a service deployed on its own, and the smoke test plus rollback is what makes it safe.
 
   # ---------------------------------------------------------------- images build + vulnerability scan
   docker-build:
@@ -388,7 +333,7 @@ jobs:
   publish-prompts:
     name: publish-prompts
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [quality, integration, migrations, e2e, docker-build, secrets-scan, promptfoo, llm-eval]
+    needs: [quality, integration, migrations, docker-build, secrets-scan, promptfoo, llm-eval]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: llm-eval # holds the Langfuse keys; only main may use it
@@ -412,7 +357,7 @@ jobs:
   publish:
     name: publish
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [quality, integration, migrations, e2e, docker-build, secrets-scan, promptfoo, llm-eval]
+    needs: [quality, integration, migrations, docker-build, secrets-scan, promptfoo, llm-eval]
     runs-on: ubuntu-24.04-arm # native arm64 images for Graviton Fargate
     timeout-minutes: 45
     concurrency: { group: publish-images, cancel-in-progress: false }

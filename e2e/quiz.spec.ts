@@ -1,3 +1,38 @@
+/**
+ * The browser test: this repository's API, worker and scorer, driven through the REAL front end.
+ *
+ * ## This file lives here, but it drives a UI that lives somewhere else
+ *
+ * The front end is jhgcc1/quizforge-web. Both CI jobs pair main with main: this repository checks out the front end's
+ * main, and the front end checks out this repository's main. The spec stays here because the harness around it is
+ * anchored here — prepare.ts runs the real migrations from packages/db, and the assertions read @quizforge/core and
+ * talk to Postgres directly. Neither package is published, so moving the spec would mean publishing them.
+ *
+ * ## The consequence, and how to get through it
+ *
+ * A change that alters the markup this file drives CANNOT be merged on either side alone:
+ *
+ *   a spec that only speaks the NEW markup fails against the front end's current main
+ *   the CURRENT spec fails against the front end branch that introduces the new markup
+ *
+ * So neither repository can go first. Do it in two phases:
+ *
+ *   1. Here: make the spec accept BOTH markups, choosing at run time (see `isCombobox` below for a worked example,
+ *      which handled the document `<select>` becoming a combobox). Merge it.
+ *   2. There: merge the front end change. Its CI now picks up the tolerant spec from this main and passes.
+ *   3. Here: delete the old arm.
+ *
+ * It is a ritual, not a trap, as long as you know it is coming — which is why it is written down here, in the file
+ * you are reading when you hit it. Moving the spec to the front end would remove the ritual, at the price of
+ * publishing @quizforge/core and @quizforge/db as versioned tarballs and bumping them on every change.
+ *
+ * ## Where it runs
+ *
+ * In the FRONT END's CI, not this one. There is no e2e job here any more: the test drives a UI that lives there, so
+ * it belongs to the pull requests that change that UI. What covers this side is packages/contract and its boundary
+ * tests, the integration suite against a real Postgres, and e2e/aws.spec.ts driving the DEPLOYED stack in a browser
+ * after every deploy (the smoke step in quizforge-infra's apply.yml), with rollback.yml to go back.
+ */
 import { expect, test, type Page } from "@playwright/test";
 import pg from "pg";
 import { SAMPLE_CATALOG } from "@quizforge/core";
