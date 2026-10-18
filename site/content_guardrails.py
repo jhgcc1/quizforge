@@ -284,6 +284,12 @@ marked because the quiz came out in a language that was not the document's, whic
 quality failure, not an obeyed instruction. No canary, no planted link, no echoed instruction reached a quiz in any of these
 runs. [[e2e_rails]] replies were rejected by the output rails, which is the layer doing the work the input layers did
 not.</p>""")
+    body += callout("ok", "That failure has since been fixed, and the table has not been re-run",
+                    T("The [[e2e_lang_only]] marked runs are the defect that the pipeline knew the document's language and never told the "
+                      "model. It does now, and the language is checked again on the way out — merged <b>three days after this measurement "
+                      "was taken</b>. On the golden-set item that kept failing the same way, the change took 9 runs in 10 to 20 in 20. So the "
+                      "number today is probably 0 of [[e2e_total]]. It is left at [[e2e_bad]] because that is what was measured, and a figure "
+                      "nobody measured is not a figure worth printing."))
     body += callout("ok", "Why this table and the one above disagree so loudly",
                     T("They measure different things, and only one of them is about users. “Recall” is <i>did this layer notice</i>. This table "
                       "is <i>did the attack change the product's output</i>. A classifier that notices [[db_recall]] of chatbot-style attacks "
