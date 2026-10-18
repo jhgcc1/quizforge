@@ -199,7 +199,12 @@ export const CatalogResponseSchema = z.object({ items: z.array(CatalogEntrySchem
  * admin sees the score and the excerpt that triggered it and decides. An approved document joins the catalogue, where
  * everyone can pick it — which is why the review has to show what was found, not just the URL.
  */
-export const DOCUMENT_REQUEST_STATUSES = ["pending", "approved", "rejected"] as const;
+/**
+ * `revoked` is deliberately not the same as `rejected` (contract 1.5.0): rejected means a reviewer looked and said
+ * no, revoked means one said yes and later took it back. The document is refused again either way, but the history
+ * of a decision that was reversed is worth being able to read.
+ */
+export const DOCUMENT_REQUEST_STATUSES = ["pending", "approved", "rejected", "revoked"] as const;
 
 /**
  * The request names the QUIZ that was refused, not a URL. Two reasons: the user never has to retype anything, and the API
@@ -217,7 +222,9 @@ export const CreateDocumentRequestBodySchema = z
   .strict();
 export type CreateDocumentRequestBody = z.output<typeof CreateDocumentRequestBodySchema>;
 
-export const ReviewDocumentRequestBodySchema = z.object({ action: z.enum(["approve", "reject"]), note: z.string().max(500).optional() }).strict();
+export const ReviewDocumentRequestBodySchema = z
+  .object({ action: z.enum(["approve", "reject", "revoke"]), note: z.string().max(500).optional() })
+  .strict();
 export type ReviewDocumentRequestBody = z.output<typeof ReviewDocumentRequestBodySchema>;
 
 export const DocumentRequestSchema = z.object({
@@ -233,6 +240,8 @@ export const DocumentRequestSchema = z.object({
   createdAt: z.string(),
   reviewedAt: z.string().nullable(),
   reviewNote: z.string().nullable(),
+  /** Who decided, so a reversed decision can be read back (contract 1.5.0). */
+  reviewedBy: z.string().nullable(),
 });
 export type DocumentRequest = z.output<typeof DocumentRequestSchema>;
 export const DocumentRequestListSchema = z.object({ items: z.array(DocumentRequestSchema) });

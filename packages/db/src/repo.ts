@@ -645,12 +645,13 @@ const toDocumentRequest = (r: DocumentRequestRow) => ({
   title: r.title,
   description: r.description,
   note: r.note,
-  status: r.status as "pending" | "approved" | "rejected",
+  status: r.status as "pending" | "approved" | "rejected" | "revoked",
   detectorScore: r.detectorScore === null ? null : Number(r.detectorScore),
   excerpt: r.excerpt,
   createdAt: r.createdAt.toISOString(),
   reviewedAt: r.reviewedAt ? r.reviewedAt.toISOString() : null,
   reviewNote: r.reviewNote,
+  reviewedBy: r.reviewedBy,
 });
 
 export interface CreateDocumentRequestInput {
@@ -685,21 +686,41 @@ export async function createDocumentRequest(db: Db, input: CreateDocumentRequest
   }
 }
 
-export async function listDocumentRequests(db: Db, filter: { status?: string; requestedBy?: string }): Promise<ReturnType<typeof toDocumentRequest>[]> {
-  const where = filter.requestedBy ? eq(t.documentRequests.requestedBy, filter.requestedBy) : eq(t.documentRequests.status, filter.status ?? "pending");
-  const rows = await db.select().from(t.documentRequests).where(where).orderBy(desc(t.documentRequests.createdAt)).limit(200);
+/**
+ * The requests a reviewer or a requester may see.
+ *
+ * A reviewer gets everything, not only what is waiting: an approval is a decision that stays in force until somebody
+ * takes it back, so the ones already decided have to be visible for that to be possible at all. Waiting first, then
+ * the rest newest decision first.
+ */
+export async function listDocumentRequests(db: Db, filter: { requestedBy?: string }): Promise<ReturnType<typeof toDocumentRequest>[]> {
+  const q = db.select().from(t.documentRequests);
+  const rows = await (filter.requestedBy ? q.where(eq(t.documentRequests.requestedBy, filter.requestedBy)) : q)
+    .orderBy(sql`case when ${t.documentRequests.status} = 'pending' then 0 else 1 end`, desc(sql`coalesce(${t.documentRequests.reviewedAt}, ${t.documentRequests.createdAt})`))
+    .limit(200);
   return rows.map(toDocumentRequest);
 }
 
-/** Decide one request. `undefined` when there is no request with that id still waiting (already reviewed, or never existed). */
+/**
+ * Decide one request, or take an approval back.
+ *
+ * `approve` and `reject` act on a request still waiting. `revoke` acts on one already approved: the document stops
+ * being in the list everyone picks from and is refused by the classifier again from the next quiz on. It is a
+ * separate status from `rejected` on purpose — a decision that was reversed reads differently from one never made.
+ *
+ * `undefined` when no row is in the state the action needs, which is also what makes two reviewers pressing at the
+ * same time safe: the second one changes nothing.
+ */
 export async function reviewDocumentRequest(
   db: Db,
-  p: { id: string; action: "approve" | "reject"; reviewedBy: string; note?: string },
+  p: { id: string; action: "approve" | "reject" | "revoke"; reviewedBy: string; note?: string },
 ): Promise<ReturnType<typeof toDocumentRequest> | undefined> {
+  const status = p.action === "approve" ? "approved" : p.action === "reject" ? "rejected" : "revoked";
+  const from = p.action === "revoke" ? "approved" : "pending";
   const [row] = await db
     .update(t.documentRequests)
-    .set({ status: p.action === "approve" ? "approved" : "rejected", reviewedBy: p.reviewedBy, reviewedAt: new Date(), reviewNote: p.note ?? null })
-    .where(and(eq(t.documentRequests.id, p.id), eq(t.documentRequests.status, "pending")))
+    .set({ status, reviewedBy: p.reviewedBy, reviewedAt: new Date(), reviewNote: p.note ?? null })
+    .where(and(eq(t.documentRequests.id, p.id), eq(t.documentRequests.status, from)))
     .returning();
   return row ? toDocumentRequest(row) : undefined;
 }

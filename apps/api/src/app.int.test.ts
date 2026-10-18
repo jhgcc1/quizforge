@@ -598,13 +598,52 @@ describe("asking for a document the classifier rejected", () => {
     expect(res.json().error.code).toBe("not_refused_by_classifier");
   });
 
-  it("a user sees only their own requests; an admin sees what is waiting", async () => {
+  it("a user sees only their own requests; an admin sees all of them", async () => {
     await post("u-mine", { quizId: await refusedQuiz("u-mine", "https://github.com/BurntSushi/ripgrep/blob/master/README.md"), title: "ripgrep" });
     const mine = await app.inject({ method: "GET", url: "/v1/document-requests", headers: { authorization: `Bearer ${await token("u-mine")}` } });
     expect(mine.json().items.every((r: { title: string }) => r.title === "ripgrep")).toBe(true);
 
     const asAdmin = await app.inject({ method: "GET", url: "/v1/document-requests", headers: { authorization: `Bearer ${await adminToken("u-admin")}` } });
     expect(asAdmin.json().items.length).toBeGreaterThan(1);
+  });
+
+  // An approval is a standing decision, not an event: it has to stay visible to be undoable, and undoing it has to
+  // put the document back behind the classifier for everybody.
+  it("an approval can be taken back, which removes the document from the catalogue", async () => {
+    const url = "https://github.com/honojs/hono/blob/main/SECURITY.md";
+    const req = (await post("u-rev", { quizId: await refusedQuiz("u-rev", url), title: "Hono security" })).json();
+    const review = async (id: string, action: string) =>
+      app.inject({ method: "POST", url: `/v1/document-requests/${id}/review`, headers: { authorization: `Bearer ${await adminToken("u-admin")}`, "content-type": "application/json" }, payload: { action } });
+    const catalogTitles = async () => {
+      const r = await app.inject({ method: "GET", url: "/v1/catalog", headers: { authorization: `Bearer ${await token("u-anyone")}` } });
+      return (r.json().items as { title: string }[]).map((i) => i.title);
+    };
+
+    expect((await review(req.id, "approve")).statusCode).toBe(200);
+    expect(await catalogTitles()).toContain("Hono security");
+
+    const revoked = await review(req.id, "revoke");
+    expect(revoked.statusCode).toBe(200);
+    expect(revoked.json().status).toBe("revoked");
+    expect(revoked.json().reviewedBy).toBe("u-admin");
+    expect(await catalogTitles()).not.toContain("Hono security");
+
+    expect((await review(req.id, "revoke")).statusCode).toBe(404); // nothing approved to take back any more
+  });
+
+  it("a decided request stays in the admin's list, so it can be undone", async () => {
+    const req = (await post("u-hist", { quizId: await refusedQuiz("u-hist", "https://github.com/psf/requests/blob/main/HISTORY.md"), title: "Requests history" })).json();
+    await app.inject({ method: "POST", url: `/v1/document-requests/${req.id}/review`, headers: { authorization: `Bearer ${await adminToken("u-admin")}`, "content-type": "application/json" }, payload: { action: "approve" } });
+    const listed = await app.inject({ method: "GET", url: "/v1/document-requests", headers: { authorization: `Bearer ${await adminToken("u-admin")}` } });
+    const row = (listed.json().items as { id: string; status: string }[]).find((r) => r.id === req.id);
+    expect(row?.status).toBe("approved");
+  });
+
+  it("revoke is refused on a request still waiting: there is nothing to take back", async () => {
+    const req = (await post("u-pend", { quizId: await refusedQuiz("u-pend", "https://github.com/BurntSushi/ripgrep/blob/master/GUIDE.md"), title: "ripgrep guide" })).json();
+    const r = await app.inject({ method: "POST", url: `/v1/document-requests/${req.id}/review`, headers: { authorization: `Bearer ${await adminToken("u-admin")}`, "content-type": "application/json" }, payload: { action: "revoke" } });
+    expect(r.statusCode).toBe(404);
+    expect(r.json().error.message).toMatch(/to take back/);
   });
 
   it("only an admin may review, and a request is decided once", async () => {

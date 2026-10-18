@@ -295,14 +295,19 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     });
 
     /** The admin sees everything waiting; everybody else sees what they asked for. */
-    v1.get("/document-requests", async (req) => ({ items: await listDocumentRequests(db, isAdmin(req.user!) ? { status: "pending" } : { requestedBy: req.user!.sub }) }));
+    // A reviewer sees every request, not only what is waiting: an approval stays in force until somebody takes it
+    // back, so the decided ones have to be visible for that to be possible. Everybody else sees their own.
+    v1.get("/document-requests", async (req) => ({ items: await listDocumentRequests(db, isAdmin(req.user!) ? {} : { requestedBy: req.user!.sub }) }));
 
     v1.post<{ Params: { id: string } }>("/document-requests/:id/review", async (req, reply) => {
       if (!isAdmin(req.user!)) return fail(reply, 403, "forbidden", "Only an administrator can review document requests");
       const body = ReviewDocumentRequestBodySchema.safeParse(req.body ?? {});
       if (!body.success) return fail(reply, 400, "validation_error", "Invalid request body", body.error.issues.map((i: z.ZodIssue) => ({ path: i.path.join("."), message: i.message })));
       const reviewed = await reviewDocumentRequest(db, { id: req.params.id, action: body.data.action, reviewedBy: req.user!.sub, ...(body.data.note ? { note: body.data.note } : {}) });
-      if (!reviewed) return fail(reply, 404, "not_found", "No request waiting for review with that id");
+      if (!reviewed) {
+        const why = body.data.action === "revoke" ? "No approved document with that id to take back" : "No request waiting for review with that id";
+        return fail(reply, 404, "not_found", why);
+      }
       req.log.info({ documentRequestId: reviewed.id, action: body.data.action, reviewedBy: req.user!.sub }, "document request reviewed");
       return reviewed;
     });
