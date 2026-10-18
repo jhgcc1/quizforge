@@ -99,9 +99,29 @@ test("create -> generate -> answer (with reload) -> submit -> weighted score", a
   await other.close();
 });
 
+/**
+ * Choose a document.
+ *
+ * This job pairs THIS repository with the main of the front end, and the front end is replacing the document
+ * `<select>` with a filtered combobox (jhgcc1/quizforge-web#10). Neither side can merge first if the spec only
+ * speaks one of the two: this one would fail against the old front end, the old one fails against the new. So it
+ * handles both for one release, and the `<select>` arm comes out once the front end has merged.
+ */
+async function isCombobox(page: Page) {
+  return (await page.getByLabel("Document").getAttribute("role")) === "combobox";
+}
+
+async function chooseDocument(page: Page, title: string) {
+  const box = page.getByLabel("Document");
+  if (!(await isCombobox(page))) return box.selectOption({ label: title });
+  await box.click();
+  await box.fill(title === "Other: paste a URL…" ? "" : title);
+  await page.getByRole("option", { name: title, exact: false }).first().click();
+}
+
 test("a bad source host is rejected with a clear message", async ({ page }) => {
   await login(page, "carol");
-  await page.getByLabel("Document").selectOption({ label: "Other: paste a URL…" });
+  await chooseDocument(page, "Other: paste a URL…");
   await page.getByLabel("Markdown URL").fill("https://evil.example.com/readme.md");
   await page.getByRole("button", { name: "Generate quiz" }).click();
   await expect(page.locator("p.alert")).toContainText(/host not allowed/i);
@@ -109,17 +129,30 @@ test("a bad source host is rejected with a clear message", async ({ page }) => {
 
 test("the document dropdown lists the sample catalog and explains each choice", async ({ page }) => {
   await login(page, "dave");
-  const select = page.getByLabel("Document");
-  await expect(select.locator("optgroup")).toHaveCount(2); // real READMEs, test documents
-  await expect(select.locator("option")).toHaveCount(SAMPLE_CATALOG.length + 1); // + "Other: paste a URL…"
-  for (const e of SAMPLE_CATALOG) await expect(select.locator("option", { hasText: e.title }).first()).toBeAttached();
+  const box = page.getByLabel("Document");
+  const combobox = await isCombobox(page);
+  if (combobox) await box.click();
 
-  await select.selectOption({ label: "Biblioteca Aurora" });
+  // Every curated document is offered, plus the paste-a-URL row. This is a FLOOR, not an exact count: earlier tests
+  // in this same run generate quizzes, and a document that generates cleanly joins the catalogue (#98), so the list
+  // grows while the suite runs.
+  const rows = combobox ? page.getByRole("option") : box.locator("option");
+  for (const e of SAMPLE_CATALOG) await expect(rows.filter({ hasText: e.title }).first()).toBeAttached();
+  expect(await rows.count()).toBeGreaterThanOrEqual(SAMPLE_CATALOG.length + 1);
+
+  if (combobox) {
+    // Typing narrows it: that is the point of a combobox over a dropdown, and what the old test could not check.
+    await box.fill("Aurora");
+    expect(await page.getByRole("option").count()).toBeLessThan(SAMPLE_CATALOG.length);
+    await page.getByRole("option", { name: "Biblioteca Aurora" }).click();
+  } else {
+    await box.selectOption({ label: "Biblioteca Aurora" });
+  }
   await expect(page.locator("#doc-info")).toContainText("Portuguese");
   await expect(page.locator("#doc-info")).toContainText("Tests:");
   await expect(page.getByLabel("Markdown URL")).toHaveCount(0); // no URL to copy and paste
 
-  await select.selectOption({ label: "Other: paste a URL…" });
+  await chooseDocument(page, "Other: paste a URL…");
   await expect(page.getByLabel("Markdown URL")).toBeVisible();
 });
 
@@ -127,7 +160,7 @@ test("the browser refuses a malformed request before it reaches the network", as
   await login(page, "erin");
   let created = 0;
   await page.route("**/bff/v1/quizzes", (route) => (route.request().method() === "POST" ? (created++, route.abort()) : route.continue()));
-  await page.getByLabel("Document").selectOption({ label: "Other: paste a URL…" });
+  await chooseDocument(page, "Other: paste a URL…");
   await page.getByLabel("Markdown URL").fill("https://github.com/owner/repo/blob/main/README.md");
   await page.getByLabel("Topic (optional)").fill("x"); // the shared schema requires at least 2 characters
   await page.getByRole("button", { name: "Generate quiz" }).click();
