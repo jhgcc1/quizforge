@@ -45,7 +45,7 @@ def suites_diagram():
     b = ""
     lanes = [
         (14, "Every pull request", "promptfoo OFFLINE · [[pf_offline]] tests", "fake model, no secrets, ~1 minute", "ci", "required to merge"),
-        (110, "Every pull request", "redteam-sample · [[pf_sample]] attacks", "fake, then the real model", "ai", "not required: the maintainer decides"),
+        (110, "Every pull request (not a fork)", "redteam-sample · [[pf_sample]] attacks", "fake, then the real model", "ai", "not required: the maintainer decides"),
         (206, "Merge to main", "promptfoo LIVE · [[pf_live]] tests", "real model, inside llm-eval", "ai", "blocks the deploy"),
         (302, "Every night [[redteam_time]] (Fargate)", "redteam-nightly · ≈[[pf_nightly]] + ≈[[pub_cases]] cases", "fresh attacks, encodings, public datasets", "compute", "reports; a leak raises an alarm"),
     ]
@@ -65,6 +65,10 @@ def suites_diagram():
     b += text(850, 166, "· the frozen sample is the same 50 attacks", "note")
     b += text(850, 184, "  every time, so a regression is visible", "note")
     b += text(850, 202, "· the night can afford a fresh, large set", "note")
+    b += text(850, 230, "A fork gets no model key, so the lanes that call", "note")
+    b += text(850, 248, "the real model do not run there at all: absent,", "note")
+    b += text(850, 266, "not green. Neither is required to merge, so a", "note")
+    b += text(850, 284, "maintainer reads them before pressing it.", "note")
     b += text(10, 399, "The attack corpus is ONE file (packages/core/src/attacks.ts): vitest and promptfoo test the same attacks.", "note")
     return svg(1160, 419, b, "The four promptfoo suites: when each one runs, how big it is, and what it blocks")
 
