@@ -105,6 +105,26 @@ in layers, and each layer is measured separately, because a layer that is only b
 
 def input_guard():
     body = d.guardrail_flow()
+
+    body += "<h3>Step zero: is this a text document at all?</h3>"
+    body += T(f"""<p>Everything below reads a document. The first question is whether what arrived <i>is</i> one, and the
+answer cannot come from the <code>Content-Type</code>: <code>raw.githubusercontent.com</code> sets it from the file
+<b>name</b>, so an ELF binary committed as <code>README.md</code> is served as <code>text/plain</code>. It was tried —
+<code>/usr/bin/ssh</code> went through the whole pipeline and was classified as Spanish.</p>
+<p>So the bytes decide ({code('packages/core/src/text.ts', '<code>binaryLike</code>')}), on the first <b>[[sniff_kb]]</b>, and
+the download is aborted rather than pulling the full 512 KB:</p>""")
+    body += table(["Signal", "What it is", "Why it separates"], [
+        ["File signatures", T("<b>[[text_magic]]</b> of them — ELF, MZ, PDF, ZIP, gzip, PNG, SQLite…"), "A text document never starts with one. Checked on the raw bytes, not the decoded string: a PNG signature disappears once the bytes above 0x7F become U+FFFD"],
+        ["Invalid UTF-8", T("The share of U+FFFD, refused above <b>[[text_share]]</b>"), T("Measured: 0% in real documents, 0.6–3.4% in a README mis-saved as latin-1, <b>29–42%</b> in real binaries. The gap is wide, which is why one threshold works")],
+        ["Control characters", T("The same share, same ceiling"), "Prose has newlines and tabs and nothing else from that range"],
+    ], widths=["22%", "30%", "48%"])
+    body += callout("info", "Why it is first, and why it aborts the download",
+                    T("It is the cheapest check in the whole pipeline — a few hundred bytes compared against a table — and it is the only one that "
+                      "can refuse a document without decoding it. Aborting after [[sniff_kb]] also means an attacker cannot make the worker pull "
+                      "512 KB of rubbish before being told no. A document shorter than [[text_min_chars]] characters skips the ratio checks, "
+                      "because a share computed over a handful of bytes says nothing."))
+
+    body += "<h3>Then the content: one function, eight steps</h3>"
     body += f"""<p>One function does this work: {code('packages/core/src/guard.ts', '<code>inspectText</code>')}. It runs in the
 worker, inside <code>parseQuizInput</code> → <code>admitDocument</code>, before the first model call, and it returns three things:
 the <b>sanitized</b> text (what the model will see), a list of <b>findings</b>, and whether the document is <b>blocked</b>.</p>"""
@@ -261,6 +281,14 @@ does both: it refuses at <b>[[db_at]]</b> and gives the person refused a way thr
 objecting. For the rest a rule matches too, which is worth reading precisely: a rule <i>matching</i> is not a rule
 <i>blocking</i> — none of these six would be refused by the keyword rules alone, so the refusal is the classifier's in every
 case.</p>""")
+    body += callout("warn", "And what refusing actually buys: a fifth of the attacks",
+                    T("The number that keeps this honest. At [[db_at]] the classifier catches <b>[[db_caught]] of the "
+                      "[[db_injections]]</b> injections in the public benchmark — <b>[[db_recall]]</b>. Dropping the threshold to 0.5 would "
+                      "raise that to only [[db_recall_at_half]], because the scores are nearly binary: the model is either certain or "
+                      "indifferent. So the refusal is <b>not</b> the main defence against injection, and reading it as one would be a "
+                      "mistake. The keyword rules catch more on this same benchmark, and the output rails stop an attack that got through "
+                      "from reaching the quiz. Refusing at [[db_at]] is a brake for the case where the model is sure — bought at the price "
+                      "of [[db_n]] real READMEs, which is exactly why those [[db_n]] get a human to appeal to."))
     body += callout("info", "Why a number, and not a better model",
                     T("[[db_at]] is not where a measurement says the populations separate — the sweep above says they do not. It is "
                       "the point where the classifier's certainty is high enough that a human being asked to look is being asked "
@@ -582,6 +610,62 @@ reach a document the rules block — those never produce a reviewable refusal, s
                "What a refused user can do about it, who decides, and exactly which guards an approved document still runs under.")
 
 
+# ---------------------------------------------------------------------------- 6c. isolating the fetch
+
+
+def isolation():
+    body = T(f"""<p>Every layer above reads bytes that a stranger chose. Before any of them runs, the worker makes an HTTPS
+request to a URL the user typed — which is a server-side request forgery surface, and the one part of this pipeline where the
+question is not “did the guard catch it” but “what could it reach if something went wrong”. This section is a <b>proposal that
+has not been built</b>, written out so the decision is on the record either way. The long form is
+{code('docs/security/fetch-isolation.md')}.</p>""")
+
+    body += "<h3>What already stands in the way</h3>"
+    body += table(["Defence", "Where"], [
+        ["<code>https</code> only, no credentials in the URL, port 443 only", code('packages/llm/src/source.ts')],
+        ["Host allow-list: <code>github.com</code> and <code>raw.githubusercontent.com</code>, the Terraform default and not overridden", code('apps/worker/src/config.ts')],
+        ["The URL is validated as given, rewritten to the raw host, then validated again", "<code>fetchMarkdown</code>"],
+        ["DNS resolved first; refused if <b>any</b> address is private — loopback, RFC1918, CGNAT, multicast, IPv6 ULA and link-local, including <code>169.254.0.0/16</code> where the ECS credentials endpoint lives", "<code>isPrivateAddress</code>"],
+        ["Redirects followed by hand, at most 3, each hop re-validated against the allow-list", "<code>fetchMarkdown</code>"],
+        ["10 s timeout, size cap enforced while streaming, and the byte check above", "<code>readCapped</code>"],
+        ["The worker's task role reaches <b>two SQS queues and nothing else</b> — no S3, no Secrets Manager, no database credentials (the execution role injects those at task start)", "<code>terraform/ecs.tf</code>"],
+        ["Fargate gives the task no classic IMDS endpoint", "AWS"],
+    ], widths=["68%", "32%"])
+    body += T("""<p>So a successful SSRF today buys requests from a task whose credentials reach two queues. That is the
+baseline, and it is already narrow. <b>The gap it does not close is the topology</b>: the worker sits in the <code>app</code>
+subnet with a route to <code>data</code>, where the database is. The allow-list makes it hard to aim; what is reachable if
+somebody does aim is decided by the network, not by the rule.</p>""")
+
+    body += "<h3>The proposal: do the fetch outside the VPC</h3>"
+    body += T(f"""<p>A Lambda with <b>no VPC configuration</b>, invoked by the worker, returning
+<code>{{ text, sha256, bytes, contentType }}</code>. A function outside the VPC has no route into the private subnets: whatever
+it is tricked into requesting, there is no path to the database or to any internal endpoint. Its role is
+<code>logs:PutLogEvents</code> and nothing else, so stolen credentials write a log line.</p>
+<p>The worker keeps <b>everything else</b> — the byte check, the keyword rules, the language policy, the classifier, the output
+rails. The text that comes back is exactly as untrusted as before. A Lambda that returned “already validated” text would be a
+design error, and worth saying out loud because it is the obvious way to get this wrong.</p>""")
+    body += table(["For", "Against"], [
+        ["SSRF moves from <i>mitigated</i> to <i>contained</i>: no route to the database, no useful credentials. The containment is topological, not a rule somebody has to keep correct", "One more component: a function, a role, an invoke permission, a deployment path, a thing to keep in sync"],
+        ["Download traffic leaves the NAT Gateway, which is billed per GB and is a real line in this project's cost", "An invoke on every generation: tens of milliseconds, plus new failure modes (throttling, cold start)"],
+        ["Timeout and memory bound the download by construction, in a second place", "It hardens the risk that is <b>already the best covered</b> here, while the open ones are elsewhere"],
+        ["The fetch stops being the only code inside the VPC that talks to the public internet on user input", "Local development needs the direct path anyway, so two code paths exist and only one is exercised in CI"],
+    ], widths=["50%", "50%"])
+    body += callout("warn", "The recommendation is “not yet”, and the condition that changes it",
+                    T("Cost is not the argument — a few cents a month in invocations against roughly US$10 for the smallest always-on Fargate "
+                      "task. The argument is that it buys containment for the risk already best defended, at the price of a component. It becomes "
+                      "worth building the moment the allow-list stops being two GitHub hosts: the day a user may point at an arbitrary domain, "
+                      "the DNS and redirect checks carry the whole weight, and topology should carry it instead."))
+
+    body += "<h3>What was considered and not chosen</h3>"
+    body += table(["Alternative", "Why not"], [
+        ["Fetch in the <b>user's browser</b> and post the text", "Removes the server-side SSRF entirely — and the proof of origin with it. “This quiz came from that README” becomes a claim by the client, and an endpoint accepting 512 KB of arbitrary text is easier to abuse than one that requires publishing on GitHub first. The allow-list would also stop being ours: what can be fetched would be decided by each host's CORS policy"],
+        ["An <b>egress proxy</b> with a domain allow-list (Squid, AWS Network Firewall)", "Stronger than the Lambda, because it covers all outbound traffic rather than one fetch. Network Firewall costs more per month than this whole environment; a self-run proxy is another always-on component"],
+        ["<b>Pinning the resolved IP</b> for the connection", "Not rejected: it closes the theoretical DNS-rebinding window between the check and the request, and it is small and local. Worth doing on its own merits, independently of any of the above"],
+    ], widths=["26%", "74%"])
+    return sec("isolation", "Isolating the fetch: a proposal, not a decision", body,
+               "The one place the question is not “did the guard catch it” but “what could it reach” — what already stands in the way, what a Lambda outside the VPC would add, and why it has not been built.")
+
+
 # ---------------------------------------------------------------------------- 7. promptfoo
 
 
@@ -820,7 +904,7 @@ def gaps():
 
 
 def all_sections():
-    return [summary(), input_guard(), rules(), detector(), cost(), output(), walkthrough(), review(), promptfoo(), redteam(), nightly(), datasets(), prompts(), provenance(), gaps()]
+    return [summary(), input_guard(), rules(), detector(), cost(), output(), walkthrough(), review(), isolation(), promptfoo(), redteam(), nightly(), datasets(), prompts(), provenance(), gaps()]
 
 
 TITLE = "QuizForge: guardrails and promptfoo"

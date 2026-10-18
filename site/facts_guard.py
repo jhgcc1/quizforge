@@ -498,6 +498,8 @@ def blocked_readmes_table():
 
 
 def detector_block_facts():
+    sweep = {round(float(r["threshold"]), 2): r for r in BENCH["thresholdSweep"]["all"]}
+    at = sweep.get(round(BLOCK_AT, 2))
     flagged = PREP["wideBenign"]["flaggedAfter"]
     blocked = [x for x in flagged if x["after"] >= BLOCK_AT]
     docs = sum(v["documents"] for v in PREP["wideBenign"]["sets"].values())
@@ -507,6 +509,12 @@ def detector_block_facts():
         "db_clean": sum(1 for x in blocked if not x.get("rules")),
         "db_pct": f"{100 * len(blocked) / docs:.1f}%" if docs else "?",
         "db_flagged_not_blocked": len(flagged) - len(blocked),
+        # What refusing at this threshold actually buys, on the public benchmark: the honest counterweight to the
+        # six real READMEs it costs.
+        "db_recall": f"{at['recallPct']}%" if at else "?",
+        "db_caught": at["caught"] if at else "?",
+        "db_injections": at["injections"] if at else "?",
+        "db_recall_at_half": f"{sweep[0.5]['recallPct']}%" if 0.5 in sweep else "?",
     }
 
 

@@ -489,6 +489,42 @@ def guardrails():
     return sec("guardrails", "Guardrails in execution", body, "What runs on every request, what kind of check each step is (rule, ML model or LLM), what each layer covers, and where it is tested.")
 
 
+def fetch_isolation():
+    body = F.tok(f"""<p>The worker makes an HTTPS request to a URL the user typed. That is the one place in this system where
+the question is not “did the guard catch it” but “what could it reach if something went wrong”. Written out here as a
+<b>proposal that has not been built</b>, so the decision is on the record either way; the long form is
+<code>docs/security/fetch-isolation.md</code>.</p>
+<p><b>What already stands in the way:</b> https only and port 443, a host allow-list of two GitHub domains, the URL validated
+before and after being rewritten to the raw host, DNS resolved first and refused if any address is private (including
+<code>169.254.0.0/16</code>, where the ECS credentials endpoint lives), at most three redirects with every hop re-validated, a
+10 s timeout and a size cap enforced while streaming — and a task role that reaches two SQS queues and nothing else. A
+successful SSRF today buys requests from a task whose credentials reach two queues.</p>
+<p><b>The gap that leaves</b> is topological: the worker sits in the <code>app</code> subnet with a route to <code>data</code>,
+where the database is. The allow-list makes it hard to aim; the network decides what is reachable if somebody does.</p>""")
+    body += callout("info", "The proposal",
+                    "Do the fetch in a <b>Lambda outside the VPC</b>, invoked by the worker, returning the text and its hash. A function with no "
+                    "VPC configuration has no route into the private subnets, so containment comes from the topology rather than from a rule "
+                    "somebody has to keep correct; its role is <code>logs:PutLogEvents</code> and nothing else. The worker keeps every guard — the "
+                    "text that comes back is exactly as untrusted as before, and a Lambda that returned “already validated” text would be a design "
+                    "error.")
+    body += table(["For", "Against"], [
+        ["SSRF moves from mitigated to <b>contained</b>: no route to the database, no useful credentials", "One more component: a function, a role, an invoke permission, a deployment path"],
+        ["Download traffic leaves the NAT Gateway, billed per GB and a real line in this project's cost", "An invoke on every generation: tens of milliseconds, plus throttling and cold starts as new failure modes"],
+        ["Timeout and memory bound the download by construction, in a second place", "It hardens the risk already <b>best covered</b> here, while the open ones are elsewhere"],
+        ["The fetch stops being the only code in the VPC that talks to the internet on user input", "Local development needs the direct path anyway, so two paths exist and only one runs in CI"],
+    ], widths=["50%", "50%"])
+    body += F.tok("""<p><b>The recommendation is “not yet”.</b> Cost is not the argument: a few cents a month in invocations
+against roughly US$[[cost_running_day]] a day for the environment. The argument is that it buys containment for the
+best-defended risk at the price of a component. It becomes worth building the day the allow-list stops being two GitHub hosts
+— then the DNS and redirect checks carry the whole weight, and topology should carry it instead.</p>
+<p>Also considered: fetching <b>in the browser</b> (removes the server-side SSRF, and the proof of origin with it — the
+allow-list would become each host's CORS policy); an <b>egress proxy</b> (stronger, covers all outbound traffic, costs more per
+month than this environment); and <b>pinning the resolved IP</b>, which is small, local, closes the DNS-rebinding window and is
+worth doing on its own merits.</p>""")
+    return sec("isolation", "Isolating the document fetch (proposal)", body,
+               "The SSRF surface, what already narrows it, what a Lambda outside the VPC would add, and why it has not been built.")
+
+
 def review_flow():
     body = F.tok("""<p>The classifier refuses a document at <b>[[db_at]]</b> or above. That refusal lands on real people who did
 nothing wrong: of the [[dp_wide_docs]] real READMEs measured, <b>[[db_n]]</b> score that high with no attack in them. A dead end
@@ -1420,7 +1456,7 @@ def limits():
 
 
 def all_sections():
-    return [overview(), links(), architecture(), communication(), flows(), documents(), validation(), guardrails(), review_flow(), promptfoo(), nightly(), agent(), quality(), langfuse(), scoring_arch(), secrets(), data(), security(), identity(), resilience(), observability(), evaluation(), cicd(), state(),
+    return [overview(), links(), architecture(), communication(), flows(), documents(), validation(), guardrails(), review_flow(), fetch_isolation(), promptfoo(), nightly(), agent(), quality(), langfuse(), scoring_arch(), secrets(), data(), security(), identity(), resilience(), observability(), evaluation(), cicd(), state(),
             decisions(), bugs(), costs(), evidence(), runbook(), live_state(), limits(), improvements(), glossary(), presentation()]
 
 
