@@ -1,4 +1,4 @@
-"""Two parts of the guardrails section, shared by both reports: what "flag only" means for Prompt Guard 2, and the strict link mode of the
+"""Two parts of the guardrails section, shared by both reports: what Prompt Guard 2 does with a score, and the strict link mode of the
 output rail. Verified against apps/worker/src/processor.ts, packages/llm/src/detector.ts, packages/detector/src/index.ts,
 packages/llm/src/output-guard.ts and infra/terraform/observability.tf. Numbers come from facts.py."""
 import diagrams as d

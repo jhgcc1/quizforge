@@ -160,7 +160,7 @@ def prep_flow():
     b = ""
     RULE, ML, LLM = "data", "sec", "ai"
     row1 = [("1 · Download", "allow-list · public IP · 512 KB", RULE), ("2 · Normalize and clean", "decode hidden text · strip invisibles", RULE),
-            ("3 · Language", "en · pt · es only", RULE), ("4 · Classifier", "Prompt Guard 2 · flag only", ML)]
+            ("3 · Language", "en · pt · es only", RULE), ("4 · Classifier", "Prompt Guard 2 · flags, refuses at 0.9", ML)]
     row2 = [("5 · Store", "cleaned text, once per hash", RULE), ("6 · Route and cut", "short: whole · long: sections", RULE),
             ("7 · Build the prompt", "<document> tags · forged tags off", RULE), ("8 · Model-call guard", "strict schema · size caps · budget", RULE)]
     for r, row in enumerate([row1, row2]):
@@ -344,7 +344,7 @@ def guardrail_flow():
     RULE, ML, LLM = "data", "sec", "ai"
     b += group(10, 10, 410, 392, "INPUT · before the model call", "grp")
     inp = [("Edge and login", "WAF · JWT · CSRF · quotas · zod", RULE), ("Fetch the README", "host allow-list · public IPs only · 512 KB", RULE),
-           ("Document guard", "hidden or encoded text · rules (en, pt, es) · language", RULE), ("Classifier", "Llama Prompt Guard 2 (ONNX) · flag only", ML),
+           ("Document guard", "hidden or encoded text · rules (en, pt, es) · language", RULE), ("Classifier", "Llama Prompt Guard 2 (ONNX) · flags, refuses at 0.9", ML),
            ("Model-call guard", "document in <document> tags · budget 16 calls", RULE)]
     for i, (t, sub, k) in enumerate(inp):
         b += box(26, 44 + i * 70, 378, 56, t, sub, k, small=True)
@@ -949,7 +949,7 @@ def repo_structure():
         return out
 
     b += panel(10, 10, 300, 150, "apps/  (the 3 services)", "compute", [("web", "Next.js: UI + BFF (cookies, PKCE, validation)"), ("api", "Fastify REST: auth, quota, idempotency, queue"), ("worker", "one image, 3 roles: generate · score · sweeper")])
-    b += panel(10, 180, 300, 190, "packages/  (shared code)", "ai", [("core", f"schemas, guard, {F.RULES_TOTAL} rules, scoring (browser-safe)"), ("llm", "graph, prompts, guardLlm, output rails, quality"), ("db", "Drizzle schema, migrations, repositories"), ("detector", "Prompt Guard 2 (ONNX, en · pt · es), flag only")])
+    b += panel(10, 180, 300, 190, "packages/  (shared code)", "ai", [("core", f"schemas, guard, {F.RULES_TOTAL} rules, scoring (browser-safe)"), ("llm", "graph, prompts, guardLlm, output rails, quality"), ("db", "Drizzle schema, migrations, repositories"), ("detector", "Prompt Guard 2 (ONNX, en · pt · es), flags and refuses at 0.9")])
     b += panel(330, 10, 300, 150, "tests and quality gates", "ci", [("evals/", "golden set, comparison, reports, publish-prompts"), ("promptfoo/", f"{F.PF_OFFLINE} offline + {F.PF_LIVE} live tests, provider, assertions"), ("e2e/", "Playwright in real Chrome (4 local services)")])
     b += panel(330, 180, 300, 190, "data of the agent", "data", [("prompts/", "prompts.lock.json: hash of every prompt"), ("evals/fixtures/", "test READMEs (dropdown + golden set)"), ("evals/references/", "hand-written reference questions"), ("docker/ · docker-compose", "local Postgres + SQS emulator")])
     b += panel(650, 10, 300, 150, "quizforge-infra  (separate repository)", "sec", [("bootstrap/", "state bucket, ECR (4 repos), OIDC roles (by hand)"), ("terraform/", "the platform: VPC, ECS, RDS, SQS, edge, alarms"), ("github/", "ruleset, environments, variables (by hand)")])
@@ -974,7 +974,7 @@ def guardrail_zones():
     b += text(26, 470, "They prove the guardrails work. They do not run for a user.", "note")
     b += group(410, 10, 440, 470, "AT RUN · BEFORE the generation call", "grp")
     pre = [("1 · Edge, login, request, limits", "WAF · JWT · CSRF · zod · quota · rate limit", "edge"), ("2 · Fetch the document", "URL allow-list · public IPs only · 512 KB", "compute"),
-           ("3 · Input guard", f"hidden or encoded text · {F.RULES_TOTAL} rules · language en/pt/es", "ai"), ("4 · Classifier", "Prompt Guard 2 · en/pt/es · flag only", "ai"),
+           ("3 · Input guard", f"hidden or encoded text · {F.RULES_TOTAL} rules · language en/pt/es", "ai"), ("4 · Classifier", "Prompt Guard 2 · en/pt/es · refuses at 0.9", "ai"),
            ("5 · Model-call guard", "guardLlm · <document> tags · budget 16 calls", "ai")]
     for i, (t, sub, k) in enumerate(pre):
         b += box(426, 44 + i * 80, 408, 62, t, sub, k, small=True)
@@ -1018,7 +1018,7 @@ def guardrail_layers():
 
 
 def detector_flag():
-    """What 'flag only' means for Llama Prompt Guard 2: it marks the highest-scoring window, records it, and blocks nothing."""
+    """Llama Prompt Guard 2: it marks the highest-scoring window, records it, and refuses the document from 0.9 up."""
     b = ""
     b += box(10, 30, 210, 66, "Cleaned document", "text the worker stored", "data", small=True)
     b += box(260, 30, 330, 66, "Prompt Guard 2 scores every window", f"up to {F.DETECTOR_MAX_WINDOWS} windows · about {F.DETECTOR_WINDOW_CHARS:,} characters each · flag at {F.DETECTOR_THRESHOLD:g}+", "sec", small=True)
@@ -1041,7 +1041,7 @@ def detector_flag():
     b += text(1006, 188, "  alarm counts the rules metric instead", "note")
     b += text(1006, 206, "  (InjectionFlagged, 10+ in an hour)", "note")
     b += text(1006, 240, "· one window per document, not every window", "note")
-    return svg(1340, 300, b, "Prompt Guard 2 in flag mode: it marks one window, records it, and blocks nothing")
+    return svg(1340, 300, b, "Prompt Guard 2: it marks the highest-scoring window and records it — and from 0.9 up it refuses the document")
 
 
 def strict_link():
@@ -1111,7 +1111,7 @@ def guard_layers():
             b += arrow(x - 15, top + 50, x, top + 50)
     y = top + 140
     b += text(10, y, "Polite rules and the planted-words rail close polite requests that ask for a token. Not covered by design: a paraphrase that matches no rule, scores under the threshold and asks for no token is met only by layers 7, 9, 10 and the model resisting.", "note")
-    b += text(10, y + 20, "The classifier flags and never blocks (INJECTION_DETECTOR=block is not set). Images are not read. The agent has no tools: a hijack is only a bad quiz.", "note")
+    b += text(10, y + 20, "The classifier flags below 0.9 and refuses at or above it (INJECTION_DETECTOR=block in production), with a human review to appeal to. Images are not read. The agent has no tools: a hijack is only a bad quiz.", "note")
     b += text(10, y + 40, "Each layer is tested by code: unit tests, the promptfoo attack corpus (one file for vitest and promptfoo) and the red team (next section).", "note")
     return svg(1100, y + 56, b, "LLM guard in layers: from the edge to the model call and back out, with what each layer does when it triggers")
 
