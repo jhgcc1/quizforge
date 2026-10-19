@@ -7,9 +7,19 @@
  * when the quiz failed for another reason. One place decides what "refused by the classifier" means — the flag on the quiz
  * and the review request both ask this, and a client should never have to match on the wording of a message.
  */
+/**
+ * The score and, when the worker could supply it, the piece of the DOCUMENT the classifier reacted to.
+ *
+ * A reviewer is being asked to judge a document, so the evidence is what the classifier read — not the sentence
+ * saying it scored 1.00, which is a verdict and tells nobody anything. The worker appends it after "excerpt:"; older
+ * rows have no excerpt and fall back to the message, which is still better than nothing.
+ */
 export function classifierFinding(raw: string | null): { score: number; excerpt: string } | undefined {
-  const m = /the classifier scored ([0-9.]+)/.exec(raw ?? "");
-  return m ? { score: Number(m[1]), excerpt: (raw ?? "").slice(0, 500) } : undefined;
+  const text = raw ?? "";
+  const m = /the classifier scored ([0-9.]+)/.exec(text);
+  if (!m) return undefined;
+  const found = /— excerpt: ([\s\S]+)$/.exec(text);
+  return { score: Number(m[1]), excerpt: (found?.[1] ?? text).trim().slice(0, 500) };
 }
 
 export function userFacingError(raw: string | null): string | null {
