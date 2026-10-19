@@ -24,6 +24,7 @@ import {
   saveAnswer,
   submitAttempt,
   upsertSource,
+  sql,
 } from "./index.js";
 
 const ADMIN_URL = process.env.TEST_ADMIN_DATABASE_URL ?? "postgres://quizforge:quizforge@localhost:5433/postgres";
@@ -307,5 +308,29 @@ describe("approval lookups with nothing to look up", () => {
     const entry = (await approvedCatalogEntries(ctx.db)).find((e) => e.url === url)!;
     expect(entry.kind).toBe("approved");
     expect(entry.tests).toMatch(/Let in by review on \d{4}-\d{2}-\d{2}$/); // no score clause when there is no score
+  });
+});
+
+// pg emits `error` on a client that dies while IDLE in the pool — an RDS failover, a maintenance window, an
+// administrator terminating the backend. With no listener that is an uncaught exception and the process goes down,
+// which is exactly how this was found: a test teardown dropped its database with (force) and reddened main.
+describe("a database connection that dies while idle", () => {
+  it("is reported and does not take the process down, and the pool keeps working", async () => {
+    const seen: Error[] = [];
+    const victim = createDb(url.toString(), { max: 2, onPoolError: (err) => seen.push(err) });
+    await victim.db.execute(sql`select 1`); // open a connection, then let it go idle in the pool
+
+    const admin = new pg.Client({ connectionString: url.toString() });
+    await admin.connect();
+    await admin.query(`select pg_terminate_backend(pid) from pg_stat_activity where datname = $1 and pid <> pg_backend_pid() and state = 'idle'`, [dbName]);
+    await admin.end();
+
+    await new Promise((r) => setTimeout(r, 300));
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen[0]!.message).toMatch(/terminat/i);
+
+    const res = await victim.db.execute(sql`select 2 as n`); // the pool opens a fresh connection
+    expect(Number((res.rows[0] as { n: number }).n)).toBe(2);
+    await victim.pool.end();
   });
 });

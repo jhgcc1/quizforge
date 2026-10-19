@@ -81,7 +81,7 @@ export async function main(): Promise<void> {
   const log = createLogger((process.env.LOG_LEVEL as "info") ?? "info");
   const queueUrl = process.env.SQS_QUEUE_URL;
   if (!queueUrl) throw new Error("SQS_QUEUE_URL is required");
-  const { db, pool } = createDb(resolveDatabaseUrl(), { max: 2 });
+  const { db, pool } = createDb(resolveDatabaseUrl(), { max: 2, onPoolError: (err) => log.error({ err }, "idle database client failed; the pool will open a new one") });
   const sqs = new SQSClient({});
   try {
     const scoringUrl = process.env.SCORING_QUEUE_URL;
