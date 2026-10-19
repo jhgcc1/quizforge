@@ -540,6 +540,8 @@ classifier fires on style, and style does.</p>""")
         ["The queue", "admin", "A screen gated on the Cognito group <code>admin</code>, checked again in the API route. It shows the score and the excerpt next to the link", "—"],
         ["The decision", "admin", "Approve or reject, only while pending. One open request per URL, enforced by a partial unique index rather than by application logic", "<code>status</code>, <code>reviewed_by</code>, <code>reviewed_at</code>"],
         ["After approval", "everyone", "The document joins the catalogue as <code>approved</code> and generates from then on", "—"],
+        ["Taking it back", "admin", "Decided requests stay in the queue, because an approval holds until somebody reverses it. <code>revoke</code> returns the document to the classifier for everyone; <code>revoked</code> is its own status, so a reversed decision is distinguishable from one never made", "<code>status</code>"],
+        ["Taking it back", "admin", "Decided requests stay in the queue, because an approval holds until somebody reverses it. <code>revoke</code> returns the document to the classifier for everyone; <code>revoked</code> is its own status, so a reversed decision is distinguishable from one never made", "<code>status</code>"],
     ], widths=["14%", "10%", "54%", "22%"])
     body += "<h3>What approval changes, and what it does not</h3>"
     body += F.tok("""<p>“Approved” sounds like “trusted”, and it is not. Approval answers one question — <i>is this an attack?</i> —
