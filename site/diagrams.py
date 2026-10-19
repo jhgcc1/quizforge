@@ -160,7 +160,7 @@ def prep_flow():
     b = ""
     RULE, ML, LLM = "data", "sec", "ai"
     row1 = [("1 · Download", "allow-list · public IP · 512 KB", RULE), ("2 · Normalize and clean", "decode hidden text · strip invisibles", RULE),
-            ("3 · Language", "en · pt · es only", RULE), ("4 · Classifier", "Prompt Guard 2 · flag only", ML)]
+            ("3 · Language", "en · pt · es only", RULE), ("4 · Classifier", "Prompt Guard 2 · flags, refuses at 0.9", ML)]
     row2 = [("5 · Store", "cleaned text, once per hash", RULE), ("6 · Route and cut", "short: whole · long: sections", RULE),
             ("7 · Build the prompt", "<document> tags · forged tags off", RULE), ("8 · Model-call guard", "strict schema · size caps · budget", RULE)]
     for r, row in enumerate([row1, row2]):
@@ -177,40 +177,65 @@ def prep_flow():
 
 
 def repos():
-    """The three repositories: two publish images, the infrastructure repository deploys them (scope all, api or web)."""
+    """The three repositories, side by side: two publish images, the third owns Terraform and does the deploying."""
     b = ""
-    b += group(10, 10, 400, 250, "github.com/jhgcc1/quizforge-web (public)", "grp")
-    b += box(26, 50, 368, 56, "Next.js front end + BFF", "login with Cognito · error boundary · POST /bff/client-log", "compute", small=True)
-    b += box(26, 120, 368, 56, "Own CI: no AWS role, no Terraform", f"quality ({F.WEB_TESTS} tests) · build · docker-build + Trivy · secrets-scan", "ci", small=True)
-    b += box(26, 190, 368, 56, "Dockerfile", "builds the web image from this repository alone", "mgd", small=True)
-    b += group(540, 10, 640, 250, "github.com/jhgcc1/quizforge (back end)", "grp")
-    b += box(556, 50, 200, 56, "api · worker · scorer", "Fastify · LangGraph · judge", "compute", small=True)
-    b += box(772, 50, 190, 56, "packages", "contract · core · db · llm · detector", "data", small=True)
-    b += box(978, 50, 186, 56, "tests", "unit · integration · e2e · promptfoo", "ci", small=True)
-    b += box(556, 120, 200, 56, "images to ECR", "publish job · push-only role", "sec", small=True)
-    b += box(772, 120, 392, 56, "CI/CD", f"{len(F.CI_PR_JOBS)} jobs on a PR ({len(F.CI_REQUIRED)} required) · publishes images · deploys nothing", "ci", small=True)
-    b += box(556, 190, 608, 56, "each side tests the main of the other", "the e2e here builds the front end's main; its CI runs this suite against this main", "edge", small=True)
-    b += arrow(540, 80, 394, 80, "", dash=True)
-    b += text(404, 40, "API contract", "note", "middle")
-    b += text(404, 56, "(tarball of a", "note", "middle")
-    b += text(404, 70, "GitHub Release)", "note", "middle")
-    b += arrow(410, 218, 540, 218)
-    b += text(475, 208, "pinned", "note", "middle")
-    b += group(10, 290, 575, 230, "A · Publish: push to main (ci.yml, job publish)", "grp")
-    for i, s in enumerate(["1 · every gate is green on the commit (main only)", "2 · build ARM64 images: api, worker, redteam", "3 · push to ECR, tag = commit sha (immutable)",
-                           "4 · OIDC role: ECR push only, nothing else", "5 · nothing is deployed from this repository", "The front end does the same: tag web-<12 chars of its commit>", "Then: Deploy, in quizforge-infra"]):
-        b += text(28, 326 + i * 26, s, "note")
-    b += group(605, 290, 575, 230, "B · Deploy: quizforge-infra, manual (deploy.yml)", "grp")
-    for i, s in enumerate(["One approval: environment production (OIDC role)", "Refused while paused; images verified in ECR first",
-                           "scope all: newest green commit, or the tags you give", "Drift check, migration BEFORE the new code, one apply",
-                           "scope web: targeted apply of the web service only", "scope web refuses a plan that deletes anything but a revision", f"Smoke test ({F.SMOKE_FULL} checks, {F.SMOKE_WEB} for web only)"]):
-        b += text(623, 326 + i * 26, s, "note")
-    b += arrow(700, 246, 400, 290)
-    b += arrow(1000, 246, 880, 290)
-    b += text(20, 548, "Terraform lives only in the infrastructure repository (quizforge-infra): the back end and front end repositories hold only an ECR-push role.", "note")
-    b += text(20, 568, "Google and Facebook login credentials are read from AWS Secrets Manager (quizforge/prod/google-login, facebook-login) by the deploy workflow, masked; none is a GitHub secret.", "note")
-    b += text(20, 588, "The front end and the back end share only the API contract. Each service keeps its own image and its own ECS service.", "note")
-    return svg(1190, 604, b, "Three repositories: the code and the front end publish images, the infrastructure repository deploys them (everything, or the web service alone)")
+    # ---- the three, as equals
+    b += group(10, 10, 384, 236, "github.com/jhgcc1/quizforge-web", "grp")
+    b += box(24, 48, 356, 54, "Next.js front end + BFF", "login with Cognito · error boundary · client-log", "compute", small=True)
+    b += box(24, 112, 356, 54, "Its own CI", f"quality ({F.WEB_TESTS} tests) · build · Trivy · secrets-scan · browser test", "ci", small=True)
+    b += box(24, 176, 356, 54, "Dockerfile → web image", "built from this repository alone", "mgd", small=True)
+
+    b += group(408, 10, 384, 236, "github.com/jhgcc1/quizforge", "grp")
+    b += box(422, 48, 172, 54, "api · worker · scorer", "Fastify · LangGraph · judge", "compute", small=True)
+    b += box(606, 48, 172, 54, "packages", "contract · core · db · llm · detector", "data", small=True)
+    b += box(422, 112, 356, 54, "CI/CD", f"{len(F.CI_PR_JOBS)} jobs on a pull request ({len(F.CI_REQUIRED)} required)", "ci", small=True)
+    b += box(422, 176, 356, 54, "Dockerfile → api · worker · redteam", "deploys nothing itself", "mgd", small=True)
+
+    b += group(806, 10, 384, 236, "github.com/jhgcc1/quizforge-infra", "grp")
+    b += box(820, 48, 356, 54, "Terraform", "the ONLY place it lives: VPC · ECS · RDS · WAF · alarms", "edge", small=True)
+    b += box(820, 112, 356, 54, "Deploy · Rollback", "manual, one human approval, OIDC role", "sec", small=True)
+    b += box(820, 176, 356, 54, "Operations scripts", "pause · resume · migrations · secrets · audit", "mgd", small=True)
+
+    # ---- what flows between them
+    b += arrow(408, 75, 394, 75, "", dash=True)
+    b += text(401, 266, "", "note", "middle")
+    b += box(300, 286, 240, 56, "API contract", "a tarball on a GitHub Release, pinned by version", "data", small=True)
+    b += arrow(540, 300, 600, 300, "", dash=True)
+    b += arrow(300, 314, 240, 314, "", dash=True)
+    b += text(420, 362, "the back end releases it, the front end pins it: the only code the two share", "note", "middle")
+
+    b += box(660, 286, 230, 56, "ECR", "one image per commit, immutable", "mgd", small=True)
+    b += arrow(200, 236, 660, 300, "", dash=False)
+    b += arrow(600, 236, 700, 286)
+    b += arrow(890, 310, 980, 290, "", dash=True)
+    b += text(960, 330, "the deploy reads it", "note", "middle")
+
+    b += box(950, 286, 230, 56, "AWS (us-east-2)", "the only thing that changes production", "sec", small=True)
+    b += arrow(1065, 246, 1065, 286)
+
+    # ---- the two sequences
+    b += group(10, 384, 575, 212, "A · Publish (each code repository, on push to main)", "grp")
+    for i, s_ in enumerate(["1 · every required gate is green on the commit",
+                            "2 · build the ARM64 images",
+                            "3 · push to ECR, tag = the commit sha (immutable)",
+                            "4 · the role can push to ECR and do nothing else",
+                            "5 · nothing is deployed from here",
+                            "The front end does the same, tagged web-<12 chars>"]):
+        b += text(28, 418 + i * 26, s_, "note")
+
+    b += group(605, 384, 575, 212, "B · Deploy (quizforge-infra, manual)", "grp")
+    for i, s_ in enumerate(["One approval: the production environment",
+                            "Refused while paused; the images are verified in ECR first",
+                            "scope all: the newest green commit of BOTH mains",
+                            "Drift check, then the migration BEFORE the new code",
+                            "scope web: a targeted apply, refusing any plan that deletes",
+                            f"Smoke test in a real browser ({F.SMOKE_FULL} checks, {F.SMOKE_WEB} for web)"]):
+        b += text(623, 418 + i * 26, s_, "note")
+
+    b += text(20, 624, "The browser test lives in the back end repository (its harness runs the real migrations) but RUNS in the front end's CI, against the back end's main.", "note")
+    b += text(20, 644, "Google and Facebook login credentials are read from AWS Secrets Manager by the deploy workflow, masked; none of them is a GitHub secret.", "note")
+    b += text(20, 664, "Neither code repository can reach AWS beyond pushing an image. Terraform, the state and the deploy role exist only in the infrastructure repository.", "note")
+    return svg(1200, 680, b, "Three repositories: two publish images to ECR, the third owns Terraform and is the only one that changes production")
 
 
 def redteam_nightly():
@@ -319,7 +344,7 @@ def guardrail_flow():
     RULE, ML, LLM = "data", "sec", "ai"
     b += group(10, 10, 410, 392, "INPUT · before the model call", "grp")
     inp = [("Edge and login", "WAF · JWT · CSRF · quotas · zod", RULE), ("Fetch the README", "host allow-list · public IPs only · 512 KB", RULE),
-           ("Document guard", "hidden or encoded text · rules (en, pt, es) · language", RULE), ("Classifier", "Llama Prompt Guard 2 (ONNX) · flag only", ML),
+           ("Document guard", "hidden or encoded text · rules (en, pt, es) · language", RULE), ("Classifier", "Llama Prompt Guard 2 (ONNX) · flags, refuses at 0.9", ML),
            ("Model-call guard", "document in <document> tags · budget 16 calls", RULE)]
     for i, (t, sub, k) in enumerate(inp):
         b += box(26, 44 + i * 70, 378, 56, t, sub, k, small=True)
@@ -924,7 +949,7 @@ def repo_structure():
         return out
 
     b += panel(10, 10, 300, 150, "apps/  (the 3 services)", "compute", [("web", "Next.js: UI + BFF (cookies, PKCE, validation)"), ("api", "Fastify REST: auth, quota, idempotency, queue"), ("worker", "one image, 3 roles: generate · score · sweeper")])
-    b += panel(10, 180, 300, 190, "packages/  (shared code)", "ai", [("core", f"schemas, guard, {F.RULES_TOTAL} rules, scoring (browser-safe)"), ("llm", "graph, prompts, guardLlm, output rails, quality"), ("db", "Drizzle schema, migrations, repositories"), ("detector", "Prompt Guard 2 (ONNX, en · pt · es), flag only")])
+    b += panel(10, 180, 300, 190, "packages/  (shared code)", "ai", [("core", f"schemas, guard, {F.RULES_TOTAL} rules, scoring (browser-safe)"), ("llm", "graph, prompts, guardLlm, output rails, quality"), ("db", "Drizzle schema, migrations, repositories"), ("detector", "Prompt Guard 2 (ONNX, en · pt · es), flags and refuses at 0.9")])
     b += panel(330, 10, 300, 150, "tests and quality gates", "ci", [("evals/", "golden set, comparison, reports, publish-prompts"), ("promptfoo/", f"{F.PF_OFFLINE} offline + {F.PF_LIVE} live tests, provider, assertions"), ("e2e/", "Playwright in real Chrome (4 local services)")])
     b += panel(330, 180, 300, 190, "data of the agent", "data", [("prompts/", "prompts.lock.json: hash of every prompt"), ("evals/fixtures/", "test READMEs (dropdown + golden set)"), ("evals/references/", "hand-written reference questions"), ("docker/ · docker-compose", "local Postgres + SQS emulator")])
     b += panel(650, 10, 300, 150, "quizforge-infra  (separate repository)", "sec", [("bootstrap/", "state bucket, ECR (4 repos), OIDC roles (by hand)"), ("terraform/", "the platform: VPC, ECS, RDS, SQS, edge, alarms"), ("github/", "ruleset, environments, variables (by hand)")])
@@ -949,7 +974,7 @@ def guardrail_zones():
     b += text(26, 470, "They prove the guardrails work. They do not run for a user.", "note")
     b += group(410, 10, 440, 470, "AT RUN · BEFORE the generation call", "grp")
     pre = [("1 · Edge, login, request, limits", "WAF · JWT · CSRF · zod · quota · rate limit", "edge"), ("2 · Fetch the document", "URL allow-list · public IPs only · 512 KB", "compute"),
-           ("3 · Input guard", f"hidden or encoded text · {F.RULES_TOTAL} rules · language en/pt/es", "ai"), ("4 · Classifier", "Prompt Guard 2 · en/pt/es · flag only", "ai"),
+           ("3 · Input guard", f"hidden or encoded text · {F.RULES_TOTAL} rules · language en/pt/es", "ai"), ("4 · Classifier", "Prompt Guard 2 · en/pt/es · refuses at 0.9", "ai"),
            ("5 · Model-call guard", "guardLlm · <document> tags · budget 16 calls", "ai")]
     for i, (t, sub, k) in enumerate(pre):
         b += box(426, 44 + i * 80, 408, 62, t, sub, k, small=True)
@@ -993,7 +1018,7 @@ def guardrail_layers():
 
 
 def detector_flag():
-    """What 'flag only' means for Llama Prompt Guard 2: it marks the highest-scoring window, records it, and blocks nothing."""
+    """Llama Prompt Guard 2: it marks the highest-scoring window, records it, and refuses the document from 0.9 up."""
     b = ""
     b += box(10, 30, 210, 66, "Cleaned document", "text the worker stored", "data", small=True)
     b += box(260, 30, 330, 66, "Prompt Guard 2 scores every window", f"up to {F.DETECTOR_MAX_WINDOWS} windows · about {F.DETECTOR_WINDOW_CHARS:,} characters each · flag at {F.DETECTOR_THRESHOLD:g}+", "sec", small=True)
@@ -1016,7 +1041,7 @@ def detector_flag():
     b += text(1006, 188, "  alarm counts the rules metric instead", "note")
     b += text(1006, 206, "  (InjectionFlagged, 10+ in an hour)", "note")
     b += text(1006, 240, "· one window per document, not every window", "note")
-    return svg(1340, 300, b, "Prompt Guard 2 in flag mode: it marks one window, records it, and blocks nothing")
+    return svg(1340, 300, b, "Prompt Guard 2: it marks the highest-scoring window and records it — and from 0.9 up it refuses the document")
 
 
 def strict_link():
@@ -1086,7 +1111,7 @@ def guard_layers():
             b += arrow(x - 15, top + 50, x, top + 50)
     y = top + 140
     b += text(10, y, "Polite rules and the planted-words rail close polite requests that ask for a token. Not covered by design: a paraphrase that matches no rule, scores under the threshold and asks for no token is met only by layers 7, 9, 10 and the model resisting.", "note")
-    b += text(10, y + 20, "The classifier flags and never blocks (INJECTION_DETECTOR=block is not set). Images are not read. The agent has no tools: a hijack is only a bad quiz.", "note")
+    b += text(10, y + 20, "The classifier flags below 0.9 and refuses at or above it (INJECTION_DETECTOR=block in production), with a human review to appeal to. Images are not read. The agent has no tools: a hijack is only a bad quiz.", "note")
     b += text(10, y + 40, "Each layer is tested by code: unit tests, the promptfoo attack corpus (one file for vitest and promptfoo) and the red team (next section).", "note")
     return svg(1100, y + 56, b, "LLM guard in layers: from the edge to the model call and back out, with what each layer does when it triggers")
 

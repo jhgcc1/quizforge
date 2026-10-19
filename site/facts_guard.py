@@ -114,6 +114,57 @@ def prep_recall_table():
     return table(["Attack set", "Documents", "Caught", "Recall"], rows, widths=["46%", "18%", "18%", "18%"])
 
 
+def endtoend_table():
+    """What reaches a quiz, not what one layer notices: attacks replayed through the whole pipeline, real model."""
+    dsr = _json("replay-deepset.json")
+    pte = _json("replay-ptes.json")
+    nig = _json("public-datasets-nightly.json")["stageB"]
+
+    runs = dsr["runs"]
+    ds_bad = [r for r in runs if (r.get("verdict") or {}).get("contaminated")]
+    pt = {k: sum(g.get(k, 0) for g in pte["replay"]) for k in ("runs", "rejectedBeforeModel", "rejectedByRails", "quizzes", "contaminated")}
+
+    rows = [
+        ["<b>deepset</b> (en), the attacks the keyword rules did <i>not</i> catch", str(len(runs)),
+         str(sum(1 for r in runs if r.get("status") == "no_quiz")), str(sum(1 for r in runs if r.get("outcome") == "quiz")), f"<b>{len(ds_bad)}</b>"],
+        ["<b>yanismiraoui, prevenia, zn</b> (pt and es), sampled per group", str(pt["runs"]),
+         str(pt["rejectedBeforeModel"] + pt["rejectedByRails"]), str(pt["quizzes"]), f"<b>{pt['contaminated']}</b>"],
+        ["<b>Nightly public datasets</b>, the cases that passed both input layers", str(nig["cases"]),
+         str(nig["rejectedBeforeModel"] + nig["rejectedByRails"]), str(nig["quizzes"]), f"<b>{nig['contaminated']}</b>"],
+    ]
+    total = len(runs) + pt["runs"] + nig["cases"]
+    bad = len(ds_bad) + pt["contaminated"] + nig["contaminated"]
+    rows.append([f"<b>All of them</b>", f"<b>{total}</b>", "", "", f"<b>{bad}</b>"])
+    return table(["Attacks replayed through the whole product, with the real model", "Replayed", "Refused (guard or rails)", "Became a quiz", "Reached the quiz"], rows,
+                 widths=["40%", "13%", "19%", "14%", "14%"])
+
+
+def endtoend_facts():
+    dsr = _json("replay-deepset.json")
+    pte = _json("replay-ptes.json")
+    nig = _json("public-datasets-nightly.json")["stageB"]
+    ds_bad = [r for r in dsr["runs"] if (r.get("verdict") or {}).get("contaminated")]
+    pt_runs = sum(g.get("runs", 0) for g in pte["replay"])
+    return {
+        "e2e_total": len(dsr["runs"]) + pt_runs + nig["cases"],
+        "e2e_bad": len(ds_bad) + sum(g.get("contaminated", 0) for g in pte["replay"]) + nig["contaminated"],
+        "e2e_lang_only": len(ds_bad),
+        "e2e_rails": sum(1 for r in dsr["runs"] if r.get("outcome") == "rejected_by_rails") + sum(g.get("rejectedByRails", 0) for g in pte["replay"]) + nig["rejectedByRails"],
+    }
+
+
+def layer_recall_facts():
+    """What each layer catches on the same 640 attacks, so the detector's own recall is read next to the others."""
+    n = PREP["twoSignals"]["nightly640"]
+    return {
+        "lr_docs": n["documents"],
+        "lr_rules": f"{n['rulesAlone']}%",
+        "lr_det": f"{n['detector>=0.5']}%",
+        "lr_either": f"{n['either(detector>=0.5 OR rules)']}%",
+        "lr_both": f"{n['both(detector>=0.5 AND rules)']}%",
+    }
+
+
 def prep_wide_table():
     """The wide benign measurement: real READMEs in three languages, detector and rules side by side."""
     rows = []
@@ -386,6 +437,9 @@ def all_facts():
     out["log_days"] = LOG_RETENTION_DAYS
     out.update(link_facts())
     out.update(detector_why_facts())
+    out.update(detector_block_facts())
+    out.update(layer_recall_facts())
+    out.update(endtoend_facts())
     return out
 
 
@@ -477,6 +531,44 @@ def flagged_readmes_table():
         rows.append([f"<code>{x['doc']}</code>", f"{x['after']:.3f}", below(x["after"]), "yes" if x.get("rules") else "no"])
     return table(["Real README, flagged with no attack in it", "Score", "Attacks of the benchmark scoring lower", "A keyword rule also matched"], rows,
                  widths=["42%", "12%", "26%", "20%"])
+
+
+# The score from which a document is refused, read from the code so this page cannot drift from production.
+BLOCK_AT = float(
+    _re.search(r"export const DEFAULT_BLOCK_THRESHOLD = ([\d.]+)", (ROOT / "packages" / "llm" / "src" / "detector.ts").read_text(encoding="utf8")).group(1)
+)
+
+
+def blocked_readmes_table():
+    """The real READMEs that the block threshold refuses: the whole case for the review flow, by name."""
+    rows = [
+        [f"<code>{x['doc']}</code>", f"{x['after']:.3f}", "yes" if x.get("rules") else "no"]
+        for x in sorted(PREP["wideBenign"]["flaggedAfter"], key=lambda x: -x["after"])
+        if x["after"] >= BLOCK_AT
+    ]
+    return table(["Real README refused by the classifier, with no attack in it", "Score", "A keyword rule also matched"], rows,
+                 widths=["58%", "18%", "24%"])
+
+
+def detector_block_facts():
+    sweep = {round(float(r["threshold"]), 2): r for r in BENCH["thresholdSweep"]["all"]}
+    at = sweep.get(round(BLOCK_AT, 2))
+    flagged = PREP["wideBenign"]["flaggedAfter"]
+    blocked = [x for x in flagged if x["after"] >= BLOCK_AT]
+    docs = sum(v["documents"] for v in PREP["wideBenign"]["sets"].values())
+    return {
+        "db_at": f"{BLOCK_AT:g}",
+        "db_n": len(blocked),
+        "db_clean": sum(1 for x in blocked if not x.get("rules")),
+        "db_pct": f"{100 * len(blocked) / docs:.1f}%" if docs else "?",
+        "db_flagged_not_blocked": len(flagged) - len(blocked),
+        # What refusing at this threshold actually buys, on the public benchmark: the honest counterweight to the
+        # six real READMEs it costs.
+        "db_recall": f"{at['recallPct']}%" if at else "?",
+        "db_caught": at["caught"] if at else "?",
+        "db_injections": at["injections"] if at else "?",
+        "db_recall_at_half": f"{sweep[0.5]['recallPct']}%" if 0.5 in sweep else "?",
+    }
 
 
 def detector_why_facts():

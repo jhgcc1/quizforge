@@ -45,7 +45,7 @@ def suites_diagram():
     b = ""
     lanes = [
         (14, "Every pull request", "promptfoo OFFLINE · [[pf_offline]] tests", "fake model, no secrets, ~1 minute", "ci", "required to merge"),
-        (110, "Every pull request", "redteam-sample · [[pf_sample]] attacks", "fake, then the real model", "ai", "not required: the maintainer decides"),
+        (110, "Every pull request (not a fork)", "redteam-sample · [[pf_sample]] attacks", "fake, then the real model", "ai", "not required: the maintainer decides"),
         (206, "Merge to main", "promptfoo LIVE · [[pf_live]] tests", "real model, inside llm-eval", "ai", "blocks the deploy"),
         (302, "Every night [[redteam_time]] (Fargate)", "redteam-nightly · ≈[[pf_nightly]] + ≈[[pub_cases]] cases", "fresh attacks, encodings, public datasets", "compute", "reports; a leak raises an alarm"),
     ]
@@ -65,6 +65,10 @@ def suites_diagram():
     b += text(850, 166, "· the frozen sample is the same 50 attacks", "note")
     b += text(850, 184, "  every time, so a regression is visible", "note")
     b += text(850, 202, "· the night can afford a fresh, large set", "note")
+    b += text(850, 230, "A fork gets no model key, so the lanes that call", "note")
+    b += text(850, 248, "the real model do not run there at all: absent,", "note")
+    b += text(850, 266, "not green. Neither is required to merge, so a", "note")
+    b += text(850, 284, "maintainer reads them before pressing it.", "note")
     b += text(10, 399, "The attack corpus is ONE file (packages/core/src/attacks.ts): vitest and promptfoo test the same attacks.", "note")
     return svg(1160, 419, b, "The four promptfoo suites: when each one runs, how big it is, and what it blocks")
 
@@ -72,7 +76,7 @@ def suites_diagram():
 def summary():
     cards = [
         ("[[rules_total]]", "keyword rules: [[rules_per_lang]] in each of English, Portuguese and Spanish, [[rules_free]] language-free"),
-        ("1", "ML classifier, [[dp_model]], which only <b>flags</b> — it never blocks"),
+        ("1", "ML classifier, [[dp_model]]: it <b>flags</b> below [[db_at]] and <b>refuses</b> at or above, with a human review to appeal to"),
         ("[[pf_offline]] + [[pf_live]] + [[pf_sample]]", "promptfoo tests on a pull request: offline, live on the real model, frozen red team"),
         ("[[pf_nightly]]", "fresh canary attacks every night, plus about [[pub_cases]] cases from [[pub_sources]] public datasets"),
         ("[[gc_half_prose]]", "CPU the guard spends on a [[gc_max_kb]] README, on the 0.5 vCPU of a production task"),
@@ -105,6 +109,26 @@ in layers, and each layer is measured separately, because a layer that is only b
 
 def input_guard():
     body = d.guardrail_flow()
+
+    body += "<h3>Step zero: is this a text document at all?</h3>"
+    body += T(f"""<p>Everything below reads a document. The first question is whether what arrived <i>is</i> one, and the
+answer cannot come from the <code>Content-Type</code>: <code>raw.githubusercontent.com</code> sets it from the file
+<b>name</b>, so an ELF binary committed as <code>README.md</code> is served as <code>text/plain</code>. It was tried —
+<code>/usr/bin/ssh</code> went through the whole pipeline and was classified as Spanish.</p>
+<p>So the bytes decide ({code('packages/core/src/text.ts', '<code>binaryLike</code>')}), on the first <b>[[sniff_kb]]</b>, and
+the download is aborted rather than pulling the full 512 KB:</p>""")
+    body += table(["Signal", "What it is", "Why it separates"], [
+        ["File signatures", T("<b>[[text_magic]]</b> of them — ELF, MZ, PDF, ZIP, gzip, PNG, SQLite…"), "A text document never starts with one. Checked on the raw bytes, not the decoded string: a PNG signature disappears once the bytes above 0x7F become U+FFFD"],
+        ["Invalid UTF-8", T("The share of U+FFFD, refused above <b>[[text_share]]</b>"), T("Measured: 0% in real documents, 0.6–3.4% in a README mis-saved as latin-1, <b>29–42%</b> in real binaries. The gap is wide, which is why one threshold works")],
+        ["Control characters", T("The same share, same ceiling"), "Prose has newlines and tabs and nothing else from that range"],
+    ], widths=["22%", "30%", "48%"])
+    body += callout("info", "Why it is first, and why it aborts the download",
+                    T("It is the cheapest check in the whole pipeline — a few hundred bytes compared against a table — and it is the only one that "
+                      "can refuse a document without decoding it. Aborting after [[sniff_kb]] also means an attacker cannot make the worker pull "
+                      "512 KB of rubbish before being told no. A document shorter than [[text_min_chars]] characters skips the ratio checks, "
+                      "because a share computed over a handful of bytes says nothing."))
+
+    body += "<h3>Then the content: one function, eight steps</h3>"
     body += f"""<p>One function does this work: {code('packages/core/src/guard.ts', '<code>inspectText</code>')}. It runs in the
 worker, inside <code>parseQuizInput</code> → <code>admitDocument</code>, before the first model call, and it returns three things:
 the <b>sanitized</b> text (what the model will see), a list of <b>findings</b>, and whether the document is <b>blocked</b>.</p>"""
@@ -127,7 +151,7 @@ the <b>sanitized</b> text (what the model will see), a list of <b>findings</b>, 
                     characters are link URLs</b> ([[ls_urls]] of them, up to [[ls_max]] of a single README), so the model also gets about
                     [[ls_tokens]] fewer tokens of noise per evaluation round and the guard scans a quarter fewer bytes."""))
     body += G.link_share_table()
-    body += callout("", "Why step 8 only flags, when the seven before it block",
+    body += callout("", "Why step 8 does not refuse on its own, when the seven before it do",
                     T("The difference is not how bad the sentence is, it is the <b>intent to hide</b>. An HTML comment, base64, rot13, invisible "
                       "characters, a <code>display:none</code> element: none of them has an honest use in a README, so the hiding itself is the "
                       "signal and the document is refused. Writing <i>“ignore all previous instructions”</i> in plain prose is what every document "
@@ -191,16 +215,17 @@ def detector():
 them, scores each one, and the document is <b>flagged</b> when the highest score reaches [[dp_threshold]]. The most suspicious
 window is kept as an excerpt of [[det_excerpt]] characters, for the output rails.</p>""")
     body += d.detector_flag()
-    body += callout("warn", "It flags, it does not block",
-                    T("<code>INJECTION_DETECTOR=flag</code> in Terraform (the production default, not overridden) and in the local stack. "
-                      "A flagged document still becomes a quiz; what changes is the output rails. <code>block</code> exists and is one variable "
-                      "away — the rest of this section is why it is not set."))
+    body += callout("warn", "Two thresholds, not one: it flags, and above [[db_at]] it refuses",
+                    T("<code>INJECTION_DETECTOR=block</code> in production, with <code>INJECTION_DETECTOR_BLOCK_THRESHOLD=[[db_at]]</code>; the local "
+                      "stack runs <code>flag</code>. Below [[db_at]] a flagged document still becomes a quiz and what changes is the output rails. "
+                      "At [[db_at]] or above the document is refused outright — and the user is offered a human review, which is the only reason "
+                      "refusing is defensible at all. The rest of this section is the measurement behind both numbers."))
     body += "<h3>What the flag actually changes</h3>"
     body += T(f"""<p>The flag is not a score in a log. The worker passes the excerpt of the most suspicious window on as
 <code>flaggedExcerpts</code> ({code('apps/worker/src/processor.ts')}), and the output rails treat the document as untrusted
 ({code('packages/llm/src/output-guard.ts', '<code>linkTrust</code>')}):</p>""")
     body += table(["Without a flag", "With a flag (rule or detector)"], [
-        ["A link in the reply must occur in the document, or its host must", "<b>Strict link mode</b>: the flagged lines and the detector excerpt are <i>removed</i> from the document first, and the link must occur in what is left — so a link planted inside the instruction no longer counts as “in the document”"],
+        ["A link in the reply must occur in the document, or its host must — and since every URL was deleted on the way in, in practice only a host written as plain prose (<code>docs at orbit.dev</code>) can support one", "<b>Strict link mode</b>: the flagged lines and the detector excerpt are <i>removed</i> from the document first, so a prose host sitting inside the instruction stops supporting anything — which is the narrow case this changes"],
         ["No planted-words check", "<b>Planted words</b>: a word that occurs only in a flagged line may not appear in the quiz at all. From a detector excerpt, only canary-shaped words count (a letter+digit token such as <code>ZX9-XRAY</code>), precisely because the detector flags ordinary paragraphs now and then and their words are legitimate quiz material"],
         ["The metric <code>InjectionDetected</code> is still written", "The same metric, plus a WARN line with the model and the score. There is no alarm on it (see “Nightly and alerts”)"],
         ["The generation is traced in Langfuse: the session is the quiz, every model call is nested under it, and the scorer attaches the quality scores", "<b>Exactly the same.</b> The flag is <i>not</i> part of the trace — it lives in the worker log and in CloudWatch. In Langfuse a flagged quiz looks like any other"],
@@ -209,7 +234,7 @@ window is kept as an excerpt of [[det_excerpt]] characters, for the output rails
 (the trace, the cost, the quality scores) and CloudWatch holds what the <i>guard</i> did (the findings, the metrics, the alarms).
 Someone looking only at a Langfuse trace cannot tell that the document was flagged — the log line and the metric are the record,
 and they are joined to the trace only through the quiz id.</p>""")
-    body += "<h3>Why it does not block: there is no threshold that separates</h3>"
+    body += "<h3>Why no threshold separates cleanly</h3>"
     body += T("""<p>The usual answer would be “raise the threshold until the false positives go away”. The measurements say that
 threshold does not exist. On the public benchmark, raising it from 0.5 to [[dw_sweep_high_t]] only costs recall — [[dw_sweep_low]]
 down to [[dw_sweep_high]] — because the benign rows there were never a problem:</p>""")
@@ -234,8 +259,45 @@ classifier like a command, and that rubble is not content anyone wants scored. C
 its prose, costs recall ({code('docs/security/detector-prep.md')} measures [[dp_variants]] variants of this choice).</p>
 <p>With that input, on documents that carry no attack at all:</p>""")
     body += G.prep_fp_table()
-    body += T("<p>And on documents that <i>are</i> attacks, in every language and placement that is measured:</p>")
+    body += T("""<p>And on documents that <i>are</i> attacks, in every language and placement that is measured. <b>Read this
+table as what the classifier catches on its own</b> — it is one layer of several, and the numbers are low enough that reading
+them as “this share of attacks reaches a user” would be badly wrong:</p>""")
     body += G.prep_recall_table()
+    body += callout("warn", "What these percentages are not",
+                    T("A row here is <b>the classifier alone</b>, and the public sets are chatbot-style attacks (“ignore your instructions and "
+                      "say X”), which is not the shape of an attack buried in a README. On the [[lr_docs]] attacks built for this product's "
+                      "shape, the layers compare like this: keyword rules <b>[[lr_rules]]</b>, the classifier [[lr_det]], <b>either of them "
+                      "[[lr_either]]</b> (both agreeing, only [[lr_both]] — they are not looking at the same thing). The rules catch more than "
+                      "the model does, which is the whole reason the model is the second opinion and not the gate.<br><br>"
+                      "And an attack neither one catches has not succeeded: it still meets the output rails — strict link mode, planted words, "
+                      "echoed instructions, the grounding gate — which is what decides whether anything of it reaches a quiz. “Not caught here” "
+                      "means “caught later, or harmless”, not “served to a user”. The next table is that claim, measured."))
+
+    body += "<h3>What gets through the product, which is the question that matters</h3>"
+    body += T("""<p>Every number above is one layer noticing something. This one is the whole thing: real attacks replayed
+through the actual pipeline with the real model — the guard, the classifier, the prompts, the output rails — and the column
+that counts is the last one, <b>whether anything of the attack reached the quiz</b>. The deepset rows are deliberately the
+hard case: only the attacks the keyword rules did <i>not</i> catch were replayed, so the first layer is removed on purpose.</p>""")
+    body += G.endtoend_table()
+    body += T("""<p><b>[[e2e_bad]] of [[e2e_total]]</b>. And the [[e2e_lang_only]] are not an injection getting through: both were
+marked because the quiz came out in a language that was not the document's, which the language rail catches and which is a
+quality failure, not an obeyed instruction. No canary, no planted link, no echoed instruction reached a quiz in any of these
+runs. [[e2e_rails]] replies were rejected by the output rails, which is the layer doing the work the input layers did
+not.</p>""")
+    body += callout("ok", "That failure has since been fixed, and the table has not been re-run",
+                    T("The [[e2e_lang_only]] marked runs are the defect that the pipeline knew the document's language and never told the "
+                      "model. It does now, and the language is checked again on the way out — merged <b>three days after this measurement "
+                      "was taken</b>. On the golden-set item that kept failing the same way, the change took 9 runs in 10 to 20 in 20. So the "
+                      "number today is probably 0 of [[e2e_total]]. It is left at [[e2e_bad]] because that is what was measured, and a figure "
+                      "nobody measured is not a figure worth printing."))
+    body += callout("ok", "Why this table and the one above disagree so loudly",
+                    T("They measure different things, and only one of them is about users. “Recall” is <i>did this layer notice</i>. This table "
+                      "is <i>did the attack change the product's output</i>. A classifier that notices [[db_recall]] of chatbot-style attacks "
+                      "and a product that lets [[e2e_bad]] of [[e2e_total]] attacks affect a quiz are both true at once, because the layers are "
+                      "cumulative and the last one is deterministic code rather than a model's judgement.<br><br>"
+                      "What this table does <b>not</b> prove: that no attack can ever work. These are public datasets and generated variants, "
+                      "replayed on a sample; a novel attack shaped for this product is exactly what the nightly red team keeps looking for, and "
+                      "the canary is how it would be noticed."))
     body += "<h3>How often does it fire on a real README?</h3>"
     body += T("""<p>On <b>[[dp_wide_docs]] real READMEs</b> in three languages, the detector flags <b>[[dp_wide_after]]
 ([[dp_wide_after_pct]])</b>. The keyword rules flag [[dp_wide_rules]] of the same documents ([[dp_wide_rules_pct]]), and the two
@@ -244,11 +306,37 @@ layers agree on only [[dp_wide_both]] — they are not looking at the same thing
     body += "<h3>Could a policy block on agreement?</h3>"
     body += T("""<p>The obvious idea — block when the detector <i>and</i> a rule agree — was measured instead of assumed. On one
 nightly run of attacks, “both agree” catches [[dp_both_recall]], which is <b>worse than the rules alone</b> ([[dp_rules_recall]]);
-“either” catches [[dp_either_recall]] but brings the detector's false positives back. No policy in the table is good enough to
-block on, so the detector stays a flag.</p>""")
+“either” catches [[dp_either_recall]] but brings the detector's false positives back. No policy in the table separates cleanly,
+which is why the threshold ended up where the next section explains rather than anywhere a measurement pointed to.</p>""")
     body += G.two_signals_table()
-    return sec("detector", "Llama Prompt Guard 2: the layer that only flags", body,
-               "What it does, why it does not block, and the measurement that keeps it that way.")
+    body += "<h3>Where it does block: [[db_at]], and the six documents that pays for</h3>"
+    body += T("""<p>Everything above is the case against blocking on this model, and none of it has been withdrawn. What changed is
+the answer to “and then what?”. Flagging alone means a document the classifier is <i>certain</i> about still reaches the model;
+blocking at any threshold the measurements support means refusing real READMEs. Neither is acceptable on its own, so the product
+does both: it refuses at <b>[[db_at]]</b> and gives the person refused a way through that does not involve the classifier.</p>
+<p>The price is exact and small enough to name document by document. Of the [[dp_wide_docs]] real READMEs,
+<b>[[db_n]] score [[db_at]] or above</b> ([[db_pct]]) and would be refused with no attack in them. The other
+[[db_flagged_not_blocked]] flagged documents are below the line: they are flagged, not refused, and they generate normally.</p>""")
+    body += G.blocked_readmes_table()
+    body += T("""<p>[[db_clean]] of the [[db_n]] carry no keyword match at all, so for those the classifier is the only thing
+objecting. For the rest a rule matches too, which is worth reading precisely: a rule <i>matching</i> is not a rule
+<i>blocking</i> — none of these six would be refused by the keyword rules alone, so the refusal is the classifier's in every
+case.</p>""")
+    body += callout("warn", "And what refusing actually buys: a fifth of the attacks",
+                    T("The number that keeps this honest. At [[db_at]] the classifier catches <b>[[db_caught]] of the "
+                      "[[db_injections]]</b> injections in the public benchmark — <b>[[db_recall]]</b>. Dropping the threshold to 0.5 would "
+                      "raise that to only [[db_recall_at_half]], because the scores are nearly binary: the model is either certain or "
+                      "indifferent. So the refusal is <b>not</b> the main defence against injection, and reading it as one would be a "
+                      "mistake. The keyword rules catch more on this same benchmark, and the output rails stop an attack that got through "
+                      "from reaching the quiz. Refusing at [[db_at]] is a brake for the case where the model is sure — bought at the price "
+                      "of [[db_n]] real READMEs, which is exactly why those [[db_n]] get a human to appeal to."))
+    body += callout("info", "Why a number, and not a better model",
+                    T("[[db_at]] is not where a measurement says the populations separate — the sweep above says they do not. It is "
+                      "the point where the classifier's certainty is high enough that a human being asked to look is being asked "
+                      "rarely: about [[db_pct]] of real documents. The design admits the classifier is wrong sometimes and puts a "
+                      "person on exactly those cases, rather than pretending a threshold exists that makes it right."))
+    return sec("detector", "Llama Prompt Guard 2: flags most of the time, refuses at [[db_at]]", body,
+               "What it does, why no threshold separates cleanly, and the six real READMEs that the one in use refuses.")
 
 
 # ---------------------------------------------------------------------------- 5. cost
@@ -509,6 +597,116 @@ the job fails, and no quiz is served with the offending part quietly deleted. An
                "A README with an attack in it, the exact prompt it produces, and the two replies — the one that is served and the one that is refused.")
 
 
+# ---------------------------------------------------------------------------- 6b. the review flow
+
+
+def review():
+    body = T(f"""<p>Refusing a document at <b>[[db_at]]</b> buys safety with a cost that lands on a real person: of the
+[[dp_wide_docs]] real READMEs measured, [[db_n]] are refused with no attack in them. A dead end there would be the product
+telling a user their own project's README is an attack, with nothing to do about it. So the refusal is not the end of the
+road — it is the start of a second one, and that road has a human on it, not a model.</p>""")
+    body += T("""<p>The classifier is the <b>only</b> layer with this door. A document stopped by the keyword rules — hidden
+text, base64, zero-width characters between letters — has no appeal, because those rules fire on evidence of concealment and
+concealment has no innocent reading. The classifier fires on <i>style</i>, and style does.</p>""")
+
+    body += "<h3>The path, step by step</h3>"
+    body += table(["Step", "Who", "What happens", "Where"], [
+        ["1. Refusal", "the worker", T("<code>UnsafeDocumentError</code>; the quiz is marked failed with the score and the excerpt. Nothing is generated and no model was called"), T(code('apps/worker/src/processor.ts'))],
+        ["2. The offer", "the API", T("The quiz summary carries <code>reviewable</code>, which is what makes the screen show a way forward rather than an error alone"), T(code('apps/api/src/app.ts'))],
+        ["3. The request", "the user", T("A title and, optionally, why they believe it is legitimate. The URL is <b>not</b> typed: the request points at the refused quiz and the API reads the URL and the score from it, so a request cannot be aimed at a document that was never refused"), T(code('packages/db/src/schema.ts', '<code>document_requests</code>'))],
+        ["4. The queue", "an admin", T("A separate screen, gated on the Cognito group <code>admin</code>, checked again by the API. It shows the score and the excerpt that triggered the refusal next to the link"), T(code('apps/api/src/app.ts'))],
+        ["5. The decision", "an admin", T("Approve or reject. One open request per URL: a second person asking for the same document joins the queue instead of duplicating it (a partial unique index, not application logic)"), T(code('packages/db/src/repo.ts'))],
+        ["6. After approval", "everyone", T("The document joins the catalogue as <code>approved</code> and generates from then on, for every user"), T(code('packages/db/src/repo.ts', '<code>approvedCatalogEntries</code>'))],
+    ], widths=["14%", "12%", "54%", "20%"])
+
+    body += "<h3>What approval actually changes — and what it does not</h3>"
+    body += T("""<p>This is the part worth being exact about, because “approved” sounds like “trusted” and it is not. Approval
+answers <b>one</b> question — <i>is this an attack?</i> — and nothing else. Every other layer stays on, and a reviewer cannot
+turn any of them off:</p>""")
+    body += table(["Layer", "On an approved document"], [
+        ["Keyword rules (hidden text, encodings, zero-width characters)", T("<b>Unchanged.</b> They run <i>before</i> the classifier, so a document they block never reaches a reviewer in the first place — approval cannot be used to let concealed text in")],
+        ["Language gate", T("<b>Unchanged.</b> A document in an unsupported language is still refused")],
+        ["The classifier itself", T("<b>Still runs, still scores, still logs.</b> The metric <code>InjectionDetected</code> is still written, so a spike still alarms. The only thing that changes is that the score no longer <i>refuses</i>")],
+        ["Strict link mode and planted words on the output", T("<b>Unchanged — and this is the point.</b> The classifier excerpt is still passed to the rails, so the reply is held to the stricter standard exactly as it would have been")],
+        ["The grounding gate", T("<b>Unchanged.</b> Every question must still quote the document")],
+    ], widths=["38%", "62%"])
+    body += callout("warn", "“Safe mode” is the accurate name for what an approved document gets",
+                    T("An approved document is not waved through. It is generated <b>with every guard running and the output rails in "
+                      "their strict setting</b> — the same setting a flagged document gets. The reviewer removed one objection, from "
+                      "the one layer that is known to be wrong about style; they did not vouch for the content. A metric, "
+                      "<code>ApprovedDocumentAllowed</code>, counts each time this happens, so the bypass is visible rather than silent."))
+
+    body += "<h3>Rejected, pending, and what is not possible</h3>"
+    body += table(["State", "What the document can do"], [
+        ["Pending", T("Nothing. It is refused exactly as before until somebody decides; asking again does not queue a second request")],
+        ["Rejected", T("Nothing. It stays refused, and the rejection is recorded with who decided and when")],
+        ["Approved", T("Generates, in safe mode, for every user")],
+        ["Approved, then the README changes", T("The copy kept from the last read is what a quiz is built from, so a change upstream is only seen when somebody asks for a fresh download. If the new version is refused, the entry leaves the catalogue rather than sitting there failing for everyone")],
+    ], widths=["26%", "74%"])
+    body += T("""<p>Two properties worth stating plainly. An approval is <b>per URL</b>, not per user: it is a decision about a
+document, which is why the reviewer is shown the document and the score and not who asked. And approval is <b>not</b> a way to
+reach a document the rules block — those never produce a reviewable refusal, so there is nothing to approve.</p>""")
+
+    return sec("review", "When the classifier refuses: the human review flow", body,
+               "What a refused user can do about it, who decides, and exactly which guards an approved document still runs under.")
+
+
+# ---------------------------------------------------------------------------- 6c. isolating the fetch
+
+
+def isolation():
+    body = T(f"""<p>Every layer above reads bytes that a stranger chose. Before any of them runs, the worker makes an HTTPS
+request to a URL the user typed — which is a server-side request forgery surface, and the one part of this pipeline where the
+question is not “did the guard catch it” but “what could it reach if something went wrong”. This section is a <b>proposal that
+has not been built</b>, written out so the decision is on the record either way. The long form is
+{code('docs/security/fetch-isolation.md')}.</p>""")
+
+    body += "<h3>What already stands in the way</h3>"
+    body += table(["Defence", "Where"], [
+        ["<code>https</code> only, no credentials in the URL, port 443 only", code('packages/llm/src/source.ts')],
+        ["Host allow-list: <code>github.com</code> and <code>raw.githubusercontent.com</code>, the Terraform default and not overridden", code('apps/worker/src/config.ts')],
+        ["The URL is validated as given, rewritten to the raw host, then validated again", "<code>fetchMarkdown</code>"],
+        ["DNS resolved first; refused if <b>any</b> address is private — loopback, RFC1918, CGNAT, multicast, IPv6 ULA and link-local, including <code>169.254.0.0/16</code> where the ECS credentials endpoint lives", "<code>isPrivateAddress</code>"],
+        ["Redirects followed by hand, at most 3, each hop re-validated against the allow-list", "<code>fetchMarkdown</code>"],
+        ["10 s timeout, size cap enforced while streaming, and the byte check above", "<code>readCapped</code>"],
+        ["The worker's task role reaches <b>two SQS queues and nothing else</b> — no S3, no Secrets Manager, no database credentials (the execution role injects those at task start)", "<code>terraform/ecs.tf</code>"],
+        ["Fargate gives the task no classic IMDS endpoint", "AWS"],
+    ], widths=["68%", "32%"])
+    body += T("""<p>So a successful SSRF today buys requests from a task whose credentials reach two queues. That is the
+baseline, and it is already narrow. <b>The gap it does not close is the topology</b>: the worker sits in the <code>app</code>
+subnet with a route to <code>data</code>, where the database is. The allow-list makes it hard to aim; what is reachable if
+somebody does aim is decided by the network, not by the rule.</p>""")
+
+    body += "<h3>The proposal: do the fetch outside the VPC</h3>"
+    body += T(f"""<p>A Lambda with <b>no VPC configuration</b>, invoked by the worker, returning
+<code>{{ text, sha256, bytes, contentType }}</code>. A function outside the VPC has no route into the private subnets: whatever
+it is tricked into requesting, there is no path to the database or to any internal endpoint. Its role is
+<code>logs:PutLogEvents</code> and nothing else, so stolen credentials write a log line.</p>
+<p>The worker keeps <b>everything else</b> — the byte check, the keyword rules, the language policy, the classifier, the output
+rails. The text that comes back is exactly as untrusted as before. A Lambda that returned “already validated” text would be a
+design error, and worth saying out loud because it is the obvious way to get this wrong.</p>""")
+    body += table(["For", "Against"], [
+        ["SSRF moves from <i>mitigated</i> to <i>contained</i>: no route to the database, no useful credentials. The containment is topological, not a rule somebody has to keep correct", "One more component: a function, a role, an invoke permission, a deployment path, a thing to keep in sync"],
+        ["Download traffic leaves the NAT Gateway, which is billed per GB and is a real line in this project's cost", "An invoke on every generation: tens of milliseconds, plus new failure modes (throttling, cold start)"],
+        ["Timeout and memory bound the download by construction, in a second place", "It hardens the risk that is <b>already the best covered</b> here, while the open ones are elsewhere"],
+        ["The fetch stops being the only code inside the VPC that talks to the public internet on user input", "Local development needs the direct path anyway, so two code paths exist and only one is exercised in CI"],
+    ], widths=["50%", "50%"])
+    body += callout("warn", "The recommendation is “not yet”, and the condition that changes it",
+                    T("Cost is not the argument — a few cents a month in invocations against roughly US$10 for the smallest always-on Fargate "
+                      "task. The argument is that it buys containment for the risk already best defended, at the price of a component. It becomes "
+                      "worth building the moment the allow-list stops being two GitHub hosts: the day a user may point at an arbitrary domain, "
+                      "the DNS and redirect checks carry the whole weight, and topology should carry it instead."))
+
+    body += "<h3>What was considered and not chosen</h3>"
+    body += table(["Alternative", "Why not"], [
+        ["Fetch in the <b>user's browser</b> and post the text", "Removes the server-side SSRF entirely — and the proof of origin with it. “This quiz came from that README” becomes a claim by the client, and an endpoint accepting 512 KB of arbitrary text is easier to abuse than one that requires publishing on GitHub first. The allow-list would also stop being ours: what can be fetched would be decided by each host's CORS policy"],
+        ["An <b>egress proxy</b> with a domain allow-list (Squid, AWS Network Firewall)", "Stronger than the Lambda, because it covers all outbound traffic rather than one fetch. Network Firewall costs more per month than this whole environment; a self-run proxy is another always-on component"],
+        ["<b>Pinning the resolved IP</b> for the connection", "Not rejected: it closes the theoretical DNS-rebinding window between the check and the request, and it is small and local. Worth doing on its own merits, independently of any of the above"],
+    ], widths=["26%", "74%"])
+    return sec("isolation", "Isolating the fetch: a proposal, not a decision", body,
+               "The one place the question is not “did the guard catch it” but “what could it reach” — what already stands in the way, what a Lambda outside the VPC would add, and why it has not been built.")
+
+
 # ---------------------------------------------------------------------------- 7. promptfoo
 
 
@@ -747,7 +945,7 @@ def gaps():
 
 
 def all_sections():
-    return [summary(), input_guard(), rules(), detector(), cost(), output(), walkthrough(), promptfoo(), redteam(), nightly(), datasets(), prompts(), provenance(), gaps()]
+    return [summary(), input_guard(), rules(), detector(), cost(), output(), walkthrough(), review(), isolation(), promptfoo(), redteam(), nightly(), datasets(), prompts(), provenance(), gaps()]
 
 
 TITLE = "QuizForge: guardrails and promptfoo"

@@ -13,10 +13,13 @@ SUB = "<code>req.user.sub</code>"
 HOOK = "Bearer token, verified in the <code>onRequest</code> hook of <code>/v1</code> → " + SUB
 V1 = {
     "POST /v1/quizzes": (HOOK, "<code>findQuizByKey</code>, <code>countRecentQuizzes</code>: <code>WHERE owner_sub = sub</code>. <code>createQuizIdempotent</code> writes <code>owner_sub = sub</code>"),
-    "GET /v1/catalog": (HOOK, "None needed: returns the fixed list of sample documents in the code, no database read"),
+    "GET /v1/catalog": (HOOK, "None needed, and none wanted: the catalogue is the same list for everybody — the documents that ship with the product, those a reviewer approved, and those that generated a quiz cleanly. It holds no user data"),
+    "POST /v1/document-requests": (HOOK, "<code>createQuizIdempotent</code>'s row is read through <code>getOwnedQuiz(quizId, sub)</code> first, so a request can only point at a quiz the caller owns. <code>createDocumentRequest</code> then writes <code>requested_by = sub</code>"),
+    "GET /v1/document-requests": (HOOK + ", <b>and the group <code>admin</code></b>", "Deliberately unfiltered: the review queue is everyone's pending requests. The gate is the group, checked in the route and not only in the UI; a token without it gets 403"),
+    "POST /v1/document-requests/:id/review": (HOOK + ", <b>and the group <code>admin</code></b>", "<code>reviewDocumentRequest</code> by request id, and only while it is still pending. Who decided is written to <code>reviewed_by</code>"),
     "GET /v1/quizzes": (HOOK, "<code>listQuizzes</code>: <code>WHERE owner_sub = sub</code>. <code>listAttemptsByQuiz</code>: <code>WHERE user_sub = sub</code>"),
     "GET /v1/quizzes/:id/attempts": (HOOK, "<code>getOwnedQuiz(id, sub)</code>, else 404. <code>listAttemptsForQuiz</code>: <code>WHERE quiz_id AND user_sub = sub</code>"),
-    "GET /v1/quizzes/:id": (HOOK, "<code>getOwnedQuiz(id, sub)</code>, else 404. Then <code>getPublicQuestions(quizId)</code> reads by quiz id: the only API query without the sub, and only after the ownership check"),
+    "GET /v1/quizzes/:id": (HOOK, "<code>getOwnedQuiz(id, sub)</code>, else 404. Then <code>getPublicQuestions(quizId)</code> reads by quiz id — without the sub, and only after the ownership check has already passed"),
     "POST /v1/quizzes/:id/attempts": (HOOK, "<code>getOwnedQuiz(id, sub)</code>, else 404. <code>findAttemptByKey</code>, <code>getOrCreateAttempt</code>, <code>getAttemptProgress</code>: <code>WHERE user_sub = sub</code>"),
     "GET /v1/attempts/:id": (HOOK, "<code>getAttemptProgress</code> and <code>getAttemptResult</code> start from <code>getOwnedAttempt</code>: <code>WHERE id AND user_sub = sub</code>, else 404"),
     "PUT /v1/attempts/:id/answers/:questionId": (HOOK, "<code>saveAnswer</code>: <code>WHERE id AND user_sub = sub</code> (row lock), else 404. The question and its options are then read through the attempt's own quiz"),
@@ -53,8 +56,22 @@ def section(full=False):
     body += table(["Public route (no token)", "What it reads"], [[f"<code>{r}</code>", t] for r, t in PUBLIC.items()], widths=["24%", "76%"])
     body += F.tok(
         "<p>Of the [[api_db_n]] repository functions the API calls, [[api_db_scoped]] take the owner (<code>ownerSub</code> or <code>userSub</code>) and filter by it, "
-        "directly or through <code>getOwnedQuiz</code> and <code>getOwnedAttempt</code>. The one that does not, <code>getPublicQuestions</code>, is called only after <code>getOwnedQuiz</code> succeeded. "
-        "The API integration test calls the six routes that take an id as another user and expects 404 on each (404, not 403, so the existence of a quiz does not leak).</p>")
+        "directly or through <code>getOwnedQuiz</code> and <code>getOwnedAttempt</code>. The API integration test calls the six routes that take an id as another user "
+        "and expects 404 on each (404, not 403, so the existence of a quiz does not leak).</p>")
+    body += "<h3>The queries that do not filter by user, and why each is allowed to</h3>"
+    body += F.tok(
+        "<p>[[api_db_unscoped]] functions read or write without an owner filter. That is not an oversight to be tidied away later: each one is "
+        "unfiltered because filtering would be wrong for what it does. The build refuses to produce this page if a function appears here "
+        "without a reason written next to it (<code>API_UNSCOPED_REASON</code> in <code>site/facts_repo.py</code>), so a new unfiltered query "
+        "cannot reach production quietly.</p>")
+    body += table(["Function", "Why it does not filter by the signed-in user"],
+                  [[f"<code>{n}</code>", why] for n, why in sorted(F.API_UNSCOPED_REASON.items())], widths=["28%", "72%"])
+    body += callout("info", "The two shapes of exception",
+                    "They are not the same kind of thing, and it is worth keeping them apart. <b>Shared by design</b> — the catalogue is one list for "
+                    "everybody and holds nobody's data, so there is no user to filter by. <b>Admin by design</b> — the review queue is deliberately "
+                    "everyone's requests, and what stands in for the owner filter is the Cognito group, checked in the route itself and not only in the "
+                    "interface that calls it. The third shape is the oldest one: <code>getPublicQuestions</code> runs only after an ownership check has "
+                    "already passed, so the filter happened a line earlier.")
     body += "<h3>The paths that are not a user request</h3>" + table(["Path", "How it reads", "Why it is not a user request"], [
         ["Worker (generation)", "<code>claimQuiz</code>, <code>completeQuiz</code>, <code>failQuiz</code>, <code>saveJobBudget</code>, <code>upsertSource</code>: by quiz id", "The id comes from an SQS message that the API sent only after its ownership checks (the sweeper can send it again). No HTTP, no token. A user cannot send to the queue: only the task roles of the API, the worker and the sweeper may"],
         ["Scorer", "<code>getQuizForScoring</code>, <code>claimScoring</code>, <code>releaseScoring</code>, <code>saveScores</code>: by quiz id and job id", "Messages come from the worker. It reads the quiz and writes the quality scores; it returns nothing to a user"],
@@ -82,5 +99,5 @@ def section(full=False):
     body += callout("warn", "What the database does not do", F.tok(
         "The rule is enforced by the application code, not by PostgreSQL. There is no row-level security, and the API connects with one database user. "
         "A new query written without the owner filter would not be stopped by the database. What protects against that: all queries are in one file (<code>repo.ts</code>), the API never builds a query itself, "
-        "the integration tests above call every id route as another user, and the build checks that the only API-called function without an owner filter is <code>getPublicQuestions</code>."))
+        "the integration tests above call every id route as another user, and the build checks that every API-called function without an owner filter is one of the [[api_db_unscoped]] that have a written reason — a new one fails this page."))
     return body
