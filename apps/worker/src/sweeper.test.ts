@@ -129,7 +129,12 @@ describe("main (the scheduled task)", () => {
     process.env.SQS_QUEUE_URL = "http://sqs/gen";
     db.findStaleQuizzes.mockResolvedValue([quiz("q1", "queued", 10)]);
     await main();
-    expect(db.createDb).toHaveBeenCalledWith("postgres://resolved", { max: 2 });
+    // the pool error handler is not optional: pg emits `error` on an idle client that dies, and with no listener
+    // that is an uncaught exception, which ends the task
+    expect(db.createDb).toHaveBeenCalledWith("postgres://resolved", { max: 2, onPoolError: expect.any(Function) });
+    // and it must log rather than throw: a sweep that dies on an idle client leaves the stuck quizzes stuck
+    const onPoolError = db.createDb.mock.calls[0]![1]!.onPoolError as (e: Error) => void;
+    expect(() => onPoolError(new Error("terminating connection due to administrator command"))).not.toThrow();
     expect(sqsSent).toHaveLength(1);
     expect(sqsSent[0]!.input).toEqual({ QueueUrl: "http://sqs/gen", MessageBody: JSON.stringify({ v: 1, quizId: "q1", requestId: "sweeper" }) });
     expect(JSON.parse(metrics[0]!)).toMatchObject({ SweeperRequeued: { value: 1 }, SweeperFailed: { value: 0 }, SweeperRescored: { value: 0 }, CheckpointsDeleted: { value: 0 } });

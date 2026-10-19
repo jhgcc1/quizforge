@@ -20,7 +20,7 @@ const config = loadConfig();
 const log = createLogger(config.LOG_LEVEL);
 initTracing();
 
-const { db, pool } = createDb(config.databaseUrl, { max: config.WORKER_CONCURRENCY + 2 });
+const { db, pool } = createDb(config.databaseUrl, { max: config.WORKER_CONCURRENCY + 2, onPoolError: (err) => log.error({ err }, "idle database client failed; the pool will open a new one") });
 const sqs = new SQSClient({});
 const pricing = { inPerM: config.LLM_PRICE_IN_PER_M, outPerM: config.LLM_PRICE_OUT_PER_M };
 const mk = (model: string): LlmClient => createMiniMaxClient({ apiKey: config.MINIMAX_API_KEY!, baseUrl: config.MINIMAX_BASE_URL, model });
