@@ -128,7 +128,9 @@ export async function processQuizJob(
         emit({ InjectionDetected: { value: 1, unit: "Count" } });
         if (screened.status === "blocked") {
           const approved = await isApprovedDocument(d.db, [quiz.sourceUrl, src.rawUrl]);
-          if (!approved) throw new UnsafeDocumentError(screened.finding.detail);
+          // The excerpt travels with the error because a reviewer needs the EVIDENCE, not the verdict: the document
+          // request is built from this string, and "scored 1.00" tells nobody what the classifier reacted to.
+          if (!approved) throw new UnsafeDocumentError(screened.result.excerpt ? `${screened.finding.detail} — excerpt: ${screened.result.excerpt}` : screened.finding.detail);
           log.warn({ score: screened.result.score }, "the classifier would block this document, but a reviewer approved it");
           emit({ ApprovedDocumentAllowed: { value: 1, unit: "Count" } });
         }
