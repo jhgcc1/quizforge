@@ -350,17 +350,29 @@ describe("the input guard in the worker (door 1)", () => {
       }
     });
 
-    it("a document that generated cleanly joins the catalogue; a flagged one does not", async () => {
+    it("a document that generated a quiz joins the catalogue, marked or not", async () => {
       const clean = "https://github.com/o/clean/blob/main/README.md";
       const q1 = await newQuiz({ sourceUrl: clean, numQuestions: 5 });
       expect((await processQuizJob(deps({ detector: stub(false) }), { v: 1, quizId: q1.id }, { count: 1, max: 3 })).kind).toBe("done");
       expect((await listedCatalogEntries(ctx.db)).map((e) => e.url)).toContain(clean);
 
-      // Flagged, not blocked: it still generates for whoever asked, but it is not promoted to everyone's dropdown.
+      // Marked by the classifier but not blocked: the quiz came out, so the document earns its place in the list. The
+      // mark is not lost -- it put the output rails in strict mode for this run and will do so for every other user.
       const flaggedUrl = "https://github.com/o/flagged/blob/main/README.md";
       const q2 = await newQuiz({ sourceUrl: flaggedUrl, numQuestions: 5 });
       expect((await processQuizJob(deps({ detector: stub(true), detectorMode: "flag" }), { v: 1, quizId: q2.id }, { count: 1, max: 3 })).kind).toBe("done");
-      expect((await listedCatalogEntries(ctx.db)).map((e) => e.url)).not.toContain(flaggedUrl);
+      expect((await listedCatalogEntries(ctx.db)).map((e) => e.url)).toContain(flaggedUrl);
+    });
+
+    // A document the classifier would refuse reaches this point only because an admin approved it, and an approval is
+    // the strongest statement the product has about a document: it belongs in the list like any other.
+    it("a blocked-but-approved document joins the catalogue too", async () => {
+      const url = "https://github.com/o/approved/blob/main/README.md";
+      const quiz = await newQuiz({ sourceUrl: url, numQuestions: 5 });
+      const req = await createDocumentRequest(ctx.db, { url, title: "Asked for", requestedBy: "owner" });
+      await reviewDocumentRequest(ctx.db, { id: req!.id, action: "approve", reviewedBy: "admin" });
+      expect((await processQuizJob(deps({ detector: stub(true), detectorMode: "block" }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 })).kind).toBe("done");
+      expect((await listedCatalogEntries(ctx.db)).map((e) => e.url)).toContain(url);
     });
 
     // The case that makes a shared catalogue different from a private bookmark: a listed README can be edited and

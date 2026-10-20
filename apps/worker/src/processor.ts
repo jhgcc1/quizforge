@@ -181,13 +181,15 @@ export async function processQuizJob(
     });
     await saveJobBudget(d.db, job.id, result.budget);
 
-    // The document worked: put it in the shared catalogue so nobody has to paste the URL again. Only a document no
-    // guard had anything to say about — a flagged one still generates for whoever chose it, but it is not something to
-    // suggest to everybody. A failure here must never fail a quiz that is already saved.
-    if (!flagged.length && !flaggedExcerpts) {
-      await listSource(d.db, { sourceId, title: titleForDocument(doc.text, quiz.sourceUrl), language: doc.language })
-        .catch((err: unknown) => log.warn({ err }, "could not add the document to the catalogue"));
-    }
+    // The document worked: put it in the shared catalogue so nobody has to paste the URL again. Generating IS the bar --
+    // a quiz that came out of the rails intact is the product saying this document works, and the list should say the
+    // same thing. It used to admit only documents no guard had remarked on, which silently kept out 6% of real READMEs
+    // (36 of 722 marked by the keyword rules, 12 by the classifier) that generate perfectly well: mostly READMEs whose
+    // subject is prompts and models. A marked document is still marked -- the finding is recorded, the metric fires and
+    // the output rails ran strict for this quiz and will run strict for everyone who picks it from the list.
+    // A failure here must never fail a quiz that is already saved.
+    await listSource(d.db, { sourceId, title: titleForDocument(doc.text, quiz.sourceUrl), language: doc.language })
+      .catch((err: unknown) => log.warn({ err }, "could not add the document to the catalogue"));
 
     // The quiz is saved: the checkpoints have done their job (resuming an interrupted run), so they go now instead of piling up.
     await d.checkpointer?.deleteThread(threadId).catch((e: unknown) => log.warn({ err: e }, "could not delete checkpoint thread"));

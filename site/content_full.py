@@ -305,7 +305,7 @@ not paste a URL that somebody has already proved works.</p>""")
     body += table(["Group", "How an entry gets there", "What it means"], [
         ["<code>readme</code> / <code>test</code>", "Written in the code", "Chosen on purpose: real input and the documents that each exercise one behaviour"],
         ["<code>approved</code>", "The classifier refused it and an administrator decided otherwise", "A human looked at this document. See the review flow in the guardrails report"],
-        ["<code>used</code>", "It generated a quiz with <b>no guard finding at all</b>", F.tok("Earned by use. A <i>flagged</i> document is not promoted: it still generates for whoever chose it, but suggesting it to everybody is a different act")],
+        ["<code>used</code>", "It <b>generated a quiz</b>", F.tok("Earned by use. A marked document counts too: the mark put the output rails in strict mode for that run, and will do the same for everyone who picks it from the list")],
     ], widths=["18%", "34%", "48%"])
     body += F.tok("""<p>Two consequences of a list that grows. It needs searching, so the control is a <b>combobox</b> rather than a
 <code>&lt;select&gt;</code>: typing filters on the title, the description and the URL, and every word must match somewhere, so
