@@ -1,3 +1,13 @@
+/**
+ * The environment of the worker image, validated once at startup so a bad deploy fails immediately and loudly
+ * instead of failing on the first job (or, worse, quietly running with a default nobody meant).
+ *
+ * One schema covers both long-running roles, because they are one image and one task definition shape. A role
+ * therefore validates a few settings it does not use — the scorer parses SOURCE_ALLOWED_HOSTS, for instance —
+ * which is harmless as long as those keep working defaults. The scheduled sweep does NOT use this: it reads the
+ * three variables it is given directly (see roles/sweep/start.ts), so it cannot be blocked by a model key it
+ * has no business holding.
+ */
 import { resolveDatabaseUrl } from "@quizforge/db";
 import { z } from "zod";
 
@@ -52,8 +62,14 @@ const Schema = z
     if (c.LLM_MODE === "fake" && c.NODE_ENV === "production") ctx.addIssue({ code: "custom", message: "LLM_MODE=fake is not allowed in production" });
   });
 
+/** The validated environment, plus the two values that are derived rather than read (`allowedHosts`, `databaseUrl`). */
 export type Config = z.output<typeof Schema> & { allowedHosts: string[]; databaseUrl: string };
 
+/**
+ * Parses and validates the environment. Throws with EVERY problem listed, not just the first, so one restart
+ * is enough to see what a misconfigured task definition is missing. `env` is a parameter only so the tests can
+ * pass one in.
+ */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const parsed = Schema.safeParse(env);
   if (!parsed.success) {

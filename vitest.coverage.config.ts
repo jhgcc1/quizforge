@@ -32,7 +32,13 @@ export default defineConfig({
         "**/node_modules/**",
         // Process entry points: they only wire dependencies and start a long-running process.
         "apps/api/src/server.ts",
-        "apps/worker/src/main.ts",
+        "apps/worker/src/main.ts", // picks the role and hands over
+        "apps/worker/src/sweeper.ts", // runs roles/sweep/start.ts, whose runSweep() IS covered (sweep.test.ts)
+        // The same wiring, one file per role: what used to be the body of main.ts, which was already excluded here.
+        // Only the wiring is exempt — every handler they build (processor, scorer, sweepOnce) is covered.
+        "apps/worker/src/shared/service.ts",
+        "apps/worker/src/roles/generate/start.ts",
+        "apps/worker/src/roles/score/start.ts",
         "packages/db/src/migrate.ts", // CLI entry; its behaviour is covered end to end by migrate.int.test.ts in a child process (not visible to V8 coverage)
         // Scripts that run at import time and need a real model download, the network or real LLM calls.
         "packages/detector/src/try.ts",

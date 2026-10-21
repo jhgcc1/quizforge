@@ -12,7 +12,7 @@ Facts, read from the code and the infrastructure rather than assumed:
 | Defence | Where |
 |---|---|
 | `https` only, no credentials in the URL, port 443 only | `packages/llm/src/source.ts` |
-| Host allow-list — `github.com`, `raw.githubusercontent.com` (`SOURCE_ALLOWED_HOSTS`, not overridden in Terraform, so that default is what production runs) | `apps/worker/src/config.ts` |
+| Host allow-list — `github.com`, `raw.githubusercontent.com` (`SOURCE_ALLOWED_HOSTS`, not overridden in Terraform, so that default is what production runs) | `apps/worker/src/shared/config.ts` |
 | The URL is validated as given, rewritten to the raw host, then validated again | `fetchMarkdown` |
 | DNS is resolved first and the fetch is refused if **any** address is private — loopback, RFC1918, CGNAT, multicast, IPv6 ULA and link-local, including `169.254.0.0/16` where the ECS credentials endpoint lives | `isPrivateAddress` |
 | Redirects are followed manually, at most 3, each hop re-validated against the allow-list | `fetchMarkdown` |

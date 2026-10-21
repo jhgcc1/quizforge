@@ -375,18 +375,37 @@ jobs:
       - uses: aws-actions/amazon-ecr-login@v2
         id: ecr
       - uses: docker/setup-buildx-action@v3
-      - name: "Build and push api, worker and redteam (tagged with the commit sha; immutable; an existing tag is skipped)"
+      # One line per published image: ECR repository | tag | Dockerfile | extra build arguments.
+      #
+      # The worker is published TWICE from the same Dockerfile, because the three roles built from it do not all
+      # need the same thing. Only `generate` reads documents a user supplied, so only it loads the semantic
+      # detector; `score` judges text the generate role already admitted and stored, and `sweep` touches no text
+      # at all (scripts/audit-guard.sh checks exactly that: "no detector is expected" on the scorer). The detector
+      # target bakes in @huggingface/transformers and the 1.1 GB Llama Prompt Guard 2 weights, about 1.6 GB, so
+      # pointing the scorer and the sweeper at `<sha>-slim` saves them pulling a model they never load.
+      # Same repository, a second tag: no new ECR repository to create in jhgcc1/quizforge-infra.
+      - name: "Build and push api, worker (detector + slim) and redteam (tagged with the commit sha; immutable; an existing tag is skipped)"
         run: |
-          for s in api worker redteam; do
-            repo="${{ steps.ecr.outputs.registry }}/quizforge/$s"
-            if aws ecr describe-images --repository-name "quizforge/$s" --image-ids imageTag="$TAG" >/dev/null 2>&1; then
-              echo "$s:$TAG already in ECR, skipping"; continue
+          images="
+          api|$TAG|apps/api/Dockerfile|
+          worker|$TAG|apps/worker/Dockerfile|--target runtime-detector
+          worker|$TAG-slim|apps/worker/Dockerfile|--target runtime
+          redteam|$TAG|docker/redteam/Dockerfile|--build-arg GIT_SHA=$TAG
+          "
+          echo "$images" | grep . | while IFS='|' read -r name tag dockerfile extra; do
+            repo="${{ steps.ecr.outputs.registry }}/quizforge/$name"
+            if aws ecr describe-images --repository-name "quizforge/$name" --image-ids imageTag="$tag" >/dev/null 2>&1; then
+              echo "$name:$tag already in ECR, skipping"; continue
             fi
-            if [ "$s" = redteam ]; then dockerfile=docker/redteam/Dockerfile; else dockerfile="apps/$s/Dockerfile"; fi
-            T=""; [ "$s" = worker ] && T="--target runtime-detector" # the worker image carries the Llama Prompt Guard 2 model
-            [ "$s" = redteam ] && T="--build-arg GIT_SHA=$TAG" # the red team report names the commit
-            docker buildx build -f "$dockerfile" $T -t "$repo:$TAG" --push \
-              --cache-from type=gha,scope="$s"-arm --cache-to type=gha,scope="$s"-arm,mode=max .
+            # the two worker images share a build cache scope on purpose: `runtime` is a stage of the same build
+            docker buildx build -f "$dockerfile" $extra -t "$repo:$tag" --push \
+              --cache-from type=gha,scope="$name"-arm --cache-to type=gha,scope="$name"-arm,mode=max .
           done
       - name: Summary
-        run: echo "### Published \`${TAG::12}\` to ECR (api, worker, redteam). Deploy it from jhgcc1/quizforge-infra (workflow Deploy)." >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          {
+            echo "### Published \`${TAG::12}\` to ECR (api, worker, worker-slim, redteam). Deploy it from jhgcc1/quizforge-infra (workflow Deploy)."
+            echo ""
+            echo "- \`quizforge/worker:$TAG\` — carries Llama Prompt Guard 2. For the **generate** service."
+            echo "- \`quizforge/worker:$TAG-slim\` — same code, no detector (~1.6 GB smaller). For the **scorer** service and the **sweeper** task."
+          } >> "$GITHUB_STEP_SUMMARY"

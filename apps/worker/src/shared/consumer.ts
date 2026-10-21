@@ -1,3 +1,12 @@
+/**
+ * The SQS poll loop, shared by both long-running roles: receive, run the role's handler, and decide from the
+ * `Outcome` whether the message is deleted or left for redelivery.
+ *
+ * The rule the whole thing exists to keep: a message is deleted only once its result is durable in Postgres.
+ * While a job runs a heartbeat keeps extending the visibility timeout, so SQS does not hand the same job to a
+ * second task; if the process dies mid-job the message simply reappears. `SqsTransport` is split out behind an
+ * interface so the loop itself is tested without AWS.
+ */
 import {
   ChangeMessageVisibilityCommand,
   DeleteMessageCommand,
@@ -7,8 +16,23 @@ import {
 } from "@aws-sdk/client-sqs";
 import { QuizJobMessageSchema, type QuizJobMessage } from "@quizforge/core";
 import type { Logger } from "./log.js";
-import type { Outcome } from "./processor.js";
 
+/**
+ * What a role's job handler tells the consumer to do with the SQS message it was given.
+ * It lives here, next to the loop that acts on it, because it is the contract EVERY role
+ * implements (generate and score return it; the loop alone decides to delete or redeliver).
+ */
+export type Outcome =
+  | { kind: "done" }
+  | { kind: "skipped"; reason: string }
+  /** Permanent failure, recorded on the quiz: the SQS message should be deleted. */
+  | { kind: "failed"; error: string }
+  /** Transient failure with attempts left: leave the message so SQS redelivers it. */
+  | { kind: "retry"; error: string }
+  /** Last allowed attempt failed: quiz marked failed; leave the message so it lands in the DLQ (alarm). */
+  | { kind: "exhausted"; error: string };
+
+/** One SQS message, reduced to what the loop and the handlers actually read. */
 export interface QueueMessage {
   id: string;
   body: string;
@@ -46,6 +70,7 @@ export class SqsTransport implements QueueTransport {
   }
 }
 
+/** How a role configures the loop. Everything with a default is a knob the task definition may override. */
 export interface ConsumerOptions<M extends { requestId?: string | undefined } = QuizJobMessage> {
   transport: QueueTransport;
   /** Validates the body of a message of THIS queue (generation jobs by default; the scorer passes its own schema). */

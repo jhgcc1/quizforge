@@ -14,6 +14,7 @@ function redact(value: unknown, depth = 0): unknown {
   return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, SECRET_KEYS.test(k) ? "[redacted]" : redact(v, depth + 1)]));
 }
 
+/** The small surface the worker actually uses, so swapping the implementation stays a one-file change. */
 export interface Logger {
   error(obj: Record<string, unknown>, msg: string): void;
   warn(obj: Record<string, unknown>, msg: string): void;
@@ -22,6 +23,12 @@ export interface Logger {
   child(bindings: Record<string, unknown>): Logger;
 }
 
+/**
+ * A logger that writes one JSON object per line to stdout, where the ECS awslogs driver picks it up.
+ * `bindings` are merged into every line (a request id, a quiz id), and `child()` adds more without losing them.
+ * Every logged object passes through `redact`, so an error carrying a token or an Authorization header cannot
+ * put it in CloudWatch. `write` is a parameter so the tests can capture lines instead of printing them.
+ */
 export function createLogger(level: Level = "info", bindings: Record<string, unknown> = {}, write: (line: string) => void = (l) => process.stdout.write(l + "\n")): Logger {
   const emit = (lvl: Level) => (obj: Record<string, unknown>, msg: string) => {
     if (ORDER[lvl] > ORDER[level]) return;
@@ -36,6 +43,7 @@ export function createLogger(level: Level = "info", bindings: Record<string, unk
   };
 }
 
+/** The CloudWatch units this worker emits; EMF rejects anything outside its own list. */
 export type MetricUnit = "None" | "Count" | "Milliseconds" | "Seconds";
 
 /** One EMF record: dimensions are fixed to Service so metric cardinality stays tiny. */

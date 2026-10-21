@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Logger } from "./log.js";
+import type { Logger } from "../../shared/log.js";
 
 const db = {
   findStaleQuizzes: vi.fn(),
@@ -19,7 +19,7 @@ vi.mock("@aws-sdk/client-sqs", () => ({
 
 const metrics: string[] = [];
 const logSpy: { level: string; msg: string; obj: Record<string, unknown> }[] = [];
-vi.mock("./log.js", () => ({
+vi.mock("../../shared/log.js", () => ({
   createLogger: () => recorder(),
   emitMetrics: (m: unknown) => void metrics.push(JSON.stringify(m)),
 }));
@@ -28,7 +28,8 @@ function recorder(): Logger {
   return { error: rec("error"), warn: rec("warn"), info: rec("info"), debug: rec("debug"), child: () => recorder() };
 }
 
-const { sweepOnce, main } = await import("./sweeper.js");
+const { sweepOnce } = await import("./sweep.js");
+const { runSweep: main } = await import("./start.js");
 
 const NOW = 1_700_000_000_000;
 const quiz = (id: string, status: string, ageMin: number) => ({ id, status, updatedAt: new Date(NOW - ageMin * 60_000) });

@@ -81,7 +81,10 @@ services:
       migrate: { condition: service_completed_successfully }
       elasticmq: { condition: service_started }
 
-  # The scorer: the same image as the worker, consuming the scoring queue. It judges quizzes AFTER they are ready.
+  # The scorer: the same CODE as the worker (WORKER_ROLE=score), consuming the scoring queue. It judges quizzes
+  # AFTER they are ready. Locally it reuses the worker's image so the stack builds once; in AWS it is deployed
+  # from the `<sha>-slim` tag, built from the Dockerfile target `runtime` — same code without the 1.6 GB
+  # detector, which this role never loads (it reads text the generate role already admitted and stored).
   scorer:
     profiles: ["app"]
     image: quizforge-worker:local

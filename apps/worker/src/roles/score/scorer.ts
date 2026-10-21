@@ -1,9 +1,20 @@
+/**
+ * The work of the SCORE role: judge one quiz that is already saved and store its scores.
+ *
+ * The job message carries ids only, so this reads the quiz and the document back from Postgres. It takes a
+ * LEASE on the scoring row first (`claimScoring`) and releases it on a transient failure, so a message that SQS
+ * redelivers, or a second scorer task, never judges the same quiz twice and never pays for it twice.
+ *
+ * It fetches nothing and screens nothing: the text it reads was admitted and stored by the generate role.
+ * That is why the scorer runs from the image built without the semantic detector.
+ */
 import type { ScoreJobMessage } from "@quizforge/core";
 import { claimScoring, getQuizForScoring, releaseScoring, saveScores, type Db } from "@quizforge/db";
 import { scoreExistingQuiz, type LlmClient } from "@quizforge/llm";
-import { emitMetrics, type Logger } from "./log.js";
-import type { Outcome } from "./processor.js";
+import { emitMetrics, type Logger } from "../../shared/log.js";
+import type { Outcome } from "../../shared/consumer.js";
 
+/** Everything `processScoreJob` needs, injected so scorer.int.test.ts can run it with a fake judge. */
 export interface ScoreDeps {
   db: Db;
   /** The judge model's client. */
