@@ -1,6 +1,6 @@
 /**
  * False-positive check of the WHOLE input guard (`inspectText`, not only the keyword rules) on every benign text we have:
- *   pnpm exec tsx promptfoo/redteam/replay/guard-fp.ts [--wide=DIR (en/ pt/ es/ subfolders of real READMEs)] [--public=.local/public.json] [--out=FILE]
+ *   pnpm exec tsx promptfoo/redteam/research/checks/guard-fp.ts [--wide=DIR (en/ pt/ es/ subfolders of real READMEs)] [--public=.local/public.json] [--out=FILE]
  * Sets: real pt/es READMEs, real English READMEs, benign dataset rows, evals fixtures, red-team README templates, the benign rows of
  * the public datasets (`--public`, made from redteam-public.json), and the wide base of real READMEs (`--wide`). Prints, per set, the
  * documents BLOCKED and the documents FLAGGED (an `injection_phrase` or `mixed_script_word` finding). A block on a benign text is the
@@ -10,9 +10,9 @@
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { benignDocument, inspectText } from "@quizforge/core";
-import { readmeBlocks } from "../readme.js";
-import { benchmarkSample, type DatasetRow } from "./sample.js";
-import { LOCAL_DIR, type RealReadmeEntry } from "./real-readmes.js";
+import { readmeBlocks } from "../../readme.js";
+import { benchmarkSample, type DatasetRow } from "../../lib/sample.js";
+import { LOCAL_DIR, type RealReadmeEntry } from "../studies/real-readmes.js";
 
 const arg = (k: string, d: string): string => process.argv.find((a) => a.startsWith(`--${k}=`))?.split("=")[1] ?? d;
 const read = (f: string): string => readFileSync(f, "utf8");

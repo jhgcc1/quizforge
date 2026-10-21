@@ -1,6 +1,6 @@
 /**
  * False-positive check of the guard on the real pt/es READMEs (downloaded by fetch-real-readmes.ts into .local/real-readmes-pt-es/).
- *   pnpm exec tsx promptfoo/redteam/replay/ptes-fp.ts [--out=docs/security/guard-pt-es-readmes.json]
+ *   pnpm exec tsx promptfoo/redteam/research/checks/ptes-fp.ts [--out=docs/security/guard-pt-es-readmes.json]
  * Counts the `injection_phrase` findings (flag or block) per rule and lists every hit line, so a person can read each one.
  * Not part of coverage: a reporting script.
  */
@@ -8,7 +8,7 @@ import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { decodeCandidates, matchingRules, normalizeForMatching } from "@quizforge/core";
 
-import { LOCAL_DIR, type RealReadmeEntry } from "./real-readmes.js";
+import { LOCAL_DIR, type RealReadmeEntry } from "../studies/real-readmes.js";
 
 const OUT = process.argv.find((a) => a.startsWith("--out="))?.split("=")[1] ?? "docs/security/guard-pt-es-readmes.json";
 

@@ -2,8 +2,8 @@
  * Stage 1 of the pt/es validation with public attack datasets: every attack text, as the BODY of a document, through the language policy,
  * the keyword rules of the input guard and Llama Prompt Guard 2 (flag only). No generation model here (free).
  *
- *   pnpm exec tsx promptfoo/redteam/replay/fetch-ptes-datasets.ts      (once: downloads the datasets into .local/ds/ptes)
- *   pnpm exec tsx promptfoo/redteam/replay/ptes-datasets.ts [--no-detector] [--out=.local/ptes-stage1.json]
+ *   pnpm exec tsx promptfoo/redteam/research/studies/fetch-ptes-datasets.ts      (once: downloads the datasets into .local/ds/ptes)
+ *   pnpm exec tsx promptfoo/redteam/research/studies/ptes-datasets.ts [--no-detector] [--out=.local/ptes-stage1.json]
  *
  * Writes the per-row results to .local/ (the texts of Weni have no declared licence and are never committed); the committed numbers are
  * aggregates (docs/security/replay-ptes.json). Prompt Guard 2 is the ungated ONNX conversion (1.1 GB, downloaded once into the Hugging Face cache).
@@ -12,7 +12,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { inspectText } from "@quizforge/core";
 import { detectLanguage } from "@quizforge/llm";
-import { DATASETS, groupRows, ruleCounts, summarize, type RawRow, type RowResult } from "./ptes-data.js";
+import { DATASETS, groupRows, ruleCounts, summarize, type RawRow, type RowResult } from "../../lib/ptes-data.js";
 
 const arg = (k: string, d: string): string => process.argv.find((a) => a.startsWith(`--${k}=`))?.split("=")[1] ?? d;
 const OUT = arg("out", ".local/ptes-stage1.json");

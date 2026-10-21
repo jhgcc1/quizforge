@@ -10,7 +10,7 @@ import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse } from "yaml";
 import { ATTACK_TECHNIQUES, BAD_TOPICS, DEFAULT_PAYLOAD, decodeCandidates, INJECTION_RULES, normalizeForMatching, matchingRules } from "@quizforge/core";
-import { benchmarkSample, type DatasetRow } from "./replay/sample.js";
+import { benchmarkSample, type DatasetRow } from "./lib/sample.js";
 
 const arg = (k: string, d: string): string => process.argv.find((a) => a.startsWith(`--${k}=`))?.split("=")[1] ?? d;
 const READMES = arg("readmes", "");

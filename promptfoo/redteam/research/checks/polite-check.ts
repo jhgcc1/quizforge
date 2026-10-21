@@ -4,7 +4,7 @@
  *     evals fixture that is not an injection one, the benign README templates of the red team). The bar is 0 hits of ANY rule;
  *   - recall: the attack texts the nightly red team wrote (a run's summary JSON, `--attacks=FILE` made from redteam-nightly.json), the 120
  *     nightly intents, the frozen red-team sample. Reported for the old rules alone and for old + polite, per language and intent.
- *   pnpm exec tsx promptfoo/redteam/replay/polite-check.ts [--en=.local/en-readmes] [--attacks=.local/s3/attacks.json] [--out=docs/security/polite-rules.json]
+ *   pnpm exec tsx promptfoo/redteam/research/checks/polite-check.ts [--en=.local/en-readmes] [--attacks=.local/s3/attacks.json] [--out=docs/security/polite-rules.json]
  * Not part of coverage: a reporting script. The unit tests do not need the downloaded files.
  */
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
@@ -12,10 +12,10 @@ import { join } from "node:path";
 import { parse } from "yaml";
 import { INJECTION_RULES } from "@quizforge/core";
 import { benignDocument } from "@quizforge/core";
-import { embedAttack, readmeBlocks } from "../readme.js";
+import { embedAttack, readmeBlocks } from "../../readme.js";
 import { hitsOf } from "./ptes-fp.js";
-import { benchmarkSample, type DatasetRow } from "./sample.js";
-import { LOCAL_DIR, type RealReadmeEntry } from "./real-readmes.js";
+import { benchmarkSample, type DatasetRow } from "../../lib/sample.js";
+import { LOCAL_DIR, type RealReadmeEntry } from "../studies/real-readmes.js";
 
 const arg = (k: string, d: string): string => process.argv.find((a) => a.startsWith(`--${k}=`))?.split("=")[1] ?? d;
 const EN_DIR = arg("en", ".local/en-readmes");

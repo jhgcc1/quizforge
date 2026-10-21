@@ -1,13 +1,13 @@
 /**
  * False positives of the TOPIC check (`checkShortText`) on real topics: every Markdown heading of the real READMEs we have is a plausible
  * thing for a person to type as the quiz topic ("Installation", "Configuração", "¿Cómo contribuir?").
- *   pnpm exec tsx promptfoo/redteam/replay/topic-fp.ts [--wide=DIR (en/ pt/ es/)] [--en=.local/en-readmes]
+ *   pnpm exec tsx promptfoo/redteam/research/checks/topic-fp.ts [--wide=DIR (en/ pt/ es/)] [--en=.local/en-readmes]
  * Prints, per language folder, the headings tried and the ones refused (with the reason), exit code 1 when any is refused. Not part of coverage.
  */
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { checkShortText } from "@quizforge/core";
-import { LOCAL_DIR, type RealReadmeEntry } from "./real-readmes.js";
+import { LOCAL_DIR, type RealReadmeEntry } from "../studies/real-readmes.js";
 
 const arg = (k: string, d: string): string => process.argv.find((a) => a.startsWith(`--${k}=`))?.split("=")[1] ?? d;
 const dirs: string[] = [];

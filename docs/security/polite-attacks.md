@@ -7,7 +7,7 @@ The scheduled red team of 2026-10-15 (640 cases) found **22 leaks** and 2 other 
 1. **Rules for polite and indirect forms** (`packages/core/src/injection-rules-polite.ts`): 5 rules per language, the same suffixes in English, Portuguese and Spanish (`polite-answer-key`, `polite-force-text`, `polite-ignore-document`, `polite-other-language`, `polite-format`). A rule needs a quiz verb with the quiz as the target in one sentence, plus a polite cue or a clause start. Politeness alone never matches. The guard then had 121 rules (40 per language plus 1); see guard-audit.md for the 145 it has now.
 2. **A planted-words rail on the output** (`packages/llm/src/output-guard.ts`): a word that occurs only inside a flagged line of the document (not in the clean text, not a common word, not quiz vocabulary, not a word of our own prompts) must not appear in the quiz: not in the question, the options, the explanation or the source quote. A flag that comes only from the classifier excerpt plants only words that mix letters and digits (like `ZX9-XRAY`). A problem goes through the existing repair round. This catches a canary even when no rule recognised the sentence.
 
-## Measurements (`promptfoo/redteam/replay/polite-check.ts`, result in `polite-rules.json`)
+## Measurements (`promptfoo/redteam/research/checks/polite-check.ts`, result in `polite-rules.json`)
 
 | Benign set | Documents | Any rule hits | Polite rule hits |
 |---|---|---|---|

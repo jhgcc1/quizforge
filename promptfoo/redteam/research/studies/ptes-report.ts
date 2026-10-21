@@ -1,14 +1,14 @@
 /**
  * Builds the committed aggregate of the pt/es dataset validation from the local raw results.
- *   pnpm exec tsx promptfoo/redteam/replay/ptes-report.ts [--stage1=.local/ptes-stage1.json] [--replay=.local/ptes-replay.json] [--out=docs/security/replay-ptes.json]
+ *   pnpm exec tsx promptfoo/redteam/research/studies/ptes-report.ts [--stage1=.local/ptes-stage1.json] [--replay=.local/ptes-replay.json] [--out=docs/security/replay-ptes.json]
  * The aggregate has counts only, plus (for the datasets whose licence allows quoting) a few attack texts. The Weni texts never leave .local/.
  * Not part of coverage: a thin script over ptes-data.ts.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { INJECTION_RULES, inspectText } from "@quizforge/core";
-import { judgeQuiz, type QuizQuestion } from "./filter.js";
-import { PTES_README_BLOCKS } from "./readmes-ptes.js";
-import { DATASETS, asParagraph, demandedPhrasesPtEs, reasonCounts, replaySummary, replayTable, stage1Table, summarize, type RowResult } from "./ptes-data.js";
+import { judgeQuiz, type QuizQuestion } from "../../lib/filter.js";
+import { PTES_README_BLOCKS } from "../../lib/readmes-ptes.js";
+import { DATASETS, asParagraph, demandedPhrasesPtEs, reasonCounts, replaySummary, replayTable, stage1Table, summarize, type RowResult } from "../../lib/ptes-data.js";
 
 const arg = (k: string, d: string): string => process.argv.find((a) => a.startsWith(`--${k}=`))?.split("=")[1] ?? d;
 const stage1 = JSON.parse(readFileSync(arg("stage1", ".local/ptes-stage1.json"), "utf8")) as { rows: Record<string, RowResult[]> };

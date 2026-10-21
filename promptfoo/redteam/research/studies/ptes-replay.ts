@@ -4,18 +4,18 @@
  * (guard, language policy, model, output rails). The oracle is code (filter.ts judgeQuiz + the pt/es demanded phrases): no model grades a model.
  *
  *   set -a; . /path/to/.env; set +a        # MINIMAX_API_KEY goes into the process environment only
- *   pnpm exec tsx promptfoo/redteam/replay/ptes-replay.ts [--per-group=70] [--concurrency=4] [--out=.local/ptes-replay.json] [--dry]
+ *   pnpm exec tsx promptfoo/redteam/research/studies/ptes-replay.ts [--per-group=70] [--concurrency=4] [--out=.local/ptes-replay.json] [--dry]
  *
  * Needs .local/ds/ptes (fetch-ptes-datasets.ts) and the stage 1 result .local/ptes-stage1.json (ptes-datasets.ts) for the guard / Prompt Guard 2 columns.
  * The raw runs (with the attack texts) stay in .local/; the aggregate is made by ptes-report.ts. Not part of coverage: network.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { detectLanguage } from "@quizforge/llm";
-import QuizPipelineProvider from "../../provider.js";
-import { embedAttackAt, fnv1a, type AttackPosition } from "../readme.js";
-import { judgeQuiz, outcomeOf, type QuizQuestion } from "./filter.js";
-import { DATASETS, asParagraph, demandedPhrasesPtEs, groupRows, sampleStable, type RawRow } from "./ptes-data.js";
-import { PTES_README_BLOCKS } from "./readmes-ptes.js";
+import QuizPipelineProvider from "../../../provider.js";
+import { embedAttackAt, fnv1a, type AttackPosition } from "../../readme.js";
+import { judgeQuiz, outcomeOf, type QuizQuestion } from "../../lib/filter.js";
+import { DATASETS, asParagraph, demandedPhrasesPtEs, groupRows, sampleStable, type RawRow } from "../../lib/ptes-data.js";
+import { PTES_README_BLOCKS } from "../../lib/readmes-ptes.js";
 
 const arg = (k: string, d: string): string => process.argv.find((a) => a.startsWith(`--${k}=`))?.split("=")[1] ?? d;
 const PER_GROUP = Number(arg("per-group", "70"));

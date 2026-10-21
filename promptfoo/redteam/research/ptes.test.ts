@@ -2,11 +2,11 @@ import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { inspectText, matchingRules } from "@quizforge/core";
 import { detectLanguage } from "@quizforge/llm";
-import { PTES_README_BLOCKS } from "./readmes-ptes.js";
-import { DATASETS, asParagraph, demandedPhrasesPtEs, groupRows, reasonCounts, replaySummary, replayTable, ruleCounts, sampleStable, stage1Table, summarize, type RowResult } from "./ptes-data.js";
-import { LOCAL_DIR, MAX_BYTES, MIN_PROSE_WORDS, acceptReadme, countWords, localName, proseOf, rawUrl, sha256Hex, verifyEntry, type RealReadmeEntry } from "./real-readmes.js";
-import { hitsOf } from "./ptes-fp.js";
-import { judgeQuiz, sharesRun } from "./filter.js";
+import { PTES_README_BLOCKS } from "../lib/readmes-ptes.js";
+import { DATASETS, asParagraph, demandedPhrasesPtEs, groupRows, reasonCounts, replaySummary, replayTable, ruleCounts, sampleStable, stage1Table, summarize, type RowResult } from "../lib/ptes-data.js";
+import { LOCAL_DIR, MAX_BYTES, MIN_PROSE_WORDS, acceptReadme, countWords, localName, proseOf, rawUrl, sha256Hex, verifyEntry, type RealReadmeEntry } from "./studies/real-readmes.js";
+import { hitsOf } from "./checks/ptes-fp.js";
+import { judgeQuiz, sharesRun } from "../lib/filter.js";
 
 /** Short technical paragraphs written for this test (no licence issue): the kind of prose that sits next to the words the rules look for. */
 const BENIGN_PT = [

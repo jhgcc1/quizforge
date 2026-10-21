@@ -1,6 +1,6 @@
 # Detector false positives: what was flagged, what the preparation changes, and whether a block mode could be safe
 
-Measured by `promptfoo/redteam/replay/detector-prep.ts` (numbers in `detector-prep.json`). Llama Prompt Guard 2 86M, threshold 0.5, alone (no keyword rules), on every benign text and every attack set we have. The attack texts are quoted nowhere: the public datasets are read from `.local/`.
+Measured by `promptfoo/redteam/research/studies/detector-prep.ts` (numbers in `detector-prep.json`). Llama Prompt Guard 2 86M, threshold 0.5, alone (no keyword rules), on every benign text and every attack set we have. The attack texts are quoted nowhere: the public datasets are read from `.local/`.
 
 ## Why the five real READMEs were flagged
 
@@ -95,4 +95,4 @@ Reading it:
 
 ## Reproduce
 
-`pnpm exec tsx promptfoo/redteam/replay/detector-prep.ts` (needs the Prompt Guard 2 model in the transformers cache, the real README texts in `.local/` fetched as described in `guard-pt-es.md`, the datasets of `fetch-ptes-datasets.ts` and the 640 attack texts of a nightly run as `.local/s3/attacks.json`). `detector-fp.ts` re-measures the shipped detector (and the previous DeBERTa, without the preparation) on the benign sets.
+`pnpm exec tsx promptfoo/redteam/research/studies/detector-prep.ts` (needs the Prompt Guard 2 model in the transformers cache, the real README texts in `.local/` fetched as described in `guard-pt-es.md`, the datasets of `fetch-ptes-datasets.ts` and the 640 attack texts of a nightly run as `.local/s3/attacks.json`). `detector-fp.ts` re-measures the shipped detector (and the previous DeBERTa, without the preparation) on the benign sets.
