@@ -10,7 +10,7 @@
 #   3. the metrics DocumentRejected, InjectionFlagged, InjectionDetected, DetectorMs, DetectorFailed: do they exist and their recent sums
 #   4. the alarms injection-flagged-spike, documents-rejected-spike and redteam-leak exist, and their state
 #   5. DetectorFailed is 0
-# The expected values come from the code: apps/worker/src/config.ts, packages/detector/src/index.ts, docker/*/Dockerfile.
+# The expected values come from the code: apps/worker/src/shared/config.ts, packages/detector/src/index.ts, docker/*/Dockerfile.
 # The infrastructure itself is in the separate repo quizforge-infra: this script only reads and reports, it does not fix.
 set -uo pipefail
 export AWS_PROFILE="${AWS_PROFILE:-turboai-615737882760}"
@@ -61,7 +61,7 @@ def read(path):
 
 
 # ---- the expected values, read from the code of this checkout
-worker_cfg = read("apps/worker/src/config.ts")
+worker_cfg = read("apps/worker/src/shared/config.ts")
 detector_src = read("packages/detector/src/index.ts")
 m = re.search(r"DEFAULT_THRESHOLD\s*=\s*([0-9.]+)", detector_src)
 DEFAULT_THRESHOLD = m.group(1) if m else "?"
@@ -142,7 +142,7 @@ if w:
     td, _ = aws("ecs", "describe-task-definition", "--task-definition", f"{P}-worker")
     mem = int(td["taskDefinition"].get("memory", 0)) if td else 0
     if mem and mem < 3072:
-        say("WARN", f"worker memory {mem} MiB: the detector comment in apps/worker/src/main.ts says it needs about 3 GB")
+        say("WARN", f"worker memory {mem} MiB: the detector comment in apps/worker/src/roles/generate/start.ts says it needs about 3 GB")
         finding(f"worker task memory is {mem} MiB, below the ~3 GB the detector needs")
     elif mem:
         say("PASS", f"worker memory {mem} MiB (the detector needs about 3 GB)")

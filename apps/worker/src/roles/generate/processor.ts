@@ -1,3 +1,15 @@
+/**
+ * The work of the GENERATE role: turn one queue message into a saved quiz.
+ *
+ * The order of the steps is the security story, and it is cheapest-first on purpose: claim the job (so two
+ * workers never build the same quiz), fetch the document from an allowed host, admit it (input guard, language
+ * policy, then the semantic detector only if it is still undecided), generate through the LangGraph, screen the
+ * output, save. A document that an admin already approved skips re-screening; everything else that fails turns
+ * into an `Outcome` the consumer can act on.
+ *
+ * It takes every collaborator as an argument (`ProcessDeps`) rather than importing a client: that is what lets
+ * processor.int.test.ts run the whole path against a real Postgres with a fake model and no AWS.
+ */
 import { createHash } from "node:crypto";
 import type { BaseCheckpointSaver } from "@langchain/langgraph";
 import { titleForDocument, type QuizJobMessage, type ScoreJobMessage } from "@quizforge/core";
@@ -22,19 +34,11 @@ import {
   type LlmClient,
   type SupportedLanguage,
 } from "@quizforge/llm";
-import { emitMetrics, type Logger } from "./log.js";
+import type { Outcome } from "../../shared/consumer.js";
+import { emitMetrics, type Logger } from "../../shared/log.js";
 import { createProgressReporter } from "./progress.js";
 
-export type Outcome =
-  | { kind: "done" }
-  | { kind: "skipped"; reason: string }
-  /** Permanent failure, recorded on the quiz: the SQS message should be deleted. */
-  | { kind: "failed"; error: string }
-  /** Transient failure with attempts left: leave the message so SQS redelivers it. */
-  | { kind: "retry"; error: string }
-  /** Last allowed attempt failed: quiz marked failed; leave the message so it lands in the DLQ (alarm). */
-  | { kind: "exhausted"; error: string };
-
+/** Everything `processQuizJob` needs, injected so the job can run without AWS, without a model and without a queue. */
 export interface ProcessDeps {
   db: Db;
   llm: LlmClient;

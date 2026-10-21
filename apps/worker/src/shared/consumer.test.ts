@@ -1,8 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { ScoreJobMessageSchema, type ScoreJobMessage } from "@quizforge/core";
-import { Consumer, type QueueMessage, type QueueTransport } from "./consumer.js";
+import { Consumer, type Outcome, type QueueMessage, type QueueTransport } from "./consumer.js";
 import { createLogger, emitMetrics } from "./log.js";
-import type { Outcome } from "./processor.js";
 
 const QUIZ = "6f1d1e0c-9a0b-4c43-8a6e-1f2d3c4b5a69";
 const msg = (over: Partial<QueueMessage> = {}): QueueMessage => ({ id: "m1", body: JSON.stringify({ v: 1, quizId: QUIZ }), receiveCount: 1, receiptHandle: "rh1", ...over });

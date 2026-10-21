@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { claimQuiz, completeQuiz, createDb, createQuizIdempotent, eq, migrate, schema, upsertSource } from "@quizforge/db";
 import { createFakeLlm, type LlmClient } from "@quizforge/llm";
-import { createLogger } from "./log.js";
+import { createLogger } from "../../shared/log.js";
 import { processScoreJob, type ScoreDeps } from "./scorer.js";
 
 const ADMIN_URL = process.env.TEST_ADMIN_DATABASE_URL ?? "postgres://quizforge:quizforge@localhost:5433/postgres";
@@ -34,7 +34,7 @@ beforeAll(async () => {
   await admin.query(`create database ${dbName}`);
   await admin.end();
   ctx = createDb(url.toString(), { max: 4 });
-  await migrate(ctx.db, { migrationsFolder: fileURLToPath(new URL("../../../packages/db/migrations", import.meta.url)) });
+  await migrate(ctx.db, { migrationsFolder: fileURLToPath(new URL("../../../../../packages/db/migrations", import.meta.url)) });
 });
 afterAll(async () => {
   await ctx.pool.end();

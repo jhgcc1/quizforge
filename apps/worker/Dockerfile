@@ -58,5 +58,9 @@ COPY --from=detector-build --chown=node:node /detector-out /app/node_modules/@qu
 ENV INJECTION_DETECTOR_MODEL_DIR=/models/prompt-guard-2 HF_HUB_OFFLINE=1
 USER node
 
+# Which target goes where (the CI publish job builds both from this file):
+#   runtime           -> tag `<sha>-slim`: the SCORER service and the SWEEPER task. Neither reads a user's
+#                        document, so neither loads the detector; this saves them pulling about 1.6 GB.
+#   runtime-detector  -> tag `<sha>`: the GENERATE service, the only role that screens text a user supplied.
 # keep the production image the DEFAULT target (docker build without --target builds the last stage)
 FROM runtime AS release

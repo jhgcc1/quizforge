@@ -5,8 +5,8 @@ import pg from "pg";
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import { emptyCheckpoint } from "@langchain/langgraph";
 import { claimQuiz, completeQuiz, createDb, createQuizIdempotent, eq, migrate, saveScores, schema, upsertSource } from "@quizforge/db";
-import { createLogger } from "./log.js";
-import { sweepOnce } from "./sweeper.js";
+import { createLogger } from "../../shared/log.js";
+import { sweepOnce } from "./sweep.js";
 
 const ADMIN_URL = process.env.TEST_ADMIN_DATABASE_URL ?? "postgres://quizforge:quizforge@localhost:5433/postgres";
 const dbName = `qf_swp_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
@@ -20,7 +20,7 @@ beforeAll(async () => {
   await admin.query(`create database ${dbName}`);
   await admin.end();
   ctx = createDb(url.toString(), { max: 4 });
-  await migrate(ctx.db, { migrationsFolder: fileURLToPath(new URL("../../../packages/db/migrations", import.meta.url)) });
+  await migrate(ctx.db, { migrationsFolder: fileURLToPath(new URL("../../../../../packages/db/migrations", import.meta.url)) });
 });
 afterAll(async () => {
   await ctx.pool.end();
