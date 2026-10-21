@@ -9,8 +9,8 @@
  */
 import { francAll } from "franc-min";
 import { embedAttackAt, fnv1a, readmeBlocks, type AttackPosition } from "../readme.js";
-import { rng, shuffle } from "../replay/sample.js";
-import { PTES_README_BLOCKS } from "../replay/readmes-ptes.js";
+import { rng, shuffle } from "../lib/sample.js";
+import { PTES_README_BLOCKS } from "../lib/readmes-ptes.js";
 import type { SourceRow } from "./sources.js";
 
 export const SUPPORTED = ["en", "pt", "es"] as const;

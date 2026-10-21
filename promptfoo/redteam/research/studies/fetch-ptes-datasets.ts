@@ -1,6 +1,6 @@
 /**
  * Downloads the public Portuguese / Spanish prompt-injection datasets into .local/ds/ptes/ (git-ignored; the raw texts are never committed).
- *   pnpm exec tsx promptfoo/redteam/replay/fetch-ptes-datasets.ts
+ *   pnpm exec tsx promptfoo/redteam/research/studies/fetch-ptes-datasets.ts
  * Sources (Hugging Face datasets-server): yanismiraoui/prompt_injections (Apache-2.0), PrevenIA/red-teaming-prevenia (Apache-2.0),
  * usezn/zn-prompt-injection-bench (CC-BY-4.0, only lang pt and es, label "ataque"), Weni/prompt-injections-1.0.0 (no declared licence: local evaluation only).
  * Writes one JSON file per dataset: [{ text, lang? , split? }]. Needs the network. Not part of coverage.

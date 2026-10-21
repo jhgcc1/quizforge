@@ -1,6 +1,6 @@
 # False positives of the semantic detector (Llama Prompt Guard 2 and the previous DeBERTa)
 
-Measured by `promptfoo/redteam/replay/detector-fp.ts` (result in `detector-fp.json`) on every benign text we have, with the keyword rules next to the two models. The threshold is 0.5. A "false positive" is a legitimate document that the detector flags.
+Measured by `promptfoo/redteam/research/checks/detector-fp.ts` (result in `detector-fp.json`) on every benign text we have, with the keyword rules next to the two models. The threshold is 0.5. A "false positive" is a legitimate document that the detector flags.
 
 | Benign set | Documents | Keyword rules | Prompt Guard 2 (in use, with the input preparation) | DeBERTa (previous, English only) |
 |---|---|---|---|---|
@@ -23,4 +23,4 @@ The keyword-rule column of the Portuguese and Spanish row is not a rule: it is t
 
 ## Reproduce
 
-`DEBERTA_DIR=<local DeBERTa model dir> pnpm exec tsx promptfoo/redteam/replay/detector-fp.ts --out=docs/security/detector-fp.json` (the models are downloaded once into the transformers cache; the real READMEs are fetched by the scripts of `docs/security/guard-pt-es.md`).
+`DEBERTA_DIR=<local DeBERTa model dir> pnpm exec tsx promptfoo/redteam/research/checks/detector-fp.ts --out=docs/security/detector-fp.json` (the models are downloaded once into the transformers cache; the real READMEs are fetched by the scripts of `docs/security/guard-pt-es.md`).

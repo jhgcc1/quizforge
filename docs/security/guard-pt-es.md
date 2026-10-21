@@ -26,7 +26,7 @@ The first plan was to translate the 59 English attacks of the replay into Portug
 
 ## Part 1. False positives on real Portuguese and Spanish READMEs
 
-**How.** `promptfoo/redteam/replay/fetch-real-readmes.ts --build` took 76 candidates (translated READMEs of well-known projects such as `README.pt-BR.md` / `README.es.md`, and READMEs written in the language by Brazilian and Hispanic communities), downloaded each at the HEAD commit, and kept a file only if `detectLanguage` (from `@quizforge/llm`) says it is pt or es on the prose alone, it has at least 150 words of prose (code blocks, inline code, URLs, HTML and images removed) and it is at most 70 KB. 64 passed (32 + 32; 30 translations and 34 written natively). The rejected ones: too big, too little prose, wrong language, or a 404. **Only the list is committed:** `real-readmes-pt-es.json` has repository, path, commit SHA, raw URL, size and sha256 of each file, because the licences differ. `fetch-real-readmes.ts` (no argument) downloads them into `.local/real-readmes-pt-es/` (git-ignored) and checks every hash. `promptfoo/redteam/replay/ptes-fp.ts` counts the `injection_phrase` findings per rule and lists every hit line; the unit tests never need the network (they use a short committed set of self-written pt/es technical paragraphs, and the downloaded set only when it is present).
+**How.** `promptfoo/redteam/research/studies/fetch-real-readmes.ts --build` took 76 candidates (translated READMEs of well-known projects such as `README.pt-BR.md` / `README.es.md`, and READMEs written in the language by Brazilian and Hispanic communities), downloaded each at the HEAD commit, and kept a file only if `detectLanguage` (from `@quizforge/llm`) says it is pt or es on the prose alone, it has at least 150 words of prose (code blocks, inline code, URLs, HTML and images removed) and it is at most 70 KB. 64 passed (32 + 32; 30 translations and 34 written natively). The rejected ones: too big, too little prose, wrong language, or a 404. **Only the list is committed:** `real-readmes-pt-es.json` has repository, path, commit SHA, raw URL, size and sha256 of each file, because the licences differ. `fetch-real-readmes.ts` (no argument) downloads them into `.local/real-readmes-pt-es/` (git-ignored) and checks every hash. `promptfoo/redteam/research/checks/ptes-fp.ts` counts the `injection_phrase` findings per rule and lists every hit line; the unit tests never need the network (they use a short committed set of self-written pt/es technical paragraphs, and the downloaded set only when it is present).
 
 **Result.** First pass: 3 hits in 64 documents. I read each one.
 
@@ -206,13 +206,13 @@ False-positive check after the last change: 0 hits on the 64 real pt/es READMEs,
 ## Reproduce
 
 ```
-pnpm exec tsx promptfoo/redteam/replay/fetch-real-readmes.ts     # the 64 READMEs into .local/ (hashes checked)
-pnpm exec tsx promptfoo/redteam/replay/ptes-fp.ts                # false positives: must print "0 hits"
-pnpm exec tsx promptfoo/redteam/replay/fetch-ptes-datasets.ts    # the datasets into .local/ds/ptes
-pnpm exec tsx promptfoo/redteam/replay/ptes-datasets.ts          # Part 3 (downloads Prompt Guard 2 once, 1.1 GB)
+pnpm exec tsx promptfoo/redteam/research/studies/fetch-real-readmes.ts     # the 64 READMEs into .local/ (hashes checked)
+pnpm exec tsx promptfoo/redteam/research/checks/ptes-fp.ts                # false positives: must print "0 hits"
+pnpm exec tsx promptfoo/redteam/research/studies/fetch-ptes-datasets.ts    # the datasets into .local/ds/ptes
+pnpm exec tsx promptfoo/redteam/research/studies/ptes-datasets.ts          # Part 3 (downloads Prompt Guard 2 once, 1.1 GB)
 set -a; . /path/to/.env; set +a                                   # MINIMAX_API_KEY, environment only
-pnpm exec tsx promptfoo/redteam/replay/ptes-replay.ts            # Part 4: 420 runs, about 0.75 USD
-pnpm exec tsx promptfoo/redteam/replay/ptes-report.ts            # writes docs/security/replay-ptes.json
+pnpm exec tsx promptfoo/redteam/research/studies/ptes-replay.ts            # Part 4: 420 runs, about 0.75 USD
+pnpm exec tsx promptfoo/redteam/research/studies/ptes-report.ts            # writes docs/security/replay-ptes.json
 ```
 
 Credits: `usezn/zn-prompt-injection-bench` is CC-BY-4.0 (the ZN benchmark authors); `yanismiraoui/prompt_injections` and `PrevenIA/red-teaming-prevenia` are Apache-2.0. The English original attacks of `replay-deepset.md` come from the public Apache-2.0 dataset `deepset/prompt-injections`.

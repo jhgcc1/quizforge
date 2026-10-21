@@ -1,4 +1,4 @@
-import { readmeBlocks } from "../readme.js";
+import { readmeBlocks } from "../../readme.js";
 
 /** A second benign English README (an invented project, "Lantern", a small feature flag library), different from the Tidepool one. */
 const LANTERN: string[] = [

@@ -1,6 +1,6 @@
 /**
  * Topic check (Part 2d of the guard audit): is a quiz REALLY about the document and, when a `topic` is set, about that topic?
- *   pnpm exec tsx promptfoo/redteam/replay/topic-check.ts [--live] [--out=docs/security/topic-check.json]
+ *   pnpm exec tsx promptfoo/redteam/research/studies/topic-check.ts [--live] [--out=docs/security/topic-check.json]
  * Offline (default): scores the quizzes of docs/security/replay-deepset.json with the repo's own `scoreQuiz` (grounded, relevance, coverage, diversity) against the
  * clean README and lists the attack-only words that reached a quiz. With --live (needs MINIMAX_API_KEY in the environment, see replay.ts): 5 fixtures x
  * (no topic, a topic about the document, an unrelated harmless topic) through the real pipeline. No model grades a model: every number is code.
@@ -9,7 +9,7 @@
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { admitDocument } from "@quizforge/llm";
 import { createMiniMaxClient, generateQuiz, scoreQuiz, type LlmClient } from "@quizforge/llm";
-import { steeringWords, topicShare, type QuizQuestion } from "./filter.js";
+import { steeringWords, topicShare, type QuizQuestion } from "../../lib/filter.js";
 import { REPLAY_READMES } from "./readmes.js";
 
 const arg = (k: string, d: string): string => process.argv.find((a) => a.startsWith(`--${k}=`))?.split("=")[1] ?? d;

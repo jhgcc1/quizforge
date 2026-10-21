@@ -1,8 +1,8 @@
 /**
  * Real Portuguese and Spanish READMEs (false-positive check of the guard).
  *
- *   pnpm exec tsx promptfoo/redteam/replay/fetch-real-readmes.ts                 download the READMEs of docs/security/real-readmes-pt-es.json into .local/real-readmes-pt-es/ and check every sha256
- *   pnpm exec tsx promptfoo/redteam/replay/fetch-real-readmes.ts --build FILE    BUILD the manifest from a candidates file (one "pt|es translation|native owner/repo path" per line):
+ *   pnpm exec tsx promptfoo/redteam/research/studies/fetch-real-readmes.ts                 download the READMEs of docs/security/real-readmes-pt-es.json into .local/real-readmes-pt-es/ and check every sha256
+ *   pnpm exec tsx promptfoo/redteam/research/studies/fetch-real-readmes.ts --build FILE    BUILD the manifest from a candidates file (one "pt|es translation|native owner/repo path" per line):
  *                                                                                resolves the HEAD commit, downloads the file at that commit, keeps it only if `acceptReadme` says yes.
  *
  * The texts are never committed (the licences differ): only the manifest is. Needs the network (GitHub raw + `gh api` for --build). Not part of coverage.
@@ -41,7 +41,7 @@ async function build(candidatesFile: string): Promise<void> {
     }
   }
   writeFileSync(MANIFEST, JSON.stringify({
-    about: "Pointers to real, popular open-source READMEs in Portuguese (pt) and Spanish (es), used to check the guard for false positives. The texts are NOT in the repository (their licences differ): fetch them with promptfoo/redteam/replay/fetch-real-readmes.ts. Each entry has the commit and the sha256 of the text.",
+    about: "Pointers to real, popular open-source READMEs in Portuguese (pt) and Spanish (es), used to check the guard for false positives. The texts are NOT in the repository (their licences differ): fetch them with promptfoo/redteam/research/studies/fetch-real-readmes.ts. Each entry has the commit and the sha256 of the text.",
     builtAt: new Date().toISOString(),
     entries,
   }, null, 1) + "\n");

@@ -15,3 +15,8 @@ docs
 .playwright-mcp
 /web
 promptfoo/out
+
+# The red team research: one-off studies and the guard regression checks a maintainer runs by hand.
+# The nightly task image copies promptfoo/ whole, and none of this belongs in it -- what the nightly
+# actually shares with the research lives in promptfoo/redteam/lib.
+promptfoo/redteam/research

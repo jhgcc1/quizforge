@@ -1,5 +1,5 @@
 /** Markdown tables of the replay result (pure functions; `render.ts` prints them from docs/security/replay-deepset.json). */
-import { ATTACK_TYPES } from "./filter.js";
+import { ATTACK_TYPES } from "../../lib/filter.js";
 
 export interface AttackRow { id: number; text: string; caughtByDetector: boolean; decision: { keep: boolean; kind?: string; reason: string } }
 export interface RunRow { attackId: number; attackType: string; outcome: string; verdict?: { contaminated: boolean } }

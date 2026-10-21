@@ -2,7 +2,7 @@
  * Replay of the dataset attacks that BOTH detectors miss, through the complete pipeline with the REAL model (MiniMax).
  *
  *   set -a; . /path/to/.env; set +a        # MINIMAX_API_KEY goes into the process environment only, never into a file
- *   pnpm exec tsx promptfoo/redteam/replay/replay.ts [--limit=N] [--dry] [--concurrency=4] [--out=docs/security/replay-deepset.json]
+ *   pnpm exec tsx promptfoo/redteam/research/studies/replay.ts [--limit=N] [--dry] [--concurrency=4] [--out=docs/security/replay-deepset.json]
  *
  * Needs the dataset rows (deepset/prompt-injections, Apache-2.0) at DEEPSET_PATH (default .local/ds/deepset.json, see
  * packages/detector/src/benchmark.ts) and docs/security/benchmark.json (which attacks Llama Prompt Guard 2 caught).
@@ -11,11 +11,11 @@
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { detectLanguage } from "@quizforge/llm";
-import QuizPipelineProvider from "../../provider.js";
-import { embedAttackAt, type AttackPosition } from "../readme.js";
-import { filterAttack, judgeQuiz, outcomeOf, type QuizQuestion } from "./filter.js";
+import QuizPipelineProvider from "../../../provider.js";
+import { embedAttackAt, type AttackPosition } from "../../readme.js";
+import { filterAttack, judgeQuiz, outcomeOf, type QuizQuestion } from "../../lib/filter.js";
 import { REPLAY_READMES } from "./readmes.js";
-import { benchmarkSample, missedByGuard } from "./sample.js";
+import { benchmarkSample, missedByGuard } from "../../lib/sample.js";
 
 const arg = (k: string, d: string): string => process.argv.find((a) => a.startsWith(`--${k}=`))?.split("=")[1] ?? d;
 const LIMIT = Number(arg("limit", "0"));

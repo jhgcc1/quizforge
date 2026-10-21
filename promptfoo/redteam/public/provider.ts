@@ -10,8 +10,8 @@
  */
 import { createFakeLlm, generateQuiz, UnsafeDocumentError, UnsupportedLanguageError, InvalidLlmInputError, type InjectionDetector, type LlmClient } from "@quizforge/llm";
 import QuizPipelineProvider, { loadDetector } from "../../provider.js";
-import { judgeQuiz, outcomeOf, type QuizQuestion } from "../replay/filter.js";
-import { demandedPhrasesPtEs } from "../replay/ptes-data.js";
+import { judgeQuiz, outcomeOf, type QuizQuestion } from "../lib/filter.js";
+import { demandedPhrasesPtEs } from "../lib/ptes-data.js";
 import { layersOf, type Layers } from "./stage.js";
 
 export interface PublicVars {

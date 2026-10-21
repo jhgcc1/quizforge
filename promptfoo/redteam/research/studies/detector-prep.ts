@@ -7,7 +7,7 @@
  *     preparation that drops code), and the planted evals/fixtures/injection*.md.
  * Also, for the block-mode question: "flag only when the detector AND a keyword rule agree", for t in 0.5, 0.9, 0.99.
  *
- *   pnpm exec tsx promptfoo/redteam/replay/detector-prep.ts [--attacks=.local/s3/attacks.json] [--out=docs/security/detector-prep.json]
+ *   pnpm exec tsx promptfoo/redteam/research/studies/detector-prep.ts [--attacks=.local/s3/attacks.json] [--out=docs/security/detector-prep.json]
  *
  * Not part of coverage: a reporting script (needs the model, 1.1 GB, in the transformers cache). Scores are cached in .local/score-cache.json.
  */
@@ -16,11 +16,11 @@ import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { benignDocument, inspectText } from "@quizforge/core";
 import { detectLanguage } from "@quizforge/llm";
-import { chunkProse, prepareForDetector } from "../../../packages/detector/src/chunk.js";
-import { loadClassifier, DEFAULT_MODEL } from "../../../packages/detector/src/index.js";
-import { embedAttack, readmeBlocks } from "../readme.js";
-import { DATASETS, groupRows, type RawRow } from "./ptes-data.js";
-import { benchmarkSample, type DatasetRow } from "./sample.js";
+import { chunkProse, prepareForDetector } from "../../../../packages/detector/src/chunk.js";
+import { loadClassifier, DEFAULT_MODEL } from "../../../../packages/detector/src/index.js";
+import { embedAttack, readmeBlocks } from "../../readme.js";
+import { DATASETS, groupRows, type RawRow } from "../../lib/ptes-data.js";
+import { benchmarkSample, type DatasetRow } from "../../lib/sample.js";
 import { LOCAL_DIR, type RealReadmeEntry } from "./real-readmes.js";
 
 const arg = (k: string, d: string): string => process.argv.find((a) => a.startsWith(`--${k}=`))?.split("=")[1] ?? d;

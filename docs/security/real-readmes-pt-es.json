@@ -1,5 +1,5 @@
 {
- "about": "Pointers to real, popular open-source READMEs in Portuguese (pt) and Spanish (es), used to check the guard for false positives. The texts are NOT in the repository (their licences differ): fetch them with promptfoo/redteam/replay/fetch-real-readmes.ts. Each entry has the commit and the sha256 of the text.",
+ "about": "Pointers to real, popular open-source READMEs in Portuguese (pt) and Spanish (es), used to check the guard for false positives. The texts are NOT in the repository (their licences differ): fetch them with promptfoo/redteam/research/studies/fetch-real-readmes.ts. Each entry has the commit and the sha256 of the text.",
  "builtAt": "2026-10-14T21:56:16.644Z",
  "entries": [
   {

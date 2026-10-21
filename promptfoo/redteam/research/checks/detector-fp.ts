@@ -2,16 +2,16 @@
  * False positives of the semantic detectors on every benign text we have, side by side with the keyword rules:
  *   - Llama Prompt Guard 2 86M (the detector in use, threshold 0.5) and the previous one, protectai/deberta-v3-base-prompt-injection-v2
  *     (English only), on real pt/es READMEs, real English READMEs, benign dataset rows, evals fixtures that are not injection, red-team templates.
- *   DEBERTA_DIR=<local copy of the DeBERTa model: config.json, tokenizer files, onnx/model.onnx> pnpm exec tsx promptfoo/redteam/replay/detector-fp.ts [--en=.local/en-readmes] [--dataset=.local/ds/deepset.json] [--out=docs/security/detector-fp.json]
+ *   DEBERTA_DIR=<local copy of the DeBERTa model: config.json, tokenizer files, onnx/model.onnx> pnpm exec tsx promptfoo/redteam/research/checks/detector-fp.ts [--en=.local/en-readmes] [--dataset=.local/ds/deepset.json] [--out=docs/security/detector-fp.json]
  * Not part of coverage: a reporting script (needs the models, 1.1 GB and 0.7 GB, downloaded once into the transformers cache).
  */
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { benignDocument, inspectText } from "@quizforge/core";
-import { createOnnxDetector } from "../../../packages/detector/src/index.js"; // the provider loads it dynamically (optional dependency); here a direct import
-import { readmeBlocks } from "../readme.js";
-import { benchmarkSample, type DatasetRow } from "./sample.js";
-import { LOCAL_DIR, type RealReadmeEntry } from "./real-readmes.js";
+import { createOnnxDetector } from "../../../../packages/detector/src/index.js"; // the provider loads it dynamically (optional dependency); here a direct import
+import { readmeBlocks } from "../../readme.js";
+import { benchmarkSample, type DatasetRow } from "../../lib/sample.js";
+import { LOCAL_DIR, type RealReadmeEntry } from "../studies/real-readmes.js";
 
 const arg = (k: string, d: string): string => process.argv.find((a) => a.startsWith(`--${k}=`))?.split("=")[1] ?? d;
 const EN_DIR = arg("en", ".local/en-readmes");

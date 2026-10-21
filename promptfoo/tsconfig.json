@@ -1,4 +1,4 @@
 {
   "extends": "../tsconfig.base.json",
-  "include": ["*.ts", "redteam/*.ts", "redteam/replay/*.ts", "redteam/public/*.ts"]
+  "include": ["*.ts", "redteam/*.ts", "redteam/lib/*.ts", "redteam/research/*.ts", "redteam/research/checks/*.ts", "redteam/research/studies/*.ts", "redteam/public/*.ts"]
 }

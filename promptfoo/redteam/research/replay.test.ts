@@ -1,10 +1,10 @@
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { embedAttackAt } from "../readme.js";
-import { attackOnlyWords, attackType, demandedPhrases, filterAttack, germanShare, judgeQuiz, outcomeOf, sharesRun, steeringWords, tokens, topicShare, type QuizQuestion } from "./filter.js";
-import { REPLAY_READMES } from "./readmes.js";
-import { filterTable, typeTable } from "./tables.js";
-import { benchmarkSample, missedByGuard, rng, shuffle } from "./sample.js";
+import { attackOnlyWords, attackType, demandedPhrases, filterAttack, germanShare, judgeQuiz, outcomeOf, sharesRun, steeringWords, tokens, topicShare, type QuizQuestion } from "../lib/filter.js";
+import { REPLAY_READMES } from "./studies/readmes.js";
+import { filterTable, typeTable } from "./studies/tables.js";
+import { benchmarkSample, missedByGuard, rng, shuffle } from "../lib/sample.js";
 
 describe("sample (same as the benchmark)", () => {
   it("is seeded and stratified", () => {
