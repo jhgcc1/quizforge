@@ -11,7 +11,7 @@
  * leetspeak) only where the text is not ordinary prose, so a README is cheap and a document made of non-prose is not.
  * `--merge` keeps the profiles already in the file and adds (or replaces) this one.
  *
- * Writes docs/security/guard-cost.json. The report site/content_guardrails.py reads its numbers from there.
+ * Writes docs/security/guard-cost.json. The committed guardrails report reads its numbers from there.
  */
 import { execSync } from "node:child_process";
 import { cpus } from "node:os";
