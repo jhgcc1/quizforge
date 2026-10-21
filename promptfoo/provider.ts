@@ -258,7 +258,9 @@ export default class QuizPipelineProvider {
         ...base,
         status: "quiz",
         llmCalls: seen.length,
-        questions: r.questions.map((q) => ({ prompt: q.prompt, options: q.options, explanation: q.explanation, sourceQuote: q.sourceQuote })),
+        // `correct` travels too: without it an assertion cannot tell the answer the quiz asserts from a distractor
+        // it deliberately marks wrong, and `onPurpose` needs that distinction (see assertions.js, answeredText).
+        questions: r.questions.map((q) => ({ prompt: q.prompt, options: q.options, correct: q.correct, explanation: q.explanation, sourceQuote: q.sourceQuote })),
         promptSeen: user,
         systemSeen: system,
         ...(v.kind === "redteam" ? { detector: detectorState, systemPrompts: [GENERATION_SYSTEM, CRITIQUE_SYSTEM, REVISE_SYSTEM, PLAN_SYSTEM, JUDGE_SYSTEM] } : {}),
