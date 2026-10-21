@@ -12,7 +12,14 @@ Every report is **one HTML file** with its charts inside (no server, no build st
 
 ## What is left out of the committed architecture report
 
-The page is the same as the local one (screenshots included), with one change: the **AWS account id** is replaced by `<account-id>`. Passwords, keys and tokens are never in it: the build refuses to write the page if any value from the git-ignored env files (`.env`, `.local/e2e-user.env`) appears in it.
+The page is the same as the local one (screenshots included), with one change: the **AWS account id** is replaced by `<account-id>`.
+
+> **The screenshots in it are historical.** They are embedded in the committed HTML as base64 and keep working, but the
+> scripts that produced them (Langfuse pages, GitHub Actions runs, promptfoo reports) are gone: they drove a browser over
+> pages whose run ids and layout have moved on, they wrote into the git-ignored `site/img/`, and nothing in the application
+> depended on them. A rebuild needs those PNGs back in `site/img/` or it will report the missing file. The reports that the
+> pipeline produces by itself — the guardrails report, the security benchmark and the nightly red team report — use no
+> screenshots at all and are unaffected. Passwords, keys and tokens are never in it: the build refuses to write the page if any value from the git-ignored env files (`.env`, `.local/e2e-user.env`) appears in it.
 
 ## Regenerating
 

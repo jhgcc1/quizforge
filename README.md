@@ -47,6 +47,24 @@ Real model: `LLM_MODE=minimax MINIMAX_API_KEY=… docker compose --profile app u
 | `scripts/web.sh` | the front end (Next.js BFF + UI) lives in its own repository, [`jhgcc1/quizforge-web`](https://github.com/jhgcc1/quizforge-web). The script checks out its **main** into `web/` (git-ignored, not part of the pnpm workspace); `WEB_REF=<sha>` takes a different commit when you need to reproduce a past state. There is no pinned commit to keep in sync: **each side is tested against the main of the other**, which is the pair that runs in production |
 | Infrastructure | not in this repository: Terraform, the IAM/OIDC bootstrap, GitHub rulesets, the operations scripts (pause, resume, audit, user creation) and the deploy are in [`jhgcc1/quizforge-infra`](https://github.com/jhgcc1/quizforge-infra) |
 
+### Tools nothing calls for you
+
+CI and the Dockerfiles name the scripts they need (`scripts/promptfoo.sh`, `scripts/check-migrations.mjs`,
+`scripts/redteam-nightly-aws.sh`). These are the ones **you** run by hand, listed here because a tool nobody mentions
+looks like dead code — which is exactly how this list came to be written. Each one explains itself in its header.
+
+| Tool | What it is for |
+|---|---|
+| `scripts/audit-guard.sh` | read-only audit of the guard **in production**: task definitions, detector log lines, the CloudWatch metrics and the alarms. Only `describe`/`list`/`get` calls, nothing is created or changed. Exit 1 on any FAIL |
+| `scripts/local-gates.sh` | runs the security and consistency gates of the CI on this machine → `.local/gates.log` |
+| `scripts/rebuild-local.sh` | rebuilds the three images and restarts the containerised stack → `.local/rebuild.log` |
+| `scripts/rescan.sh` | rebuilds the images and re-runs the Trivy scan over them → `.local/rescan.log` |
+| `scripts/smoke-api.mjs` | end-to-end smoke test of the public REST API; works against the local containers and the deployed stack alike |
+| `scripts/local-cognito.sh` | swaps the local stack to the **real** Cognito login (e-mail, Google, Facebook) and back |
+| `scripts/run-eval-live.sh` | the golden set against the real model, with the output kept in `.local/eval-live.log` |
+| `scripts/measure-facts.sh` | measures what only a run can give (test counts, coverage) into `site/measured.json`, which the reports read |
+| `e2e/aws.spec.ts` | drives the **deployed** stack in a browser: `playwright test --config e2e/playwright.aws.config.ts`. It is not part of any CI here (the browser test of the product belongs to the front end's CI) |
+
 ## REST API
 
 OpenAPI at `/docs` (`/openapi.json`). Every state-changing call is **idempotent**:
