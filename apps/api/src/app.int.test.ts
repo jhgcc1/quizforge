@@ -460,6 +460,25 @@ describe("failure paths", () => {
     await ok.close();
   });
 
+  it("the rate limit answers 429 in the shared error shape, saying when to retry", async () => {
+    // The limit applies per user (keyGenerator), so two requests from the SAME token are what trips it.
+    // This is the one reply the API produces without passing through `fail`: @fastify/rate-limit builds it,
+    // and it has to look exactly like every other error or a client branching on `error.code` breaks on it.
+    const limited = await buildApp({
+      config: loadConfig({ NODE_ENV: "test", DATABASE_URL: dbUrl.toString(), AUTH_MODE: "local", LOCAL_JWT_SECRET: SECRET, QUEUE_MODE: "memory", LOG_LEVEL: "fatal", RATE_LIMIT_PER_MINUTE: "1" }),
+      db: ctx.db, queue, verifier: localVerifier(SECRET),
+    });
+    const headers = { authorization: `Bearer ${await token("u-429")}` };
+    expect((await limited.inject({ method: "GET", url: "/v1/catalog", headers })).statusCode).toBe(200);
+    const res = await limited.inject({ method: "GET", url: "/v1/catalog", headers });
+    expect(res.statusCode).toBe(429);
+    shape(ErrorBodySchema, res.json());
+    expect(res.json().error.code).toBe("rate_limited");
+    expect(res.json().error.message).toMatch(/^Too many requests, retry in \d+s$/);
+    expect(res.json().error.requestId).toBeTruthy();
+    await limited.close();
+  });
+
   it("an unexpected exception becomes a generic 500 with the shared error shape and no internal detail", async () => {
     const broken = await buildApp({ config: cfgFor(), db: {} as never, queue, verifier: localVerifier(SECRET) });
     const res = await broken.inject({ method: "GET", url: "/v1/quizzes", headers: { authorization: `Bearer ${await token("u-500")}` } });
