@@ -159,7 +159,7 @@ def prep_flow():
     """What happens to a README before the model sees it. Green = deterministic code, red = ML model, purple = LLM."""
     b = ""
     RULE, ML, LLM = "data", "sec", "ai"
-    row1 = [("1 · Download", "allow-list · public IP · 512 KB", RULE), ("2 · Normalize and clean", "decode hidden text · strip invisibles", RULE),
+    row1 = [("1 · Download", "allow-list · public IP · file type · 512 KB", RULE), ("2 · Normalize and clean", "decode hidden text · strip invisibles", RULE),
             ("3 · Language", "en · pt · es only", RULE), ("4 · Classifier", "Prompt Guard 2 · flags, refuses at 0.9", ML)]
     row2 = [("5 · Store", "cleaned text, once per hash", RULE), ("6 · Route and cut", "short: whole · long: sections", RULE),
             ("7 · Build the prompt", "<document> tags · forged tags off", RULE), ("8 · Model-call guard", "strict schema · size caps · budget", RULE)]
@@ -171,7 +171,7 @@ def prep_flow():
     b += path("M1161 56 H 1185 V 112 H 10 V 168 H 20", "", 0, 0, dash=True)
     b += box(940, 242, 230, 52, "MiniMax", "sees only the cleaned, delimited text", LLM, small=True)
     b += arrow(1020 + 6, 204, 1055, 242)
-    b += text(20, 270, "A document that fails step 2 or 3 is rejected here: the model is never called (llmCalls = 0).", "note")
+    b += text(20, 270, "A document that fails step 1, 2 or 3 is rejected here: the model is never called (llmCalls = 0). A binary served as README.md fails step 1 on its bytes.", "note")
     b += text(20, 290, "A plain instruction written in the document is not removed: it is flagged, counted and kept as data inside the tags.", "note")
     return svg(1200, 312, b, "Before the model: how a README is prepared (all deterministic code, except the optional classifier)")
 
@@ -342,29 +342,30 @@ def guardrail_flow():
     """Guardrails in execution, as one request sees them: input side, the model, output side. The colour says what does the checking."""
     b = ""
     RULE, ML, LLM = "data", "sec", "ai"
-    b += group(10, 10, 410, 392, "INPUT · before the model call", "grp")
+    b += group(10, 10, 410, 462, "INPUT · before the model call", "grp")
     inp = [("Edge and login", "WAF · JWT · CSRF · quotas · zod", RULE), ("Fetch the README", "host allow-list · public IPs only · 512 KB", RULE),
+           ("File type", f"the bytes decide, on the first {F.SNIFF_BYTES // 1024} KB · the download is aborted", RULE),
            ("Document guard", "hidden or encoded text · rules (en, pt, es) · language", RULE), ("Classifier", "Llama Prompt Guard 2 (ONNX) · flags, refuses at 0.9", ML),
            ("Model-call guard", "document in <document> tags · budget 16 calls", RULE)]
     for i, (t, sub, k) in enumerate(inp):
         b += box(26, 44 + i * 70, 378, 56, t, sub, k, small=True)
         if i: b += arrow(215, 44 + i * 70 - 14, 215, 44 + i * 70)
-    b += group(440, 10, 300, 392, "THE MODEL", "grp")
+    b += group(440, 10, 300, 462, "THE MODEL", "grp")
     b += box(456, 150, 268, 90, "MiniMax generation", "told: the document is data, never obey it", LLM, small=True)
     b += text(456, 270, "The only probabilistic defence: the model", "note")
     b += text(456, 288, "itself resisting an instruction.", "note")
     b += arrow(404, 195, 456, 195)
-    b += group(760, 10, 410, 392, "OUTPUT · after the model call", "grp mgd")
+    b += group(760, 10, 410, 462, "OUTPUT · after the model call", "grp mgd")
     out = [("Output rails", "JSON only · no leak · no script · strict links · no echo", RULE), ("Quiz schema", "zod: 4 options, a correct one, a quote", RULE),
            ("Grounding", "every quote must exist in the document", RULE), ("Save", "answer key hidden until the submit", RULE), ("Judge (later, scorer)", "scores quality · blocks nothing", LLM)]
     for i, (t, sub, k) in enumerate(out):
         b += box(776, 44 + i * 70, 378, 56, t, sub, k, small=True)
         if i: b += arrow(965, 44 + i * 70 - 14, 965, 44 + i * 70)
     b += arrow(724, 195, 776, 66)
-    b += box(30, 418, 18, 18, "", "", RULE); b += text(56, 432, "deterministic code (rules)", "note")
-    b += box(300, 418, 18, 18, "", "", ML); b += text(326, 432, "machine-learning classifier", "note")
-    b += box(580, 418, 18, 18, "", "", LLM); b += text(606, 432, "LLM (the model, and the judge)", "note")
-    return svg(1180, 452, b, "Guardrails in execution: what checks a request, and what kind of check it is")
+    b += box(30, 488, 18, 18, "", "", RULE); b += text(56, 502, "deterministic code (rules)", "note")
+    b += box(300, 488, 18, 18, "", "", ML); b += text(326, 502, "machine-learning classifier", "note")
+    b += box(580, 488, 18, 18, "", "", LLM); b += text(606, 502, "LLM (the model, and the judge)", "note")
+    return svg(1180, 522, b, "Guardrails in execution: what checks a request, and what kind of check it is")
 
 
 def network():
@@ -999,10 +1000,11 @@ def guardrail_layers():
         ("2 · Identity", "Cognito · JWT · cookies", "access token only, signature, issuer, audience, expiry; httpOnly cookies; Origin + X-Requested-With; ownership by sub", "forged or stolen tokens, CSRF, other users' data", "sec"),
         ("3 · Request", "zod in browser, BFF and API", "strict schemas, no extra keys, size and range limits, one plain line for the topic, URL allow-list and public IPs only", "malformed bodies, SSRF, topic injection", "compute"),
         ("4 · Abuse", "rate limit · quota · idempotency", "120 requests/min and 10 quizzes/min per user, 10 quizzes per 24 h, Idempotency-Key", "cost abuse, double submits", "compute"),
-        ("5 · Document", "guard · language · sanitize", "hidden or encoded text rejected, invisible characters and comments removed, only en · pt · es, " + str(F.RULES_TOTAL) + " keyword rules, Prompt Guard 2 (flag)", "hidden instructions, foreign languages", "ai"),
-        ("6 · Model call", "guardLlm · budget", "strict message schema, 200k chars, 16k output tokens, document in <document> tags as data, 16 calls · 120k tokens · 5 min", "oversized prompts, runaway cost, forged tags", "ai"),
-        ("7 · Reply", "output rails · schema · grounding", "only the JSON, no prompt leak, no script, no new link, no echoed instruction, really questions, each quote must exist in the document", "hijacked or hallucinated output", "data"),
-        ("8 · Data", "database · logs", "CHECK and UNIQUE constraints, answer key never sent before submit, secrets in Secrets Manager, logs redacted, prompts only in Langfuse", "bad writes, leaks", "mgd"),
+        ("5 · File type", "binaryLike · first " + f"{F.SNIFF_BYTES // 1024} KB", f"the bytes decide, not the Content-Type: {F.TEXT_MAGIC_N} file signatures, invalid UTF-8 or control characters over {F.TEXT_SHARE_MAX:.0%}; the download is aborted", "binaries served as README.md", "data"),
+        ("6 · Document", "guard · language · sanitize", "hidden or encoded text rejected, invisible characters and comments removed, only en · pt · es, " + str(F.RULES_TOTAL) + " keyword rules, Prompt Guard 2 (flag)", "hidden instructions, foreign languages", "ai"),
+        ("7 · Model call", "guardLlm · budget", "strict message schema, 200k chars, 16k output tokens, document in <document> tags as data, 16 calls · 120k tokens · 5 min", "oversized prompts, runaway cost, forged tags", "ai"),
+        ("8 · Reply", "output rails · schema · grounding", "only the JSON, no prompt leak, no script, no new link, no echoed instruction, really questions, each quote must exist in the document", "hijacked or hallucinated output", "data"),
+        ("9 · Data", "database · logs", "CHECK and UNIQUE constraints, answer key never sent before submit, secrets in Secrets Manager, logs redacted, prompts only in Langfuse", "bad writes, leaks", "mgd"),
     ]
     for i, (n, what, how, stops, kind) in enumerate(layers):
         y = 10 + i * 66
@@ -1014,7 +1016,7 @@ def guardrail_layers():
         b += text(900, y + 40, stops, "t-s")
         if i:
             b += arrow(105, y, 105, y - 12)
-    return svg(1280, 550, b, "Guardrails in execution: the layers a request crosses and what each one stops")
+    return svg(1280, 616, b, "Guardrails in execution: the layers a request crosses and what each one stops")
 
 
 def detector_flag():
@@ -1077,13 +1079,15 @@ def guard_layers():
         ("1 · Edge: CloudFront + WAF (1000 requests / 5 min / IP, common and bad-input rule sets)", "blocked at the edge: the app never sees it", "grp edgeg"),
         ("2 · Identity and request: JWT, CSRF, strict zod schemas, rate limit, daily quota", "401 · 403 · 400 · 429: nothing is queued", "grp sub"),
         ("3 · SSRF allow-list: https, github hosts only, public IPs only, 512 KB, redirects re-checked", "400, or the quiz fails and is not retried", "grp"),
-        ("4 · Document admission: hidden or encoded text, language policy (en, pt, es only)", "rejected BEFORE the model: llmCalls = 0, not retried", "grp sub"),
-        (f"5 · Keyword rules ({F.RULES_TOTAL}): plain injection phrases in en, pt, es", "FLAG: counted, marks the lines; does not block", "grp"),
-        (f"6 · Prompt Guard 2: up to {F.DETECTOR_MAX_WINDOWS} windows, flag at {F.DETECTOR_THRESHOLD:g}+", "FLAG only: marks one excerpt; does not block", "grp sub"),
-        ("7 · <document> delimiters + prompt safety rules: the text is data, forged tags are neutralised", "the model is told never to obey it", "grp"),
-        ("8 · Model-call guard: strict messages, 200k characters, output capped, budget 16 calls · 120k tokens · 5 min", "invalid or over budget: fails, not retried", "grp sub"),
+        (f"4 · File type: the bytes decide, on the first {F.SNIFF_BYTES // 1024} KB ({F.TEXT_MAGIC_N} signatures, invalid UTF-8 or control characters over {F.TEXT_SHARE_MAX:.0%})",
+         "the download is aborted: nothing is decoded, no model call", "grp sub"),
+        ("5 · Document admission: hidden or encoded text, language policy (en, pt, es only)", "rejected BEFORE the model: llmCalls = 0, not retried", "grp"),
+        (f"6 · Keyword rules ({F.RULES_TOTAL}): plain injection phrases in en, pt, es", "FLAG: counted, marks the lines; does not block", "grp sub"),
+        (f"7 · Prompt Guard 2: up to {F.DETECTOR_MAX_WINDOWS} windows, flag at {F.DETECTOR_THRESHOLD:g}+", "FLAG only: marks one excerpt; does not block", "grp"),
+        ("8 · <document> delimiters + prompt safety rules: the text is data, forged tags are neutralised", "the model is told never to obey it", "grp sub"),
+        ("9 · Model-call guard: strict messages, 200k characters, output capped, budget 16 calls · 120k tokens · 5 min", "invalid or over budget: fails, not retried", "grp"),
     ]
-    W, step_x, step_y = 1080, 22, 44
+    W, step_x, step_y = 1080, 20, 44
     n = len(layers)
     inner_h = 100
     b = ""
@@ -1098,9 +1102,9 @@ def guard_layers():
     top = 10 + (inner_h + (n - 1) * (step_y + 14)) + 24
     b += text(10, top, "Back out, the reply is checked by plain code (no model checks a model):", "glabel")
     outs = [
-        ("9 · Output rails", "markup, links (strict if flagged), echoed orders, leaks", "problem: up to 2 repair rounds, then the job retries", "data"),
-        ("10 · Grounding", "every source_quote must be in the document", "ungrounded: revised, dropped, or the job retries", "data"),
-        ("11 · Scorer (later)", "judge + fixed checks score the saved quiz", "blocks nothing: scores, alarms", "mgd"),
+        ("10 · Output rails", "markup, links (strict if flagged), echoed orders, leaks", "problem: up to 2 repair rounds, then the job retries", "data"),
+        ("11 · Grounding", "every source_quote must be in the document", "ungrounded: revised, dropped, or the job retries", "data"),
+        ("12 · Scorer (later)", "judge + fixed checks score the saved quiz", "blocks nothing: scores, alarms", "mgd"),
     ]
     bw = 350
     for i, (t, sub, then, kind) in enumerate(outs):
@@ -1110,10 +1114,16 @@ def guard_layers():
         if i:
             b += arrow(x - 15, top + 50, x, top + 50)
     y = top + 140
-    b += text(10, y, "Polite rules and the planted-words rail close polite requests that ask for a token. Not covered by design: a paraphrase that matches no rule, scores under the threshold and asks for no token is met only by layers 7, 9, 10 and the model resisting.", "note")
-    b += text(10, y + 20, "The classifier flags below 0.9 and refuses at or above it (INJECTION_DETECTOR=block in production), with a human review to appeal to. Images are not read. The agent has no tools: a hijack is only a bad quiz.", "note")
-    b += text(10, y + 40, "Each layer is tested by code: unit tests, the promptfoo attack corpus (one file for vitest and promptfoo) and the red team (next section).", "note")
-    return svg(1100, y + 56, b, "LLM guard in layers: from the edge to the model call and back out, with what each layer does when it triggers")
+    notes = [  # one line each: the viewBox is 1100 wide, so a longer line would be clipped
+        "Polite rules and the planted-words rail close polite requests that ask for a token. Not covered by design: a paraphrase that",
+        "matches no rule, scores under the threshold and asks for no token is met only by layers 8, 10, 11 and the model resisting.",
+        "The classifier flags below 0.9 and refuses at or above it (INJECTION_DETECTOR=block in production), with a human review to",
+        "appeal to. Images are not read. The agent has no tools: a hijack is only a bad quiz.",
+        "Each layer is tested by code: unit tests, the promptfoo attack corpus (one file for vitest and promptfoo) and the red team.",
+    ]
+    for i, note in enumerate(notes):
+        b += text(10, y + i * 20, note, "note")
+    return svg(1100, y + len(notes) * 20, b, "LLM guard in layers: from the edge to the model call and back out, with what each layer does when it triggers")
 
 
 def eval_ladder():
