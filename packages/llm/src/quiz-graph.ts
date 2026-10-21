@@ -1,3 +1,23 @@
+/**
+ * The agent: a LangGraph state machine that turns one admitted document into a validated quiz.
+ *
+ *   route ──▶ plan ──▶ write ──┐
+ *         └─▶ generate ────────┴──▶ check ──┬──▶ critique ──▶ revise ──▶ check
+ *                                           └──▶ finalize
+ *
+ * `route` picks the shape of the work from the document: short enough and it goes to `generate`, one call for
+ * the whole thing; long and structured and it goes to `plan` + `write`, which reads a few sections instead of
+ * truncating (see router.ts). `check` is deterministic -- schema, grounding, lint -- and decides what happens
+ * next; nothing reaches `finalize` that has not passed it.
+ *
+ * Two things are deliberate. The repair loop is bounded: `critique` and `revise` run a fixed number of times
+ * and then the quiz either passes `check` or the run fails, because a model asked to fix its own output
+ * forever is a way to spend money without converging. And every step draws on one `JobBudget` (calls, tokens,
+ * wall clock), so a pathological document cannot cost more than a known maximum no matter which path it takes.
+ *
+ * State is checkpointed per quiz when a checkpointer is given, so a worker that dies mid-generation resumes at
+ * the last node instead of paying for the whole quiz again.
+ */
 import { Annotation, END, START, StateGraph, type BaseCheckpointSaver } from "@langchain/langgraph";
 import { z } from "zod";
 import {
@@ -390,6 +410,13 @@ export interface QuizGraphResult {
   resumed: boolean;
 }
 
+/**
+ * Runs the graph once for one quiz and returns the questions with what they cost.
+ *
+ * `threadId` is the quiz id in production: it is what makes a resumed run pick up its own checkpoints rather
+ * than somebody else's. `callbacks` and `metadata` carry the Langfuse tracing, so every node and every model
+ * call of a generation shows up under one trace.
+ */
 export async function runQuizGraph(
   deps: QuizGraphDeps,
   input: QuizGraphInput,
