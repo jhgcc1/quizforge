@@ -1,3 +1,11 @@
+/**
+ * The one entry point the worker calls to make a quiz: guard the input, run the graph, guard the output, score
+ * what came back, and report what it cost.
+ *
+ * It exists so that "generate a quiz" means the same thing everywhere. The worker, the evaluation harness and
+ * the promptfoo suites all come through here, which is why a guard added to this file is a guard the red team
+ * actually has to get past -- a path that assembled the steps itself would be testing a pipeline nobody runs.
+ */
 import type { GeneratedQuestion } from "@quizforge/core";
 import { JobBudget, type BudgetState, type Usage } from "./budget.js";
 import type { JudgeResult } from "./judge.js";
@@ -65,6 +73,13 @@ export interface GeneratedQuizResult {
   judgeModel: string;
 }
 
+/**
+ * Generates one quiz, or throws the error that says why not (`UnsafeDocumentError`, `QualityGateError`,
+ * `BudgetExceededError`, ... -- see errors.ts; the worker maps each to an outcome and a user-facing message).
+ *
+ * The order is the contract: the document is admitted before the model is called, and the questions are
+ * screened by the output rails before they can be returned. Nothing here trusts the model's reply.
+ */
 export async function generateQuiz(params: GenerateQuizParams): Promise<GeneratedQuizResult> {
   // The two doors to the model (see llm-input.ts): a validated, sanitized input, and clients that re-validate every call.
   const p: GenerateQuizParams = { ...params, llm: guardLlm(params.llm), ...(params.judgeLlm ? { judgeLlm: guardLlm(params.judgeLlm) } : {}), input: parseQuizInput(params.input) };

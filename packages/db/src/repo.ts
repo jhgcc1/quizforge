@@ -1,3 +1,21 @@
+/**
+ * Every query the application makes. Nothing else in the repository talks to Postgres: the API and the worker
+ * call these functions, and each one takes `db` so a caller can hand it a transaction.
+ *
+ * Two rules run through the whole file and explain most of its shape.
+ *
+ * OWNERSHIP IS PART OF THE QUERY. A read is never "fetch by id, then check who owns it": the owner is in the
+ * WHERE clause (`getOwnedQuiz`, `getOwnedAttempt`, `listAttemptsForQuiz`). A missing row and somebody else's
+ * row come back the same way -- undefined -- so a route cannot accidentally leak the difference, and a
+ * forgotten check cannot turn into a read of another user's quiz.
+ *
+ * WRITES ARE IDEMPOTENT, NOT GUARDED. Creating is `insert ... on conflict do nothing` plus a re-read, never
+ * "check then insert": two concurrent requests with the same idempotency key both run, one wins the unique
+ * index, and both return the same row with `created` telling them apart. Claiming work is `select ... for
+ * update` inside a transaction, so two workers given the same message cannot both generate the quiz. That is
+ * what makes an SQS message safe to redeliver, and it is why `isUniqueViolation` is a normal path here rather
+ * than an error.
+ */
 import { and, asc, count, desc, eq, gte, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { computeFinalScore, scoreQuestion, SCORING_VERSION } from "@quizforge/core";
 import type { Db } from "./index.js";
@@ -47,6 +65,7 @@ export async function createQuizIdempotent(db: Db, input: CreateQuizInput): Prom
   return { quiz: existing!, created: false };
 }
 
+/** How many quizzes this user created since `since`. The daily quota is counted, not stored, so it needs no reset job. */
 export async function countRecentQuizzes(db: Db, ownerSub: string, since: Date): Promise<number> {
   const [row] = await db
     .select({ n: count() })
@@ -55,6 +74,7 @@ export async function countRecentQuizzes(db: Db, ownerSub: string, since: Date):
   return row?.n ?? 0;
 }
 
+/** The user's quizzes, newest first. Capped at `limit`: the list endpoint is not paginated, and a user with thousands should still get a reply. */
 export async function listQuizzes(db: Db, ownerSub: string, limit = 50): Promise<QuizRow[]> {
   return db.select().from(t.quizzes).where(eq(t.quizzes.ownerSub, ownerSub)).orderBy(desc(t.quizzes.createdAt)).limit(limit);
 }
@@ -93,6 +113,7 @@ export async function listAttemptsByQuiz(db: Db, quizIds: string[], userSub: str
   return out;
 }
 
+/** The quiz, only if it belongs to this user. Somebody else's id and a non-existent id both return undefined, which the API answers as 404. */
 export async function getOwnedQuiz(db: Db, quizId: string, ownerSub: string): Promise<QuizRow | undefined> {
   const [row] = await db.select().from(t.quizzes).where(and(eq(t.quizzes.id, quizId), eq(t.quizzes.ownerSub, ownerSub)));
   return row;
@@ -161,6 +182,7 @@ export async function getOrCreateAttempt(db: Db, input: CreateAttemptInput): Pro
   }
 }
 
+/** The attempt, only if it belongs to this user. Same rule as `getOwnedQuiz`: not yours is indistinguishable from not there. */
 export async function getOwnedAttempt(db: Db, attemptId: string, userSub: string): Promise<AttemptRow | undefined> {
   const [row] = await db.select().from(t.attempts).where(and(eq(t.attempts.id, attemptId), eq(t.attempts.userSub, userSub)));
   return row;
@@ -324,6 +346,13 @@ export async function submitAttempt(db: Db, p: { attemptId: string; userSub: str
 
 /* ------------------------------ generation (worker side) ------------------------------ */
 
+/**
+ * Takes the job for THIS worker, or says why there is nothing to do.
+ *
+ * `select ... for update` inside a transaction is the whole point: SQS can deliver the same message twice, and
+ * two workers must not both generate (and both pay for) one quiz. The loser of the row lock sees the status the
+ * winner already wrote and gets a `skip` instead.
+ */
 export async function claimQuiz(
   db: Db,
   quizId: string,
@@ -362,10 +391,12 @@ export async function setQuizPhase(db: Db, quizId: string, p: QuizPhase): Promis
 
 const NO_PHASE = { phase: null, phaseStep: null, phaseTotal: null, phaseDetail: null, phaseUpdatedAt: null } as const;
 
+/** Stores how much of the budget the job has spent, so a worker that dies mid-generation resumes with the spend it already made rather than from zero. */
 export async function saveJobBudget(db: Db, jobId: string, budgetState: unknown): Promise<void> {
   await db.update(t.generationJobs).set({ budgetState }).where(eq(t.generationJobs.id, jobId));
 }
 
+/** Stores the document text once per sha256 and returns its id, so the same README fetched by ten users is kept once and a re-run needs no new download. */
 export async function upsertSource(
   db: Db,
   s: { url: string; rawUrl: string; sha256: string; text: string },
@@ -433,6 +464,13 @@ export async function completeQuiz(db: Db, p: CompleteQuizInput): Promise<void> 
   });
 }
 
+/**
+ * Marks the quiz failed with a message the user will see, and the job with it when there is one.
+ *
+ * The error is truncated to 1000 characters because it comes from anywhere -- a model, a fetch, a parser -- and an
+ * unbounded string from an untrusted path must not become an unbounded column. The progress columns are cleared
+ * (`NO_PHASE`) so the UI stops showing a phase for a quiz that is no longer being generated.
+ */
 export async function failQuiz(db: Db, p: { quizId: string; jobId?: string | undefined; error: string }): Promise<void> {
   await db.transaction(async (tx) => {
     await tx.update(t.quizzes).set({ status: "failed", error: p.error.slice(0, 1000), updatedAt: new Date(), ...NO_PHASE }).where(eq(t.quizzes.id, p.quizId));
@@ -450,11 +488,13 @@ export async function findStaleQuizzes(db: Db, olderThan: Date): Promise<Pick<Qu
     .where(and(inArray(t.quizzes.status, ["queued", "generating"]), sql`${t.quizzes.updatedAt} < ${olderThan}`));
 }
 
+/** The quiz a previous request with this `Idempotency-Key` created, if any. The API compares its request hash before replaying it. */
 export async function findQuizByKey(db: Db, ownerSub: string, idempotencyKey: string): Promise<QuizRow | undefined> {
   const [row] = await db.select().from(t.quizzes).where(and(eq(t.quizzes.ownerSub, ownerSub), eq(t.quizzes.idempotencyKey, idempotencyKey)));
   return row;
 }
 
+/** The attempt a previous request with this `Idempotency-Key` created, if any. Same replay check as `findQuizByKey`. */
 export async function findAttemptByKey(db: Db, userSub: string, idempotencyKey: string): Promise<AttemptRow | undefined> {
   const [row] = await db.select().from(t.attempts).where(and(eq(t.attempts.userSub, userSub), eq(t.attempts.idempotencyKey, idempotencyKey)));
   return row;

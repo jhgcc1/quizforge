@@ -1,3 +1,11 @@
+/**
+ * Everything `@quizforge/llm` offers: the model client, the generation graph, the judge, the input and output
+ * guards, language detection, tracing, and the fake client the offline tests run on.
+ *
+ * It is a flat barrel on purpose -- callers import from "@quizforge/llm", not from a deep path -- which does
+ * mean importing anything here loads all of it. That is why the worker's roles are split by entrypoint
+ * instead: the module graph is shared, the process is not.
+ */
 export * from "./json.js";
 export * from "./source.js";
 export * from "./router.js";
