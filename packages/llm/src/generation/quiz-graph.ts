@@ -28,9 +28,9 @@ import {
   checkGrounding,
   type GeneratedQuestion,
 } from "@quizforge/core";
-import { JobBudget, emptyUsage, type BudgetState, type Usage } from "./budget.js";
-import { NonRetryableError, StructuredOutputError } from "./errors.js";
-import type { LlmClient } from "./llm.js";
+import { JobBudget, emptyUsage, type BudgetState, type Usage } from "../model/budget.js";
+import { NonRetryableError, StructuredOutputError } from "../model/errors.js";
+import type { LlmClient } from "../model/llm.js";
 import {
   CRITIQUE_SYSTEM,
   PLAN_SYSTEM,
@@ -43,14 +43,14 @@ import {
   singleShotUser,
   writeUser,
   type PromptVariant,
-} from "./prompts.js";
+} from "../prompts/prompts.js";
 import { progressFor, type GenerationPhase, type ProgressListener } from "./progress.js";
 import { chooseStrategy, type Strategy } from "./router.js";
-import { lintQuestion } from "./lint.js";
+import { lintQuestion } from "../quality/lint.js";
 import { pickSections, selectQuestions, sortByDifficulty } from "./select.js";
-import { splitSections } from "./source.js";
-import { quizReplyCheck } from "./output-guard.js";
-import { generateStructured } from "./structured.js";
+import { splitSections } from "../source.js";
+import { quizReplyCheck } from "../guard/output-guard.js";
+import { generateStructured } from "../model/structured.js";
 
 export type StrategyRequest = "auto" | Strategy;
 

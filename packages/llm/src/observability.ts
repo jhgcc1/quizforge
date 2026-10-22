@@ -2,7 +2,7 @@ import { LangfuseClient } from "@langfuse/client";
 import { CallbackHandler } from "@langfuse/langchain";
 import { LangfuseSpanProcessor } from "@langfuse/otel";
 import { propagateAttributes, startActiveObservation } from "@langfuse/tracing";
-import type { LlmClient } from "./llm.js";
+import type { LlmClient } from "./model/llm.js";
 import { NodeSDK } from "@opentelemetry/sdk-node";
 
 /**

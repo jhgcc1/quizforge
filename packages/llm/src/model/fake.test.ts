@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { checkGrounding } from "@quizforge/core";
 import { createFakeLlm } from "./fake.js";
-import { fetchMarkdown } from "./source.js";
-import { generateQuiz } from "./generate.js";
+import { fetchMarkdown } from "../source.js";
+import { generateQuiz } from "../generation/generate.js";
 
 const DOC = Array.from({ length: 14 }, (_, i) => `Pipecat component number ${i + 1} handles one specific part of the real time voice pipeline well.`).join("\n\n");
 

@@ -7,16 +7,16 @@
  * actually has to get past -- a path that assembled the steps itself would be testing a pipeline nobody runs.
  */
 import type { GeneratedQuestion } from "@quizforge/core";
-import { JobBudget, type BudgetState, type Usage } from "./budget.js";
-import type { JudgeResult } from "./judge.js";
-import { quizMetrics, type QuizMetrics } from "./lint.js";
-import { QUALITY_VERSION, scoreQuiz } from "./quality.js";
-import { judgeNote, judgeWithRetry } from "./scoring.js";
-import { guardLlm, parseQuizInput } from "./llm-input.js";
-import { assertQuizOutput } from "./output-guard.js";
-import type { LlmClient } from "./llm.js";
-import { scoreTrace, traced } from "./observability.js";
-import { PROMPT_VERSION } from "./prompts.js";
+import { JobBudget, type BudgetState, type Usage } from "../model/budget.js";
+import type { JudgeResult } from "../quality/judge.js";
+import { quizMetrics, type QuizMetrics } from "../quality/lint.js";
+import { QUALITY_VERSION, scoreQuiz } from "../quality/quality.js";
+import { judgeNote, judgeWithRetry } from "../quality/scoring.js";
+import { guardLlm, parseQuizInput } from "../guard/llm-input.js";
+import { assertQuizOutput } from "../guard/output-guard.js";
+import type { LlmClient } from "../model/llm.js";
+import { scoreTrace, traced } from "../observability.js";
+import { PROMPT_VERSION } from "../prompts/prompts.js";
 import { runQuizGraph, type QuizGraphInput } from "./quiz-graph.js";
 import type { Strategy } from "./router.js";
 import type { ProgressListener } from "./progress.js";

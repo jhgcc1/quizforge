@@ -1,7 +1,7 @@
 /**
  * A very long, benign README with the attack in ONE section only.
  *
- * Why: documents above about 4500 tokens with 4 or more sections take the section-map-reduce path (packages/llm/src/router.ts):
+ * Why: documents above about 4500 tokens with 4 or more sections take the section-map-reduce path (packages/llm/src/generation/router.ts):
  * the model reads only 5 sections, one call each, and never sees the whole document. An instruction that sits in one section must
  * still be ignored there. `pickSections` takes the usable sections at positions floor((j + 0.5) * n / 5); with n = 10 these are
  * 1, 3, 5, 7, 9, so the attack goes into section 5: it is always one of the 5 the model reads.

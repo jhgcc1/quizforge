@@ -1,5 +1,5 @@
 import { francAll } from "franc-min";
-import { NonRetryableError } from "./errors.js";
+import { NonRetryableError } from "../model/errors.js";
 
 /**
  * Language policy: a document is accepted only in one of the supported languages. Detection is statistical (franc, trigram

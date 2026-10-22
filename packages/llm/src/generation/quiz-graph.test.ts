@@ -1,8 +1,8 @@
 import { MemorySaver } from "@langchain/langgraph";
 import { describe, expect, it } from "vitest";
-import { JobBudget } from "./budget.js";
-import { BudgetExceededError } from "./errors.js";
-import type { ChatMessage, CompleteOptions, LlmClient } from "./llm.js";
+import { JobBudget } from "../model/budget.js";
+import { BudgetExceededError } from "../model/errors.js";
+import type { ChatMessage, CompleteOptions, LlmClient } from "../model/llm.js";
 import type { GenerationProgress } from "./progress.js";
 import { QualityGateError, runQuizGraph, ungroundedMessage, type QuizGraphDeps, type QuizGraphInput } from "./quiz-graph.js";
 
@@ -320,7 +320,7 @@ describe("plan-then-write structure and prompt variants", () => {
   });
 
   it("promptVariant only appends guidance: baseline is the production prompt, the others extend it", async () => {
-    const { GENERATION_SYSTEM, generationSystem, PROMPT_VARIANTS } = await import("./prompts.js");
+    const { GENERATION_SYSTEM, generationSystem, PROMPT_VARIANTS } = await import("../prompts/prompts.js");
     expect(generationSystem()).toBe(GENERATION_SYSTEM);
     expect(generationSystem("baseline")).toBe(GENERATION_SYSTEM);
     for (const v of PROMPT_VARIANTS.filter((x) => x !== "baseline")) {

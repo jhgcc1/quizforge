@@ -1,11 +1,11 @@
 import { ATTACK_TECHNIQUES, BAD_TOPICS, DEFAULT_PAYLOAD, UNSUPPORTED_LANGUAGE_DOCS, benignDocument } from "@quizforge/core";
 import { describe, expect, it } from "vitest";
-import { InvalidLlmInputError, NotTextError, UnsafeDocumentError } from "./errors.js";
-import { createFakeLlm } from "./fake.js";
-import { generateQuiz } from "./generate.js";
-import { UnsupportedLanguageError } from "./language.js";
+import { InvalidLlmInputError, NotTextError, UnsafeDocumentError } from "../model/errors.js";
+import { createFakeLlm } from "../model/fake.js";
+import { generateQuiz } from "../generation/generate.js";
+import { UnsupportedLanguageError } from "../quality/language.js";
 import { DEFAULT_MAX_OUTPUT_TOKENS, admitDocument, assertLlmRequest, guardLlm, parseQuizInput } from "./llm-input.js";
-import type { ChatMessage, LlmClient } from "./llm.js";
+import type { ChatMessage, LlmClient } from "../model/llm.js";
 import { inspectText } from "@quizforge/core";
 
 /** A model client that records what it was asked: the proof of what reaches the provider. */

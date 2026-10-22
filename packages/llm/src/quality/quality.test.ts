@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { GeneratedQuestion } from "@quizforge/core";
 import { JudgeSchema, type JudgeResult } from "./judge.js";
-import { JobBudget } from "./budget.js";
-import { createFakeLlm } from "./fake.js";
-import { generateQuiz } from "./generate.js";
+import { JobBudget } from "../model/budget.js";
+import { createFakeLlm } from "../model/fake.js";
+import { generateQuiz } from "../generation/generate.js";
 import { QUALITY_GATES, QUALITY_VERSION, QUALITY_WEIGHTS, detectLanguage, scoreQuiz } from "./quality.js";
 
 const DOC = `# Zephyr Cache

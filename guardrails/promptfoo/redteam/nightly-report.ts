@@ -322,7 +322,7 @@ ${tableHtml("By threat group", s.byGroup)}
 ${tableHtml("By intent", s.byIntent)}
 <section><h2>How to promote a failing case</h2><div class="note">A case that failed should never come back unnoticed.<ol>
 <li>Open <code>new-failures.json</code> in the same folder (every failing case that is not already known, with its attack text).</li>
-<li>Fix the cause: the guard (<code>packages/core/src/injection-rules.ts</code>), the prompts or the output rails (<code>packages/llm/src/output-guard.ts</code>).</li>
+<li>Fix the cause: the guard (<code>packages/core/src/injection-rules.ts</code>), the prompts or the output rails (<code>packages/llm/src/guard/output-guard.ts</code>).</li>
 <li>Add the attack to the frozen sample (<code>guardrails/promptfoo/redteam/sample.yaml</code>, see <code>docs/redteam-nightly.md</code>) so the pull request job <code>redteam-sample</code> catches it from now on.</li>
 </ol></div></section>
 <footer>Rejected before the model = guard, language policy, detector or a refused topic. Valid quiz = it passed the output rails and the grounding check. All checks are plain code; no model grades another model.</footer>

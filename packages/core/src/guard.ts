@@ -340,7 +340,7 @@ const isOrder = (s: string): boolean => IMPERATIVE_RULES.some((r) => r.re.test(s
  * The parts of `text` that give an ORDER to the model (an imperative keyword rule matches; the rules that merely mention the
  * system prompt are left out). A short line is returned whole (an attacker can put the instruction in one sentence and the payload,
  * for example a URL, in the next one); in a long paragraph only the flagged sentences are. Used by the output rail to decide which
- * text of the document it may NOT trust as a source for the links of a quiz (see packages/llm/src/output-guard.ts).
+ * text of the document it may NOT trust as a source for the links of a quiz (see packages/llm/src/guard/output-guard.ts).
  */
 export function flaggedSegments(text: string): string[] {
   const out = new Set<string>();

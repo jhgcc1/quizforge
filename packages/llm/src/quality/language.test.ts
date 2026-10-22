@@ -4,7 +4,8 @@ import { SUPPORTED_LANGUAGE_DOCS, UNSUPPORTED_LANGUAGE_DOCS, benignDocument } fr
 import { describe, expect, it } from "vitest";
 import { UnsupportedLanguageError, assertAllowedLanguage, detectLanguage, parseAllowedLanguages, proseOf } from "./language.js";
 
-const FIXTURES = join(__dirname, "../../../evals/fixtures");
+// this file sits at packages/llm/src/quality/, so four levels up is the repository root
+const FIXTURES = join(__dirname, "../../../../evals/fixtures");
 
 describe("language policy: only English, Portuguese and Spanish", () => {
   for (const d of SUPPORTED_LANGUAGE_DOCS) {

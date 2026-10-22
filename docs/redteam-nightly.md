@@ -118,7 +118,7 @@ See the measured numbers in [docs/security/public-datasets-nightly.md](security/
 ## Promote a leaked case to the frozen sample
 
 1. Open `new-failures.json` of the run. Each entry has the attack text (`prompt`) and its `vars`.
-2. Fix the cause (guard rules in `packages/core/src/injection-rules.ts`, the prompts, or the output rails in `packages/llm/src/output-guard.ts`).
+2. Fix the cause (guard rules in `packages/core/src/injection-rules.ts`, the prompts, or the output rails in `packages/llm/src/guard/output-guard.ts`).
 3. Add the attack to the corpus so a pull request catches it from now on: either as a new test in `guardrails/promptfoo/redteam/sample.yaml` (copy an entry, set
    `vars.prompt`, `vars.canary`, `metadata`) or, for a text attack, in `packages/core/src/attacks.ts`. Keep the sample size in sync with `guardrails/promptfoo/README.md`.
 4. Known cases that are not fixed yet can go to `guardrails/promptfoo/redteam/known-failures.json` (`[{ "description": "...", "prompt": "..." }]`) so they are not reported as new.

@@ -3,7 +3,7 @@
  *
  *   input guard   keyword rules (flag, or block = rejected before the model), language policy, the semantic detector (flag, or block
  *                 in block mode), a refused topic
- *   output rails  the deterministic checks on the model's reply (packages/llm/src/output-guard.ts): a reply that breaks one goes back
+ *   output rails  the deterministic checks on the model's reply (packages/llm/src/guard/output-guard.ts): a reply that breaks one goes back
  *                 for a repair round; a reply still broken is rejected
  *   the model     answers a valid quiz and ignores the planted instruction (resisted on its own), or obeys it (leaked)
  *
@@ -40,7 +40,7 @@ export interface CaseLayers {
 
 // ------------------------------------------------------------------------------------------------------------------ rail problems
 
-/** The kind of a problem the output rails reported (the sentences of packages/llm/src/output-guard.ts, reduced to a stable name). */
+/** The kind of a problem the output rails reported (the sentences of packages/llm/src/guard/output-guard.ts, reduced to a stable name). */
 export function railProblemKind(problem: string): string {
   const p = problem.toLowerCase();
   if (p.includes("only an instruction of the document uses")) return "planted_word";
