@@ -5,10 +5,12 @@ export default defineConfig({
   test: {
     include: [
       "packages/*/src/**/*.test.ts",
-      "apps/*/src/**/*.test.ts",
-      "scripts/**/*.test.ts",
+      "api/src/**/*.test.ts",
+      "worker/src/**/*.test.ts",
+      "guardrails/*/src/**/*.test.ts",
+      "guardrails/promptfoo/**/*.test.{ts,mjs}",
+      "cicd/**/*.test.ts",
       "evals/src/**/*.test.ts",
-      "promptfoo/**/*.test.{ts,mjs}",
     ],
     exclude: ["**/node_modules/**"],
     environment: "node",
@@ -22,8 +24,8 @@ export default defineConfig({
       all: true,
       include: [
         "packages/*/src/**/*.ts",
-        "apps/api/src/**/*.ts",
-        "apps/worker/src/**/*.ts",
+        "api/src/**/*.ts",
+        "worker/src/**/*.ts",
         "evals/src/**/*.ts",
       ],
       exclude: [
@@ -31,20 +33,16 @@ export default defineConfig({
         "**/*.d.ts",
         "**/node_modules/**",
         // Process entry points: they only wire dependencies and start a long-running process.
-        "apps/api/src/server.ts",
-        "apps/worker/src/main.ts", // picks the role and hands over
-        "apps/worker/src/sweeper.ts", // runs roles/sweep/start.ts, whose runSweep() IS covered (sweep.test.ts)
+        "api/src/server.ts",
+        "worker/src/main.ts", // picks the role and hands over
+        "worker/src/sweeper.ts", // runs roles/sweep/start.ts, whose runSweep() IS covered (sweep.test.ts)
         // The same wiring, one file per role: what used to be the body of main.ts, which was already excluded here.
         // Only the wiring is exempt — every handler they build (processor, scorer, sweepOnce) is covered.
-        "apps/worker/src/shared/service.ts",
-        "apps/worker/src/roles/generate/start.ts",
-        "apps/worker/src/roles/score/start.ts",
+        "worker/src/shared/service.ts",
+        "worker/src/roles/generate/start.ts",
+        "worker/src/roles/score/start.ts",
         "packages/db/src/migrate.ts", // CLI entry; its behaviour is covered end to end by migrate.int.test.ts in a child process (not visible to V8 coverage)
-        // Scripts that run at import time and need a real model download, the network or real LLM calls.
-        "packages/detector/src/try.ts",
-        "packages/detector/src/corpus.ts",
-        "packages/detector/src/benchmark.ts",
-        "packages/llm/src/scripts/**",
+        // Scripts that run at import time and need the network or real LLM calls.
         "evals/src/run.ts",
         "evals/src/compare.ts",
         "evals/src/render-report.ts",
@@ -59,9 +57,9 @@ export default defineConfig({
         "packages/core/src/**": { statements: 100, lines: 100, functions: 100, branches: 90 },
         "packages/db/src/**": { statements: 100, lines: 100, functions: 85, branches: 94 },
         "packages/llm/src/**": { statements: 100, lines: 100, functions: 100, branches: 94 },
-        "packages/detector/src/**": { statements: 100, lines: 100, functions: 100, branches: 99 },
-        "apps/api/src/**": { statements: 100, lines: 100, functions: 95, branches: 97 },
-        "apps/worker/src/**": { statements: 98, lines: 98, functions: 100, branches: 94 },
+        "guardrails/detector/src/**": { statements: 100, lines: 100, functions: 100, branches: 99 },
+        "api/src/**": { statements: 100, lines: 100, functions: 95, branches: 97 },
+        "worker/src/**": { statements: 98, lines: 98, functions: 100, branches: 94 },
         "evals/src/**": { statements: 97, lines: 97, functions: 97, branches: 91 },
       },
     },

@@ -1,0 +1,11 @@
+# Red team NIGHTLY run (live model). The tests are written by `guardrails/run-suite.sh redteam-nightly` into guardrails/promptfoo/out/nightly/tests.yaml:
+# a fresh, larger set (REDTEAM_NUM_TESTS texts per intent, default 30) with the same deterministic assertions as the frozen sample.
+description: "QuizForge red team nightly (live model, fresh attacks)"
+prompts:
+  - "{{prompt}}"
+providers:
+  - id: file://../provider.ts
+    label: redteam-nightly-live
+    config:
+      mode: live
+tests: file://../out/nightly/tests.yaml

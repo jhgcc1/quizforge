@@ -1,6 +1,6 @@
 # Nightly red team: reading the report and acting on it
 
-The task, its schedule, the S3 layout, running it by hand, the cost and turning it on are AWS operations: see [docs/redteam-nightly.md](https://github.com/jhgcc1/quizforge-infra/blob/main/docs/redteam-nightly.md) in the infrastructure repository (`scripts/redteam-latest.sh` there prints a link to the newest report). The image and its entrypoint (`docker/redteam`, `scripts/redteam-nightly-aws.sh`) are built from this repository and pushed to ECR by the `publish` job.
+The task, its schedule, the S3 layout, running it by hand, the cost and turning it on are AWS operations: see [docs/redteam-nightly.md](https://github.com/jhgcc1/quizforge-infra/blob/main/docs/redteam-nightly.md) in the infrastructure repository (`scripts/redteam-latest.sh` there prints a link to the newest report). The image and its entrypoint (`docker/redteam`, `guardrails/run-nightly.sh`) are built from this repository and pushed to ECR by the `publish` job.
 
 ## The nightly reports, it does not fail
 
@@ -10,7 +10,7 @@ Every finding of the night is an **alert**, with the same logic as the guardrail
 * a `WARN` line in the task log (one per case: `WARN redteam canary-leak ...`, `WARN redteam-public contaminated-quiz ...`),
 * an entry in the report (`summary.json`, `report.html`, `new-failures.json`, `public-unflagged.json`).
 
-**None of them changes the exit code.** The entrypoint exits 0 whenever the run completed and the report was written (and uploaded, when `REPORT_BUCKET` is set). It exits non-zero only when the run itself is broken: 1 (no model key, the harness crashed), 2 (the upload to S3 failed), 3 (no results, or the report could not be written). So the alarm `redteam-run-missing` keeps meaning "the night did not run". The frozen sample that gates pull requests (`scripts/promptfoo.sh redteam-sample`) is a different thing and still fails on a leak.
+**None of them changes the exit code.** The entrypoint exits 0 whenever the run completed and the report was written (and uploaded, when `REPORT_BUCKET` is set). It exits non-zero only when the run itself is broken: 1 (no model key, the harness crashed), 2 (the upload to S3 failed), 3 (no results, or the report could not be written). So the alarm `redteam-run-missing` keeps meaning "the night did not run". The frozen sample that gates pull requests (`guardrails/run-suite.sh redteam-sample`) is a different thing and still fails on a leak.
 
 ## How to read the report
 
@@ -37,7 +37,7 @@ A night with zero cases because of a harness problem is still a broken run (exit
 
 ## Encodings at night
 
-base64, rot13 and leetspeak (promptfoo strategies, applied exactly as in the frozen sample) run on a **subset** of the fresh texts: `REDTEAM_ENCODED_PER_INTENT` texts per intent (default 3, `0` turns them off), each encoded three ways: about 32 x 3 x 3 = 288 extra cases. `scripts/promptfoo.sh redteam-nightly` makes the subset (`nightly-encoded.ts subset`), runs `promptfoo redteam generate` on it with `redteam.nightly-encoded.yaml`, and appends the cases to the nightly tests (`nightly-encoded.ts tests`). They use the plain document layout (an encoded text would hide the markup of a placement) and the same four assertions. The expected outcome is "rejected before the model by the input guard"; one that reaches the model is counted (reached the model, and leaked or not) and raised as an alert. The generation needs no model call except the attacker model that wrote the fresh texts; the encodings themselves are code.
+base64, rot13 and leetspeak (promptfoo strategies, applied exactly as in the frozen sample) run on a **subset** of the fresh texts: `REDTEAM_ENCODED_PER_INTENT` texts per intent (default 3, `0` turns them off), each encoded three ways: about 32 x 3 x 3 = 288 extra cases. `guardrails/run-suite.sh redteam-nightly` makes the subset (`nightly-encoded.ts subset`), runs `promptfoo redteam generate` on it with `redteam.nightly-encoded.yaml`, and appends the cases to the nightly tests (`nightly-encoded.ts tests`). They use the plain document layout (an encoded text would hide the markup of a placement) and the same four assertions. The expected outcome is "rejected before the model by the input guard"; one that reaches the model is counted (reached the model, and leaked or not) and raised as an alert. The generation needs no model call except the attacker model that wrote the fresh texts; the encodings themselves are code.
 
 ## The public dataset part
 
@@ -53,7 +53,7 @@ The canary part keeps its job (the only exact leak detector). A second part in t
 
 Not used: `Weni/prompt-injections-1.0.0` (no licence), `edithngalame/prompt-injection-en-es` (licence "other"). No dataset text is committed: rows are read at run time and live in memory and in the run folder (`redteam-public.json`).
 
-**How the rows are read** (`promptfoo/redteam/public/sources.ts`). Through the datasets-server API: `/rows` for the three small datasets (every row), `/filter` with a `where` clause for ZN (one query of 100 rows per language, plus one for the rows with no declared language, which are detected from the text; a second window when the set is large; supported languages first, blocked ones rotated by the seed) and, for ShieldLM, whose `/filter` answers HTTP 500, 24 windows of 100 rows from `/rows` at seeded offsets, filtered here by language and label (`scan`). A source stops asking after 5 minutes. Requests retry with backoff (5 attempts, 2 s doubling; 2 for the windowed queries) because the server answers HTTP 500 and takes 25 to 70 seconds on the large datasets. **A source that fails is reported as failed (or partial, with the languages not read) and the night goes on with the others.** The datasets-server cannot be asked for a revision, so each source has a **pinned commit hash** in `sources.ts` (the version this code was written against) and the run asks the Hub for the commit it actually read: both are in the report, with `drifted` when they differ. To pin to the hash for real, change `readSource` to download the dataset files at that revision.
+**How the rows are read** (`guardrails/promptfoo/redteam/public/sources.ts`). Through the datasets-server API: `/rows` for the three small datasets (every row), `/filter` with a `where` clause for ZN (one query of 100 rows per language, plus one for the rows with no declared language, which are detected from the text; a second window when the set is large; supported languages first, blocked ones rotated by the seed) and, for ShieldLM, whose `/filter` answers HTTP 500, 24 windows of 100 rows from `/rows` at seeded offsets, filtered here by language and label (`scan`). A source stops asking after 5 minutes. Requests retry with backoff (5 attempts, 2 s doubling; 2 for the windowed queries) because the server answers HTTP 500 and takes 25 to 70 seconds on the large datasets. **A source that fails is reported as failed (or partial, with the languages not read) and the night goes on with the others.** The datasets-server cannot be asked for a revision, so each source has a **pinned commit hash** in `sources.ts` (the version this code was written against) and the run asks the Hub for the commit it actually read: both are in the report, with `drifted` when they differ. To pin to the hash for real, change `readSource` to download the dataset files at that revision.
 
 **The sample.** Seeded by the date (`REDTEAM_SEED` overrides), stratified by (dataset, language): `REDTEAM_PUBLIC_PER_GROUP` rows (default 25) per dataset and supported language, `REDTEAM_PUBLIC_PER_GROUP_BLOCKED` (default 15) per blocked language. The pool is put in a fixed order before the seeded shuffle, so the draw does not depend on the order of the fetch; another night draws other rows, and the report shows the pool of each stratum so the coverage over the weeks is visible. Benign rows never enter an attack group.
 
@@ -66,7 +66,7 @@ Not used: `Weni/prompt-injections-1.0.0` (no licence), `edithngalame/prompt-inje
 5. **Benign control:** the benign rows of deepset (en, pt, es) and the benign READMEs themselves, through stage A: how many were blocked or flagged (expected: very few; the number trends over time).
 6. **Encoded dataset texts:** `REDTEAM_PUBLIC_ENCODED` (default 10) texts per encoding (base64, rot13, leetspeak, the same transforms as the intent strategies) laid as a plain paragraph, through the real pipeline: they should stop at the guard; one that reaches the model is counted, and judged against the original text.
 
-Run it alone with `scripts/promptfoo.sh redteam-public` (config `promptfoo/redteam/public.yaml`, provider `public/provider.ts`, tests written by `public/build.ts`); `redteam-nightly` runs it after the canary part unless `REDTEAM_PUBLIC=0`. If it breaks, the night still reports the canary part and emits `RedteamPublicSourcesFailed`.
+Run it alone with `guardrails/run-suite.sh redteam-public` (config `guardrails/promptfoo/redteam/public.yaml`, provider `public/provider.ts`, tests written by `public/build.ts`); `redteam-nightly` runs it after the canary part unless `REDTEAM_PUBLIC=0`. If it breaks, the night still reports the canary part and emits `RedteamPublicSourcesFailed`.
 
 ### Extra files and `summary.json` keys
 
@@ -109,7 +109,7 @@ The alarms turn a metric into an alert; this repository does not own them. Add t
 
 ### What the task needs
 
-Environment variables (all optional, defaults in parentheses): `REDTEAM_PUBLIC` (`1`; `0` skips the public part), `REDTEAM_PUBLIC_PER_GROUP` (25), `REDTEAM_PUBLIC_PER_GROUP_BLOCKED` (15), `REDTEAM_PUBLIC_MODEL_CASES` (40), `REDTEAM_PUBLIC_BENIGN` (60), `REDTEAM_PUBLIC_FOREIGN` (20), `REDTEAM_PUBLIC_ENCODED` (10 per encoding), `REDTEAM_PUBLIC_CONCURRENCY` (4), `REDTEAM_ENCODED_PER_INTENT` (3). Network: the task already has internet through NAT (needs `datasets-server.huggingface.co` and `huggingface.co` on port 443). Timeout and size: see "Time and cost" below. `docker/redteam/Dockerfile` needs nothing new (`franc-min` is already installed through `@quizforge/llm`).
+Environment variables (all optional, defaults in parentheses): `REDTEAM_PUBLIC` (`1`; `0` skips the public part), `REDTEAM_PUBLIC_PER_GROUP` (25), `REDTEAM_PUBLIC_PER_GROUP_BLOCKED` (15), `REDTEAM_PUBLIC_MODEL_CASES` (40), `REDTEAM_PUBLIC_BENIGN` (60), `REDTEAM_PUBLIC_FOREIGN` (20), `REDTEAM_PUBLIC_ENCODED` (10 per encoding), `REDTEAM_PUBLIC_CONCURRENCY` (4), `REDTEAM_ENCODED_PER_INTENT` (3). Network: the task already has internet through NAT (needs `datasets-server.huggingface.co` and `huggingface.co` on port 443). Timeout and size: see "Time and cost" below. `guardrails/promptfoo/Dockerfile` needs nothing new (`franc-min` is already installed through `@quizforge/llm`).
 
 ## Time and cost
 
@@ -119,15 +119,15 @@ See the measured numbers in [docs/security/public-datasets-nightly.md](security/
 
 1. Open `new-failures.json` of the run. Each entry has the attack text (`prompt`) and its `vars`.
 2. Fix the cause (guard rules in `packages/core/src/injection-rules.ts`, the prompts, or the output rails in `packages/llm/src/output-guard.ts`).
-3. Add the attack to the corpus so a pull request catches it from now on: either as a new test in `promptfoo/redteam/sample.yaml` (copy an entry, set
-   `vars.prompt`, `vars.canary`, `metadata`) or, for a text attack, in `packages/core/src/attacks.ts`. Keep the sample size in sync with `promptfoo/README.md`.
-4. Known cases that are not fixed yet can go to `promptfoo/redteam/known-failures.json` (`[{ "description": "...", "prompt": "..." }]`) so they are not reported as new.
+3. Add the attack to the corpus so a pull request catches it from now on: either as a new test in `guardrails/promptfoo/redteam/sample.yaml` (copy an entry, set
+   `vars.prompt`, `vars.canary`, `metadata`) or, for a text attack, in `packages/core/src/attacks.ts`. Keep the sample size in sync with `guardrails/promptfoo/README.md`.
+4. Known cases that are not fixed yet can go to `guardrails/promptfoo/redteam/known-failures.json` (`[{ "description": "...", "prompt": "..." }]`) so they are not reported as new.
 
 A dataset attack that no layer flagged (`public-unflagged.json`) is a candidate for a new keyword rule (see `docs/security/guard-pt-es.md` for how rules are added with benign counter-examples and the false-positive check).
 
 ## Which layer acted (per-layer attribution)
 
-`summary.json` has a `layers` object and `report.html` a "Which layer acted" section (`promptfoo/redteam/layers.ts`). For every case it records which keyword
+`summary.json` has a `layers` object and `report.html` a "Which layer acted" section (`guardrails/promptfoo/redteam/layers.ts`). For every case it records which keyword
 rules marked the document, the detector state and score, the check that rejected it before the model (guard, language, detector, topic), the output-rail
 problems and repair rounds, and who stopped it: **input guard**, **rails** (reply rejected, or sent back and repaired; "rules + rail" when a rule or the detector
 had marked the document, so the rails ran in strict mode), **quality gate** (a quote not in the document, not a security rail), **model on its own**, or

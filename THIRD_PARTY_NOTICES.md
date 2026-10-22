@@ -15,7 +15,7 @@ QuizForge's optional semantic prompt-injection detector uses **Llama Prompt Guar
 | Licence text | <https://www.llama.com/llama4/license/> (a copy, and the NOTICE file, are placed next to the weights inside the worker image, in `/models/prompt-guard-2/`) |
 
 The weights are **not stored in this repository**. They are downloaded while the `runtime-detector` image is built
-(`apps/worker/Dockerfile`), from the pinned revision above, and the build fails if the sha256 of any file differs. The model is used
+(`worker/Dockerfile`), from the pinned revision above, and the build fails if the sha256 of any file differs. The model is used
 as downloaded: it is not modified, fine-tuned or renamed. Use of the model is subject to the licence above and to Meta's Acceptable
 Use Policy (<https://www.llama.com/llama4/use-policy/>). Anyone who builds or redistributes the `runtime-detector` image accepts those
 terms for the model files it contains.

@@ -48,7 +48,7 @@ importers:
         specifier: ^2.1.0
         version: 2.1.9(@types/node@20.19.43)
 
-  apps/api:
+  api:
     dependencies:
       '@aws-sdk/client-sqs':
         specifier: ^3.1147.0
@@ -61,13 +61,13 @@ importers:
         version: 11.2.0
       '@quizforge/core':
         specifier: workspace:*
-        version: link:../../packages/core
+        version: link:../packages/core
       '@quizforge/db':
         specifier: workspace:*
-        version: link:../../packages/db
+        version: link:../packages/db
       '@quizforge/llm':
         specifier: workspace:*
-        version: link:../../packages/llm
+        version: link:../packages/llm
       aws-jwt-verify:
         specifier: ^5.2.1
         version: 5.2.1
@@ -94,43 +94,6 @@ importers:
         specifier: ^8.23.1
         version: 8.23.1
 
-  apps/worker:
-    dependencies:
-      '@aws-sdk/client-sqs':
-        specifier: ^3.1147.0
-        version: 3.1147.0
-      '@langchain/langgraph':
-        specifier: ^1.4.21
-        version: 1.4.21(@langchain/core@1.2.17(@opentelemetry/api@1.9.1)(@opentelemetry/exporter-trace-otlp-proto@0.223.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.12.0(@opentelemetry/api@1.9.1))(openai@7.30.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(zod@4.6.5)))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(zod@4.6.5)
-      '@langchain/langgraph-checkpoint-postgres':
-        specifier: ^1.0.6
-        version: 1.0.6(@langchain/core@1.2.17(@opentelemetry/api@1.9.1)(@opentelemetry/exporter-trace-otlp-proto@0.223.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.12.0(@opentelemetry/api@1.9.1))(openai@7.30.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(zod@4.6.5)))(@langchain/langgraph-checkpoint@1.1.6(@langchain/core@1.2.17(@opentelemetry/api@1.9.1)(@opentelemetry/exporter-trace-otlp-proto@0.223.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.12.0(@opentelemetry/api@1.9.1))(openai@7.30.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(zod@4.6.5))))
-      '@quizforge/core':
-        specifier: workspace:*
-        version: link:../../packages/core
-      '@quizforge/db':
-        specifier: workspace:*
-        version: link:../../packages/db
-      '@quizforge/llm':
-        specifier: workspace:*
-        version: link:../../packages/llm
-      pg:
-        specifier: ^8.23.1
-        version: 8.23.1
-      tsx:
-        specifier: ^4.23.15
-        version: 4.23.15
-      zod:
-        specifier: ^4.6.5
-        version: 4.6.5
-    devDependencies:
-      '@types/node':
-        specifier: ^26.6.4
-        version: 26.6.4
-      '@types/pg':
-        specifier: ^8.23.1
-        version: 8.23.1
-
   evals:
     dependencies:
       '@huggingface/transformers':
@@ -149,6 +112,49 @@ importers:
       tsx:
         specifier: ^4.19.0
         version: 4.23.15
+
+  guardrails/detector:
+    dependencies:
+      '@huggingface/transformers':
+        specifier: ^4.3.1
+        version: 4.3.1(@types/node@20.19.43)
+      '@quizforge/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@quizforge/llm':
+        specifier: workspace:*
+        version: link:../../packages/llm
+    devDependencies:
+      tsx:
+        specifier: ^4.19.0
+        version: 4.23.15
+
+  guardrails/promptfoo:
+    dependencies:
+      '@aws-sdk/client-s3':
+        specifier: ^3.1147.0
+        version: 3.1147.0
+      '@aws-sdk/client-sns':
+        specifier: ^3.1147.0
+        version: 3.1147.0
+      '@aws-sdk/s3-request-presigner':
+        specifier: ^3.1147.0
+        version: 3.1147.0
+      '@quizforge/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@quizforge/llm':
+        specifier: workspace:*
+        version: link:../../packages/llm
+      franc-min:
+        specifier: 6.2.0
+        version: 6.2.0
+      tsx:
+        specifier: ^4.19.0
+        version: 4.23.15
+      yaml:
+        specifier: 2.9.1
+        version: 2.9.1
 
   packages/contract:
     dependencies:
@@ -183,22 +189,6 @@ importers:
       drizzle-kit:
         specifier: ^0.31.11
         version: 0.31.11
-      tsx:
-        specifier: ^4.19.0
-        version: 4.23.15
-
-  packages/detector:
-    dependencies:
-      '@huggingface/transformers':
-        specifier: ^4.3.1
-        version: 4.3.1(@types/node@20.19.43)
-      '@quizforge/core':
-        specifier: workspace:*
-        version: link:../core
-      '@quizforge/llm':
-        specifier: workspace:*
-        version: link:../llm
-    devDependencies:
       tsx:
         specifier: ^4.19.0
         version: 4.23.15
@@ -243,32 +233,42 @@ importers:
         specifier: ^4.19.0
         version: 4.23.15
 
-  promptfoo:
+  worker:
     dependencies:
-      '@aws-sdk/client-s3':
+      '@aws-sdk/client-sqs':
         specifier: ^3.1147.0
         version: 3.1147.0
-      '@aws-sdk/client-sns':
-        specifier: ^3.1147.0
-        version: 3.1147.0
-      '@aws-sdk/s3-request-presigner':
-        specifier: ^3.1147.0
-        version: 3.1147.0
+      '@langchain/langgraph':
+        specifier: ^1.4.21
+        version: 1.4.21(@langchain/core@1.2.17(@opentelemetry/api@1.9.1)(@opentelemetry/exporter-trace-otlp-proto@0.223.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.12.0(@opentelemetry/api@1.9.1))(openai@7.30.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(zod@4.6.5)))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(zod@4.6.5)
+      '@langchain/langgraph-checkpoint-postgres':
+        specifier: ^1.0.6
+        version: 1.0.6(@langchain/core@1.2.17(@opentelemetry/api@1.9.1)(@opentelemetry/exporter-trace-otlp-proto@0.223.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.12.0(@opentelemetry/api@1.9.1))(openai@7.30.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(zod@4.6.5)))(@langchain/langgraph-checkpoint@1.1.6(@langchain/core@1.2.17(@opentelemetry/api@1.9.1)(@opentelemetry/exporter-trace-otlp-proto@0.223.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.12.0(@opentelemetry/api@1.9.1))(openai@7.30.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(zod@4.6.5))))
       '@quizforge/core':
         specifier: workspace:*
         version: link:../packages/core
+      '@quizforge/db':
+        specifier: workspace:*
+        version: link:../packages/db
       '@quizforge/llm':
         specifier: workspace:*
         version: link:../packages/llm
-      franc-min:
-        specifier: 6.2.0
-        version: 6.2.0
+      pg:
+        specifier: ^8.23.1
+        version: 8.23.1
       tsx:
-        specifier: ^4.19.0
+        specifier: ^4.23.15
         version: 4.23.15
-      yaml:
-        specifier: 2.9.1
-        version: 2.9.1
+      zod:
+        specifier: ^4.6.5
+        version: 4.6.5
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.4
+        version: 26.6.4
+      '@types/pg':
+        specifier: ^8.23.1
+        version: 8.23.1
 
 packages:
 

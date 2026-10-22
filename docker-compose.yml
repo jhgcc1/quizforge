@@ -42,7 +42,7 @@ services:
   # Local auth + fake LLM by default so it runs offline; set LLM_MODE=minimax and MINIMAX_API_KEY to use the real model.
   migrate:
     profiles: ["app"]
-    build: { context: ., dockerfile: apps/api/Dockerfile }
+    build: { context: ., dockerfile: api/Dockerfile }
     image: quizforge-api:local
     command: ["node", "--import", "tsx", "node_modules/@quizforge/db/src/migrate.ts"]
     environment: { DATABASE_URL: "postgres://quizforge:quizforge@postgres:5432/quizforge" }
@@ -68,7 +68,7 @@ services:
   # INJECTION_DETECTOR=off disables it. The first build downloads 1.1 GB (verified by sha256); later builds reuse the layer.
   worker:
     profiles: ["app"]
-    build: { context: ., dockerfile: apps/worker/Dockerfile, target: runtime-detector }
+    build: { context: ., dockerfile: worker/Dockerfile, target: runtime-detector }
     image: quizforge-worker:local
     mem_limit: 4g
     environment:
@@ -100,7 +100,7 @@ services:
 
   web:
     profiles: ["app"]
-    # the front end is its own repository: run scripts/web.sh first (it checks out its main into ./web)
+    # the front end is its own repository (jhgcc1/quizforge-web): check its main out into ./web first
     build: { context: ./web }
     image: quizforge-web:local
     environment:

@@ -1,0 +1,526 @@
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { randomUUID } from "node:crypto";
+import { fileURLToPath } from "node:url";
+import pg from "pg";
+import { MemorySaver } from "@langchain/langgraph";
+import { createDb, createDocumentRequest, createQuizIdempotent, eq, getPublicQuestions, listedCatalogEntries, migrate, reviewDocumentRequest, schema, setQuizPhase } from "@quizforge/db";
+import { JobBudget, QualityGateError, SourceError, createFakeLlm, type LlmClient } from "@quizforge/llm";
+import { createLogger } from "../../shared/log.js";
+import { processQuizJob, type ProcessDeps } from "./processor.js";
+
+const ADMIN_URL = process.env.TEST_ADMIN_DATABASE_URL ?? "postgres://quizforge:quizforge@localhost:5433/postgres";
+const dbName = `qf_wrk_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+const dbUrl = new URL(ADMIN_URL);
+dbUrl.pathname = `/${dbName}`;
+let ctx: ReturnType<typeof createDb>;
+
+const DOC = Array.from({ length: 14 }, (_, i) => `Pipecat component number ${i + 1} handles one specific part of the real time voice pipeline well.`).join("\n\n");
+const okFetch = async (url: string) => ({ url, rawUrl: url, text: DOC, sha256: randomUUID().replace(/-/g, "").padEnd(64, "0") });
+
+beforeAll(async () => {
+  const admin = new pg.Client({ connectionString: ADMIN_URL });
+  await admin.connect();
+  await admin.query(`create database ${dbName}`);
+  await admin.end();
+  ctx = createDb(dbUrl.toString(), { max: 6 });
+  await migrate(ctx.db, { migrationsFolder: fileURLToPath(new URL("../../../../packages/db/migrations", import.meta.url)) });
+});
+afterAll(async () => {
+  await ctx.pool.end();
+  const admin = new pg.Client({ connectionString: ADMIN_URL });
+  await admin.connect();
+  await admin.query(`drop database if exists ${dbName} with (force)`);
+  await admin.end();
+});
+
+const metrics: Record<string, number>[] = [];
+const deps = (over: Partial<ProcessDeps> = {}): ProcessDeps => ({
+  db: ctx.db,
+  llm: createFakeLlm(),
+  allowedHosts: ["github.com"],
+  pricing: { inPerM: 0.3, outPerM: 1.2 },
+  log: createLogger("error"),
+  fetchMarkdown: okFetch as never,
+  emit: (m) => void metrics.push(Object.fromEntries(Object.entries(m).map(([k, v]) => [k, v.value]))),
+  ...over,
+});
+// A URL of its own per quiz unless the test says otherwise: a document read once is kept and reused (see
+// storedSource), so a shared URL would hand the next test the previous test's document instead of its own stub.
+const newQuiz = async (over: Record<string, unknown> = {}) =>
+  (
+    await createQuizIdempotent(ctx.db, {
+      ownerSub: "owner",
+      sourceUrl: `https://github.com/o/r-${randomUUID().slice(0, 8)}/blob/main/README.md`,
+      numQuestions: 6,
+      strategy: "single-shot",
+      critique: true,
+      idempotencyKey: randomUUID(),
+      requestHash: "h",
+      ...over,
+    })
+  ).quiz;
+const status = async (id: string) => (await ctx.db.select().from(schema.quizzes).where(eq(schema.quizzes.id, id)))[0]!;
+
+describe("checkpoints are not kept after a success", () => {
+  it("deletes the checkpoint thread of the job once the quiz is saved", async () => {
+    const cp = new MemorySaver();
+    const spy = vi.spyOn(cp, "deleteThread");
+    const quiz = await newQuiz();
+    const out = await processQuizJob(deps({ checkpointer: cp }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
+    expect(out.kind).toBe("done");
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy.mock.calls[0]![0]).toContain(quiz.id);
+    expect((await status(quiz.id)).status).toBe("ready");
+  });
+
+  it("a failing delete never fails the job", async () => {
+    const cp = new MemorySaver();
+    vi.spyOn(cp, "deleteThread").mockRejectedValue(new Error("db hiccup"));
+    const quiz = await newQuiz();
+    const out = await processQuizJob(deps({ checkpointer: cp }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
+    expect(out.kind).toBe("done");
+  });
+});
+
+describe("content failures vs infrastructure failures", () => {
+  it("a QualityGateError deletes the checkpoint thread (retry regenerates); a flaky fetch keeps it (retry resumes)", async () => {
+    const cp = new MemorySaver();
+    const spy = vi.spyOn(cp, "deleteThread");
+    const content = await newQuiz();
+    const gateFail = (async () => { throw new QualityGateError("only 3 grounded question(s)", [1]); }) as never;
+    const first = await processQuizJob(deps({ checkpointer: cp, generateQuiz: gateFail }), { v: 1, quizId: content.id }, { count: 1, max: 3 });
+    expect(first.kind).toBe("retry");
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy.mock.calls[0]![0]).toContain(content.id);
+
+    const infra = await newQuiz();
+    const flaky = (async () => { throw new SourceError("fetch failed: ECONNRESET", "fetch_failed"); }) as never;
+    await processQuizJob(deps({ checkpointer: cp, fetchMarkdown: flaky }), { v: 1, quizId: infra.id }, { count: 1, max: 3 });
+    expect(spy).toHaveBeenCalledTimes(1); // unchanged
+  });
+
+  it("the stored question count is the REAL one when questions were dropped", async () => {
+    const quiz = await newQuiz({ numQuestions: 6 });
+    const dropped = (async (p: Parameters<typeof import("@quizforge/llm").generateQuiz>[0]) => {
+      const { generateQuiz } = await import("@quizforge/llm");
+      const r = await generateQuiz({ ...p, input: { ...p.input, numQuestions: 6 } });
+      return { ...r, questions: r.questions.slice(0, 5) }; // as if one ungrounded question had been dropped
+    }) as never;
+    const out = await processQuizJob(deps({ generateQuiz: dropped }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
+    expect(out.kind).toBe("done");
+    expect((await status(quiz.id)).numQuestions).toBe(5);
+    expect(await getPublicQuestions(ctx.db, quiz.id)).toHaveLength(5);
+  });
+});
+
+describe("processQuizJob", () => {
+  it("generates, persists questions/options/job/eval scores and emits metrics", async () => {
+    const quiz = await newQuiz();
+    const out = await processQuizJob(deps(), { v: 1, quizId: quiz.id, requestId: "req-1" }, { count: 1, max: 3 });
+    expect(out).toEqual({ kind: "done" });
+
+    const row = await status(quiz.id);
+    expect(row).toMatchObject({ status: "ready", strategyUsed: "single-shot", error: null });
+    const qs = await getPublicQuestions(ctx.db, quiz.id);
+    expect(qs).toHaveLength(6);
+    for (const q of qs) expect(q.options).toHaveLength(4);
+
+    const [job] = await ctx.db.select().from(schema.generationJobs).where(eq(schema.generationJobs.quizId, quiz.id));
+    expect(job).toMatchObject({ status: "succeeded", model: "fake-llm" });
+    expect(job!.promptTokens).toBeGreaterThan(0);
+    expect(Number(job!.costUsd)).toBeGreaterThan(0);
+    expect(job!.budgetState).toMatchObject({ calls: expect.any(Number) });
+
+    const evals = await ctx.db.select().from(schema.evalScores).where(eq(schema.evalScores.targetId, quiz.id));
+    // the worker only generates and saves: EVERY score (fixed checks, judge, quality_overall) comes later, from the scorer service
+    expect(evals).toEqual([]);
+    expect(metrics.at(-1)).toMatchObject({ JobSucceeded: 1, QuizCostUsd: expect.any(Number) });
+    expect(metrics.at(-1)).not.toHaveProperty("QuizQuality"); // emitted by the scorer
+    expect(job!.scoredAt).toBeNull();
+  });
+
+  it("does NOT run the judge: the quiz is ready after generation only, and a scoring job is queued for the scorer", async () => {
+    const quiz = await newQuiz();
+    const names: string[] = [];
+    const base = createFakeLlm();
+    const llm: LlmClient = { model: "spy", complete: (m, o) => (names.push(o?.name ?? ""), base.complete(m, o)) };
+    const queued: unknown[] = [];
+    const out = await processQuizJob(deps({ llm, publishScore: async (m) => void queued.push(m) }), { v: 1, quizId: quiz.id, requestId: "req-9" }, { count: 1, max: 3 });
+    expect(out.kind).toBe("done");
+    expect(names.some((n) => n.startsWith("judge"))).toBe(false); // no judge call during generation
+    const [job] = await ctx.db.select().from(schema.generationJobs).where(eq(schema.generationJobs.quizId, quiz.id));
+    expect(queued).toEqual([{ v: 1, quizId: quiz.id, jobId: job!.id, requestId: "req-9" }]);
+    expect((await status(quiz.id)).status).toBe("ready");
+  });
+
+  it("when the scoring job cannot be queued the quiz is still ready, the job succeeds, and a metric says so (the sweeper will queue it)", async () => {
+    const quiz = await newQuiz();
+    const out = await processQuizJob(deps({ publishScore: async () => { throw new Error("SQS unavailable"); } }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
+    expect(out.kind).toBe("done");
+    expect((await status(quiz.id)).status).toBe("ready");
+    expect(metrics.some((m) => m.ScoreJobNotQueued === 1)).toBe(true);
+  });
+
+  it("a duplicate delivery of a finished quiz is skipped without calling the LLM", async () => {
+    const quiz = await newQuiz();
+    await processQuizJob(deps(), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
+    let calls = 0;
+    const counting: LlmClient = { model: "x", complete: async () => (calls++, Promise.reject(new Error("should not be called"))) };
+    const out = await processQuizJob(deps({ llm: counting }), { v: 1, quizId: quiz.id }, { count: 2, max: 3 });
+    expect(out).toEqual({ kind: "skipped", reason: "ready" });
+    expect(calls).toBe(0);
+    expect(await processQuizJob(deps(), { v: 1, quizId: randomUUID() }, { count: 1, max: 3 })).toEqual({ kind: "skipped", reason: "missing" });
+  });
+
+  it("permanent errors fail the quiz immediately (no retry): blocked host, budget, non-retryable", async () => {
+    const quiz = await newQuiz();
+    const blocked = (async () => { throw new SourceError("host not allowed: evil.com", "host_not_allowed"); }) as never;
+    const out = await processQuizJob(deps({ fetchMarkdown: blocked }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
+    expect(out.kind).toBe("failed");
+    expect(await status(quiz.id)).toMatchObject({ status: "failed" });
+    expect((await status(quiz.id)).error).toMatch(/host not allowed/);
+  });
+
+  it("transient failure: retry while attempts remain (job reused), success on redelivery, exhausted on the last", async () => {
+    const quiz = await newQuiz();
+    const flaky = (async () => { throw new SourceError("fetch failed: ECONNRESET", "fetch_failed"); }) as never;
+    const first = await processQuizJob(deps({ fetchMarkdown: flaky }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
+    expect(first.kind).toBe("retry");
+    expect((await status(quiz.id)).status).toBe("generating"); // not failed: it will be redelivered
+    const jobsAfterFirst = await ctx.db.select().from(schema.generationJobs).where(eq(schema.generationJobs.quizId, quiz.id));
+
+    const second = await processQuizJob(deps(), { v: 1, quizId: quiz.id }, { count: 2, max: 3 });
+    expect(second.kind).toBe("done");
+    const jobs = await ctx.db.select().from(schema.generationJobs).where(eq(schema.generationJobs.quizId, quiz.id));
+    expect(jobs).toHaveLength(jobsAfterFirst.length); // same job row reused, not one per delivery
+
+    const doomed = await newQuiz();
+    const last = await processQuizJob(deps({ fetchMarkdown: flaky }), { v: 1, quizId: doomed.id }, { count: 3, max: 3 });
+    expect(last.kind).toBe("exhausted");
+    expect((await status(doomed.id)).status).toBe("failed");
+  });
+
+  it("LLM budget exhaustion is permanent and recorded", async () => {
+    const quiz = await newQuiz();
+    const hungry: LlmClient = { model: "x", complete: async () => ({ text: "not json", usage: { promptTokens: 10, completionTokens: 10, cachedTokens: 0 } }) };
+    const tinyBudgetGen = (async (p: Parameters<typeof import("@quizforge/llm").generateQuiz>[0]) => {
+      const { generateQuiz } = await import("@quizforge/llm");
+      return generateQuiz({ ...p, budgetState: { calls: 15, usage: { promptTokens: 0, completionTokens: 0, cachedTokens: 0 }, startedAt: Date.now() } });
+    }) as never;
+    const out = await processQuizJob(deps({ llm: hungry, generateQuiz: tinyBudgetGen }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
+    expect(out.kind).toBe("failed");
+    expect((await status(quiz.id)).error).toMatch(/budget/i);
+  });
+
+  it("works with a checkpointer and the section-map-reduce strategy", async () => {
+    const quiz = await newQuiz({ strategy: "section-map-reduce", critique: false });
+    const sections = Array.from({ length: 6 }, (_, i) => `## Part ${i + 1}\n${Array.from({ length: 6 }, (_, j) => `Part ${i + 1} sentence ${j + 1} explains one more detail about the framework in depth.`).join(" ")}`).join("\n\n");
+    const out = await processQuizJob(deps({ checkpointer: new MemorySaver(), fetchMarkdown: (async (u: string) => ({ url: u, rawUrl: u, text: sections, sha256: randomUUID().replace(/-/g, "").padEnd(64, "0") })) as never }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
+    expect(out.kind).toBe("done");
+    expect((await status(quiz.id)).strategyUsed).toBe("section-map-reduce");
+    expect(new JobBudget()).toBeDefined();
+  });
+});
+
+describe("the input guard in the worker (door 1)", () => {
+  const docFetch = (text: string) => (async (url: string) => ({ url, rawUrl: url, text, sha256: randomUUID().replace(/-/g, "").padEnd(64, "0") })) as never;
+  const countingLlm = () => {
+    const inner = createFakeLlm();
+    const calls: string[] = [];
+    const llm: LlmClient = { model: inner.model, complete: (m, o) => (calls.push(o?.name ?? "?"), inner.complete(m, o)) };
+    return { llm, calls };
+  };
+  const sourcesCount = async () => (await ctx.db.select().from(schema.sources)).length;
+
+  it("a document with an encoded instruction is rejected: quiz failed, no model call, nothing stored, its own metric and no job-failure alarm", async () => {
+    const { ATTACK_TECHNIQUES, DEFAULT_PAYLOAD } = await import("@quizforge/core");
+    const text = ATTACK_TECHNIQUES.find((t) => t.id === "base64")!.embed(DEFAULT_PAYLOAD);
+    const quiz = await newQuiz();
+    const { llm, calls } = countingLlm();
+    const before = await sourcesCount();
+    metrics.length = 0;
+    const out = await processQuizJob(deps({ llm, fetchMarkdown: docFetch(text) }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
+    expect(out.kind).toBe("failed");
+    expect((await status(quiz.id)).status).toBe("failed");
+    expect((await status(quiz.id)).error).toContain("unsafe_document");
+    expect(calls).toEqual([]);
+    expect(await sourcesCount()).toBe(before);
+    expect(metrics.at(-1)).toMatchObject({ DocumentRejected: 1 });
+    expect(metrics.at(-1)).not.toHaveProperty("JobFailed");
+  });
+
+  it("a document in an unsupported language is rejected the same way", async () => {
+    const { UNSUPPORTED_LANGUAGE_DOCS } = await import("@quizforge/core");
+    const quiz = await newQuiz();
+    const { llm, calls } = countingLlm();
+    const out = await processQuizJob(deps({ llm, fetchMarkdown: docFetch(UNSUPPORTED_LANGUAGE_DOCS.find((d) => d.id === "french")!.text) }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
+    expect(out.kind).toBe("failed");
+    expect((await status(quiz.id)).error).toContain("unsupported_language");
+    expect(calls).toEqual([]);
+  });
+
+  it("the allowed languages can be narrowed by configuration", async () => {
+    const { SUPPORTED_LANGUAGE_DOCS } = await import("@quizforge/core");
+    const quiz = await newQuiz();
+    const pt = SUPPORTED_LANGUAGE_DOCS.find((d) => d.language === "pt")!.text;
+    const out = await processQuizJob(deps({ allowedLanguages: ["en"], fetchMarkdown: docFetch(pt) }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
+    expect(out.kind).toBe("failed");
+  });
+
+  it("a plain instruction is kept as data: the quiz is generated, the document is flagged, the flag has a metric", async () => {
+    const { ATTACK_TECHNIQUES, DEFAULT_PAYLOAD } = await import("@quizforge/core");
+    const text = ATTACK_TECHNIQUES.find((t) => t.id === "plain-english")!.embed(DEFAULT_PAYLOAD);
+    const quiz = await newQuiz({ numQuestions: 5 });
+    metrics.length = 0;
+    const out = await processQuizJob(deps({ fetchMarkdown: docFetch(text) }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
+    expect(out.kind).toBe("done");
+    expect(metrics.some((m) => m.InjectionFlagged === 1)).toBe(true);
+  });
+
+  it("the sanitized text is what is stored (HTML comments and invisible characters removed), so the scorer reads the same text", async () => {
+    const { benignDocument } = await import("@quizforge/core");
+    const quiz = await newQuiz({ numQuestions: 5 });
+    const text = benignDocument().replace("## Retries", "<!-- toc -->\u200B## Retries");
+    await processQuizJob(deps({ fetchMarkdown: docFetch(text) }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
+    const row = await status(quiz.id);
+    const [src] = await ctx.db.select().from(schema.sources).where(eq(schema.sources.id, row.sourceId!));
+    expect(src!.contentText).not.toContain("<!--");
+    expect(src!.contentText).not.toContain("\u200B");
+  });
+
+  describe("the optional semantic detector (English only)", () => {
+    const stub = (flagged: boolean, calls: string[] = []) => ({
+      name: "stub",
+      languages: ["en"] as const,
+      detect: async (t: string) => (calls.push(t.slice(0, 10)), { flagged, score: flagged ? 0.97 : 0.02, scanned: 1, total: 1, ms: 3 }),
+    });
+
+    it("flag mode: the quiz is generated, the verdict is logged and counted", async () => {
+      const quiz = await newQuiz({ numQuestions: 5 });
+      metrics.length = 0;
+      const out = await processQuizJob(deps({ detector: stub(true), detectorMode: "flag" }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
+      expect(out.kind).toBe("done");
+      expect(metrics.some((m) => m.InjectionDetected === 1)).toBe(true);
+    });
+
+    it("block mode: the document is rejected before the model, like any other unsafe document", async () => {
+      const quiz = await newQuiz();
+      const { llm, calls } = countingLlm();
+      const out = await processQuizJob(deps({ llm, detector: stub(true), detectorMode: "block" }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
+      expect(out.kind).toBe("failed");
+      expect((await status(quiz.id)).error).toContain("unsafe_document");
+      expect(calls).toEqual([]);
+    });
+
+    it("is skipped for a Portuguese document (the model is English only) and when it is off", async () => {
+      const { SUPPORTED_LANGUAGE_DOCS } = await import("@quizforge/core");
+      const pt = SUPPORTED_LANGUAGE_DOCS.find((d) => d.language === "pt")!.text;
+      const seen: string[] = [];
+      const q1 = await newQuiz({ numQuestions: 5 });
+      expect((await processQuizJob(deps({ detector: stub(true, seen), detectorMode: "block", fetchMarkdown: docFetch(pt) }), { v: 1, quizId: q1.id }, { count: 1, max: 3 })).kind).toBe("done");
+      const q2 = await newQuiz({ numQuestions: 5 });
+      expect((await processQuizJob(deps({ detector: stub(true, seen), detectorMode: "off" }), { v: 1, quizId: q2.id }, { count: 1, max: 3 })).kind).toBe("done");
+      expect(seen).toEqual([]);
+    });
+
+    // The review flow only means something if approval sticks: without this the admin approves a document, it joins the
+    // dropdown, and the classifier refuses it again on the very next generation.
+    it("block mode: a document a reviewer approved is generated anyway, and the finding is still recorded", async () => {
+      const url = "https://github.com/o/approved/blob/main/README.md";
+      const quiz = await newQuiz({ sourceUrl: url });
+      const req = await createDocumentRequest(ctx.db, { url, title: "A real README", requestedBy: "owner", detectorScore: 0.97, excerpt: "..." });
+      await reviewDocumentRequest(ctx.db, { id: req!.id, action: "approve", reviewedBy: "admin" });
+
+      metrics.length = 0;
+      const out = await processQuizJob(deps({ detector: stub(true), detectorMode: "block" }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
+
+      expect(out.kind).toBe("done");
+      expect(metrics.some((m) => m.ApprovedDocumentAllowed === 1)).toBe(true);
+      // Approval says "not an attack", not "stop watching": the detection is still counted, so a spike still alarms.
+      expect(metrics.some((m) => m.InjectionDetected === 1)).toBe(true);
+    });
+
+    it("block mode: a request that was rejected, or still pending, does not let the document through", async () => {
+      for (const [action, url] of [["reject", "https://github.com/o/no/blob/main/README.md"], [undefined, "https://github.com/o/pending/blob/main/README.md"]] as const) {
+        const quiz = await newQuiz({ sourceUrl: url });
+        const req = await createDocumentRequest(ctx.db, { url, title: "Asked for", requestedBy: "owner" });
+        if (action) await reviewDocumentRequest(ctx.db, { id: req!.id, action, reviewedBy: "admin" });
+        const out = await processQuizJob(deps({ detector: stub(true), detectorMode: "block" }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
+        expect(out.kind, `action=${action ?? "pending"}`).toBe("failed");
+      }
+    });
+
+    it("a document that generated a quiz joins the catalogue, marked or not", async () => {
+      const clean = "https://github.com/o/clean/blob/main/README.md";
+      const q1 = await newQuiz({ sourceUrl: clean, numQuestions: 5 });
+      expect((await processQuizJob(deps({ detector: stub(false) }), { v: 1, quizId: q1.id }, { count: 1, max: 3 })).kind).toBe("done");
+      expect((await listedCatalogEntries(ctx.db)).map((e) => e.url)).toContain(clean);
+
+      // Marked by the classifier but not blocked: the quiz came out, so the document earns its place in the list. The
+      // mark is not lost -- it put the output rails in strict mode for this run and will do so for every other user.
+      const flaggedUrl = "https://github.com/o/flagged/blob/main/README.md";
+      const q2 = await newQuiz({ sourceUrl: flaggedUrl, numQuestions: 5 });
+      expect((await processQuizJob(deps({ detector: stub(true), detectorMode: "flag" }), { v: 1, quizId: q2.id }, { count: 1, max: 3 })).kind).toBe("done");
+      expect((await listedCatalogEntries(ctx.db)).map((e) => e.url)).toContain(flaggedUrl);
+    });
+
+    // A document the classifier would refuse reaches this point only because an admin approved it, and an approval is
+    // the strongest statement the product has about a document: it belongs in the list like any other.
+    it("a blocked-but-approved document joins the catalogue too", async () => {
+      const url = "https://github.com/o/approved/blob/main/README.md";
+      const quiz = await newQuiz({ sourceUrl: url, numQuestions: 5 });
+      const req = await createDocumentRequest(ctx.db, { url, title: "Asked for", requestedBy: "owner" });
+      await reviewDocumentRequest(ctx.db, { id: req!.id, action: "approve", reviewedBy: "admin" });
+      expect((await processQuizJob(deps({ detector: stub(true), detectorMode: "block" }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 })).kind).toBe("done");
+      expect((await listedCatalogEntries(ctx.db)).map((e) => e.url)).toContain(url);
+    });
+
+    // The case that makes a shared catalogue different from a private bookmark: a listed README can be edited and
+    // start being refused, and the stale entry would then fail for every user who picks it.
+    it("a listed document that starts being refused is dropped from the catalogue", async () => {
+      const url = "https://github.com/o/changed/blob/main/README.md";
+      const q1 = await newQuiz({ sourceUrl: url, numQuestions: 5 });
+      expect((await processQuizJob(deps({ detector: stub(false) }), { v: 1, quizId: q1.id }, { count: 1, max: 3 })).kind).toBe("done");
+      expect((await listedCatalogEntries(ctx.db)).map((e) => e.url)).toContain(url);
+
+      const q2 = await newQuiz({ sourceUrl: url, numQuestions: 5 });
+      expect((await processQuizJob(deps({ detector: stub(true), detectorMode: "block" }), { v: 1, quizId: q2.id }, { count: 1, max: 3 })).kind).toBe("failed");
+      expect((await listedCatalogEntries(ctx.db)).map((e) => e.url)).not.toContain(url);
+    });
+
+    it("a detector that crashes never takes the job down", async () => {
+      const quiz = await newQuiz({ numQuestions: 5 });
+      metrics.length = 0;
+      const broken = { name: "broken", languages: ["en"] as const, detect: async () => { throw new Error("model not found"); } };
+      const out = await processQuizJob(deps({ detector: broken, detectorMode: "block" }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
+      expect(out.kind).toBe("done");
+      expect(metrics.some((m) => m.DetectorFailed === 1)).toBe(true);
+    });
+  });
+});
+
+describe("non-Error failures", () => {
+  it("a thrown string is recorded as its text and retried like any other transient failure", async () => {
+    const quiz = await newQuiz();
+    const throwsString = (async () => { throw "plain string failure"; }) as never;
+    const out = await processQuizJob(deps({ generateQuiz: throwsString }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
+    expect(out).toEqual({ kind: "retry", error: "plain string failure" });
+  });
+});
+
+describe("generation progress (the phase the user sees)", () => {
+  // A trigger logs every distinct phase the row goes through, so the test sees what the database really held, in order.
+  beforeAll(async () => {
+    await ctx.pool.query(`create table phase_log (n serial primary key, quiz_id uuid, phase text, step int, total int, detail text, status text)`);
+    await ctx.pool.query(`create function log_phase() returns trigger language plpgsql as $$ begin
+      if new.phase is distinct from old.phase or new.phase_step is distinct from old.phase_step or new.phase_detail is distinct from old.phase_detail then
+        insert into phase_log (quiz_id, phase, step, total, detail, status) values (new.id, new.phase, new.phase_step, new.phase_total, new.phase_detail, new.status);
+      end if; return new; end $$`);
+    await ctx.pool.query(`create trigger quiz_phase_log after update on quizzes for each row execute function log_phase()`);
+  });
+  const history = async (quizId: string) =>
+    (await ctx.pool.query(`select phase, step, total, detail, status from phase_log where quiz_id = $1 order by n`, [quizId])).rows as { phase: string | null; step: number | null; total: number | null; detail: string | null; status: string }[];
+
+  it("a job moves through the phases in order, steps never go down, and ready clears the progress", async () => {
+    const quiz = await newQuiz({ critique: true });
+    expect((await status(quiz.id)).phase).toBeNull();
+    const out = await processQuizJob(deps(), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
+    expect(out.kind).toBe("done");
+    const h = (await history(quiz.id)).filter((r) => r.phase);
+    const seen = h.map((r) => r.phase);
+    expect(seen.slice(0, 3)).toEqual(["reading_document", "writing_questions", "checking"]);
+    expect(seen.at(-1)).toBe("saving");
+    expect(seen).toContain("reviewing"); // critique was on
+    const steps = h.map((r) => r.step!);
+    expect(steps).toEqual([...steps].sort((a, b) => a - b));
+    expect(h.every((r) => r.status === "generating" && r.total! >= r.step!)).toBe(true);
+    expect(await status(quiz.id)).toMatchObject({ status: "ready", phase: null, phaseStep: null, phaseTotal: null, phaseDetail: null, phaseUpdatedAt: null });
+  });
+
+  it("map-reduce reports the section being written", async () => {
+    const quiz = await newQuiz({ strategy: "section-map-reduce", critique: false });
+    const text = Array.from({ length: 6 }, (_, i) => `## Part ${i + 1}\n${Array.from({ length: 6 }, (_, j) => `Part ${i + 1} sentence ${j + 1} explains one more detail about the framework in depth.`).join(" ")}`).join("\n\n");
+    const sectioned = (async (url: string) => ({ url, rawUrl: url, text, sha256: randomUUID().replace(/-/g, "").padEnd(64, "0") })) as never;
+    expect((await processQuizJob(deps({ fetchMarkdown: sectioned }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 })).kind).toBe("done");
+    const details = (await history(quiz.id)).map((r) => r.detail).filter(Boolean);
+    expect(details[0]).toMatch(/^section 1 of \d+$/);
+  });
+
+  it("a failed job has no progress, and a late phase write cannot bring it back", async () => {
+    const quiz = await newQuiz();
+    const boom = (async (p: { onProgress?: (x: unknown) => void }) => {
+      p.onProgress?.({ phase: "writing_questions", step: 2, totalSteps: 5 });
+      throw new SourceError("bad", "invalid_url");
+    }) as never;
+    const out = await processQuizJob(deps({ generateQuiz: boom }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
+    expect(out.kind).toBe("failed");
+    expect(await status(quiz.id)).toMatchObject({ status: "failed", phase: null, phaseStep: null });
+    expect((await history(quiz.id)).map((r) => r.phase)).toEqual(["reading_document", "writing_questions", null]);
+    await setQuizPhase(ctx.db, quiz.id, { phase: "saving", step: 5, totalSteps: 5 });
+    expect((await status(quiz.id)).phase).toBeNull();
+  });
+
+  it("a database that refuses the phase writes never fails the job", async () => {
+    await ctx.pool.query(`create function refuse_phase() returns trigger language plpgsql as $$ begin
+      if new.phase is not null then raise exception 'phase writes are refused'; end if; return new; end $$`);
+    await ctx.pool.query(`create trigger quiz_phase_refuse before update on quizzes for each row execute function refuse_phase()`);
+    try {
+      const quiz = await newQuiz();
+      const warn = vi.fn();
+      const quiet = createLogger("error");
+      const log = { ...quiet, warn, child: () => ({ ...quiet, warn }) } as never;
+      const out = await processQuizJob(deps({ log }), { v: 1, quizId: quiz.id }, { count: 1, max: 3 });
+      expect(out).toEqual({ kind: "done" });
+      expect((await status(quiz.id)).status).toBe("ready");
+      expect(warn).toHaveBeenCalledWith(expect.objectContaining({ phase: "reading_document" }), "could not record the generation phase");
+    } finally {
+      await ctx.pool.query(`drop trigger quiz_phase_refuse on quizzes`);
+    }
+  });
+});
+
+describe("a document is read once and kept", () => {
+  it("the second quiz on the same URL does not download it again, and the guards still run", async () => {
+    const url = "https://github.com/o/kept/blob/main/README.md";
+    const fetched: string[] = [];
+    const counting = (async (u: string) => (fetched.push(u), okFetch(u))) as never;
+
+    const q1 = await newQuiz({ sourceUrl: url, numQuestions: 5 });
+    expect((await processQuizJob(deps({ fetchMarkdown: counting }), { v: 1, quizId: q1.id }, { count: 1, max: 3 })).kind).toBe("done");
+    expect(fetched).toHaveLength(1);
+
+    metrics.length = 0;
+    const seen: string[] = [];
+    const q2 = await newQuiz({ sourceUrl: url, numQuestions: 5 });
+    const out = await processQuizJob(
+      // The detector is given to prove the guards see the stored text too, not only freshly fetched text.
+      deps({ fetchMarkdown: counting, detector: { name: "stub", languages: ["en"] as const, detect: async (t: string) => (seen.push(t.slice(0, 8)), { flagged: false, score: 0.01, scanned: 1, total: 1, ms: 1 }) }, detectorMode: "block" }),
+      { v: 1, quizId: q2.id },
+      { count: 1, max: 3 },
+    );
+    expect(out.kind).toBe("done");
+    expect(fetched).toHaveLength(1); // still one: the second quiz read the stored copy
+    expect(seen).toHaveLength(1); // the classifier ran on it all the same
+    expect(metrics.some((m) => m.DocumentFromStore === 1)).toBe(true);
+  });
+
+  it("refresh downloads it again", async () => {
+    const url = "https://github.com/o/moving/blob/main/README.md";
+    const fetched: string[] = [];
+    const counting = (async (u: string) => (fetched.push(u), okFetch(u))) as never;
+
+    const q1 = await newQuiz({ sourceUrl: url, numQuestions: 5 });
+    await processQuizJob(deps({ fetchMarkdown: counting }), { v: 1, quizId: q1.id }, { count: 1, max: 3 });
+    const q2 = await newQuiz({ sourceUrl: url, numQuestions: 5, refresh: true });
+    expect((await processQuizJob(deps({ fetchMarkdown: counting }), { v: 1, quizId: q2.id }, { count: 1, max: 3 })).kind).toBe("done");
+    expect(fetched).toHaveLength(2);
+  });
+
+  it("a URL never read before is fetched, refresh or not", async () => {
+    const fetched: string[] = [];
+    const counting = (async (u: string) => (fetched.push(u), okFetch(u))) as never;
+    const q = await newQuiz({ sourceUrl: "https://github.com/o/brand-new/blob/main/README.md", numQuestions: 5 });
+    expect((await processQuizJob(deps({ fetchMarkdown: counting }), { v: 1, quizId: q.id }, { count: 1, max: 3 })).kind).toBe("done");
+    expect(fetched).toHaveLength(1);
+  });
+});
