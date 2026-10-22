@@ -10,12 +10,12 @@
  * Usage (from the repo root):
  *   pnpm prompts:publish -- --dry-run     list the catalog (no network)
  *   pnpm prompts:publish                   publish (needs LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY / LANGFUSE_BASE_URL)
- *   pnpm prompts:lock                      rewrite prompts/prompts.lock.json after a deliberate prompt change (bump PROMPT_VERSION first)
+ *   pnpm prompts:lock                      rewrite prompts.lock.json after a deliberate prompt change (bump PROMPT_VERSION first)
  */
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { PROMPT_CATALOG, PROMPT_VERSION, currentLock, hashPrompt, type CatalogPrompt } from "@quizforge/llm";
 
-export const LOCK_PATH = new URL("../../prompts/prompts.lock.json", import.meta.url);
+export const LOCK_PATH = new URL("../../prompts.lock.json", import.meta.url);
 
 /** The two calls we need from Langfuse (the real client is adapted below; tests pass a fake). */
 export interface PromptApi {

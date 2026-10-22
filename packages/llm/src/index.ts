@@ -7,7 +7,7 @@
  * instead: the module graph is shared, the process is not.
  */
 export * from "./model/json.js";
-export * from "./source.js";
+export * from "./source/index.js";
 export * from "./generation/router.js";
 export * from "./model/errors.js";
 export * from "./model/budget.js";

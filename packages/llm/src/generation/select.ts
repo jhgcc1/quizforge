@@ -1,5 +1,5 @@
 import type { GeneratedQuestion } from "@quizforge/core";
-import type { Section } from "../source.js";
+import type { Section } from "../source/index.js";
 
 const DIFFICULTY_RANK = { easy: 0, medium: 1, hard: 2 } as const;
 const norm = (s: string) => s.normalize("NFKC").replace(/\s+/g, " ").trim().toLowerCase();
