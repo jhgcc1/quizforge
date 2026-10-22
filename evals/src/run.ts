@@ -68,7 +68,7 @@ async function runItem(item: GoldenItem): Promise<Outcome> {
     const doc = admitDocument(await loadText(item));
     const sourceText = doc.text;
     // Production hands the generator what the input guard flagged, and that is what puts the output rails in strict
-    // link mode (apps/worker/src/roles/generate/processor.ts). Dropping it here meant the golden set measured the generator with
+    // link mode (worker/src/roles/generate/processor.ts). Dropping it here meant the golden set measured the generator with
     // WEAKER defences than the thing it is supposed to guard -- on an injection item, the layer that matters most.
     const flaggedExcerpts = doc.findings.filter((f) => f.severity === "flag").map((f) => f.detail);
     const r = await generateQuiz({

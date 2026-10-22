@@ -18,7 +18,7 @@
  * flagged only when the sentence itself is an order ("Ignore all previous instructions"); a sentence that talks ABOUT the
  * attack in the third person is not.
  *
- * Paraphrases are not covered by keywords at all: that is the job of the semantic detector (packages/detector, Llama Prompt
+ * Paraphrases are not covered by keywords at all: that is the job of the semantic detector (guardrails/detector, Llama Prompt
  * Guard 2, multilingual).
  *
  * Accents are optional everywhere ("instrucciones" / "instrucoes" / "instruções") and the Latin-letter boundaries use

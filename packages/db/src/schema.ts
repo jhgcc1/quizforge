@@ -5,7 +5,7 @@
  * Read the constraints as the rules they are. The unique index on (owner, idempotency key) is what makes a
  * retried POST return the first quiz instead of creating a second. `check` constraints keep a status and its
  * columns consistent at the database level, where no application bug can get around them. And every migration
- * is expand-only by policy (scripts/check-migrations.mjs): during a rolling deploy the OLD code runs against
+ * is expand-only by policy (cicd/check-migrations.mjs): during a rolling deploy the OLD code runs against
  * the NEW schema, so a column is added, backfilled and only dropped a release later.
  */
 import { sql } from "drizzle-orm";

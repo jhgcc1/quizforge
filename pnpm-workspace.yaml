@@ -1,5 +1,7 @@
 packages:
-  - "apps/*"
+  - "api"
+  - "worker"
   - "packages/*"
+  - "guardrails/detector"
+  - "guardrails/promptfoo"
   - "evals"
-  - "promptfoo"

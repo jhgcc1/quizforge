@@ -5,7 +5,7 @@ import { SAMPLE_CATALOG, titleForDocument } from "./catalog.js";
 import { CatalogEntrySchema, CatalogResponseSchema, CreateQuizBodySchema } from "@quizforge/contract";
 
 const fixtures = fileURLToPath(new URL("../../../evals/fixtures/", import.meta.url));
-const ALLOWED = ["github.com", "raw.githubusercontent.com"]; // the API default (apps/api config)
+const ALLOWED = ["github.com", "raw.githubusercontent.com"]; // the API default (api config)
 
 describe("sample catalog (the Document dropdown)", () => {
   it("is valid, has unique ids and offers both real READMEs and test documents", () => {

@@ -6,7 +6,7 @@
  * or the passive voice ("solicita-se a inclusão", "se ruega"), "make sure that ...".
  *
  * English, Portuguese and Spanish together (a unit test checks that each shape has an example in every language). Every pattern is
- * checked against 1,500+ real README headings (0 matches) in `promptfoo/redteam/research/checks/topic-fp.ts`.
+ * checked against 1,500+ real README headings (0 matches) in `guardrails/promptfoo/redteam/research/checks/topic-fp.ts`.
  */
 
 const QUIZ_PART = String.raw`(?:questions?|explanations?|answers?|options?|choices?|quiz|quer(?:y|ies)|perguntas?|quest(?:ão|ões|ao|oes)|explica(?:ção|ções|cao|coes)|respostas?|alternativas?|opç(?:ão|ões)|opcao|preguntas?|explicaci(?:ón|ones|on)|respuestas?|opci(?:ón|ones|on)|cuestionario)`;

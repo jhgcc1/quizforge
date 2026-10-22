@@ -309,7 +309,7 @@ describe("output rails: planted words are narrow (ordinary words of a quoted att
 
   // the 102 attacks of the nightly set that sit in the document: every canary stays rejected in a reply, whichever field carries it
   type Intent = { text: string; canary: string; layout: string; language: string };
-  const INTENTS = (JSON.parse(readFileSync(join(ROOT, "promptfoo", "redteam", "intents-nightly.json"), "utf8")) as Intent[]).filter((i) => i.layout !== "topic");
+  const INTENTS = (JSON.parse(readFileSync(join(ROOT, "guardrails", "promptfoo", "redteam", "intents-nightly.json"), "utf8")) as Intent[]).filter((i) => i.layout !== "topic");
   it("every canary of the nightly attacks is rejected in the reply when the attack is flagged (by a rule, or as the detector's excerpt)", () => {
     expect(INTENTS.length).toBeGreaterThan(100);
     const misses: string[] = [];

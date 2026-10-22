@@ -120,7 +120,7 @@ jobs:
       - name: Migration policy (expand/contract, released migrations are immutable)
         if: github.event_name == 'pull_request'
         env: { BASE_REF: "origin/${{ github.base_ref }}" }
-        run: node scripts/check-migrations.mjs
+        run: node cicd/check-migrations.mjs
 
       - name: Apply all migrations to an empty database with the production entrypoint
         run: pnpm --filter @quizforge/db db:migrate
@@ -136,8 +136,8 @@ jobs:
   # belongs to the pull requests that change that UI.
   #
   # What covers this side instead: the API is pinned by packages/contract and its boundary tests, the integration
-  # suite exercises the API and the worker against a real Postgres, and e2e/aws.spec.ts drives the DEPLOYED stack in
-  # a browser after every deploy (the smoke step in quizforge-infra's apply.yml), with rollback.yml to go back.
+  # suite exercises the API and the worker against a real Postgres, and the deployed stack is smoke-tested in a
+  # browser after every deploy (the smoke step in quizforge-infra's apply.yml), with rollback.yml to go back.
   #
   # The trade: a back end change that breaks the UI is caught after the deploy rather than before it. That is the
   # usual arrangement for a service deployed on its own, and the smoke test plus rollback is what makes it safe.
@@ -159,7 +159,7 @@ jobs:
       - name: Build web, api, worker and redteam images
         run: |
           for s in api worker web redteam; do
-            if [ "$s" = web ]; then dockerfile=web/Dockerfile; ctx=web; elif [ "$s" = redteam ]; then dockerfile=docker/redteam/Dockerfile; ctx=.; else dockerfile=apps/$s/Dockerfile; ctx=.; fi
+            if [ "$s" = web ]; then dockerfile=web/Dockerfile; ctx=web; elif [ "$s" = redteam ]; then dockerfile=guardrails/promptfoo/Dockerfile; ctx=.; else dockerfile=$s/Dockerfile; ctx=.; fi
             T=""; [ "$s" = worker ] && T="--target runtime-detector" # the worker image carries the Llama Prompt Guard 2 model
             [ "$s" = redteam ] && T="--build-arg GIT_SHA=$GITHUB_SHA" # the red team report names the commit
             docker buildx build -f $dockerfile $T -t quizforge-$s:ci --load \
@@ -200,7 +200,7 @@ jobs:
         with: { node-version: "${{ env.NODE_VERSION }}", cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - name: promptfoo offline suite (no model, no secrets)
-        run: scripts/promptfoo.sh offline
+        run: guardrails/run-suite.sh offline
       - name: Prompt catalog (dry run, nothing is sent to Langfuse)
         run: pnpm prompts:publish -- --dry-run
       - name: Say when the live suite will run for this change
@@ -208,13 +208,13 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
         run: |
-          changed=$(git diff --name-only "origin/${BASE_REF}...HEAD" | grep -E '^(packages/llm/src/(prompts|judge|quiz-graph|llm-input|language|output-guard|structured|detector)\.ts|packages/core/src/(guard|attacks|injection-rules)\.ts|packages/detector/|evals/fixtures/|promptfoo/|prompts/)' || true)
+          changed=$(git diff --name-only "origin/${BASE_REF}...HEAD" | grep -E '^(packages/llm/src/(prompts|judge|quiz-graph|llm-input|language|output-guard|structured|detector)\.ts|packages/core/src/(guard|attacks|injection-rules)\.ts|guardrails/detector/|evals/fixtures/|guardrails/promptfoo/|prompts/)' || true)
           if [ -n "$changed" ]; then
             echo "::notice title=Prompt or guard files changed::The live promptfoo suite (real model) runs on main before the deploy and every night. Files: $(echo $changed | tr '\n' ' ')"
           fi
       - uses: actions/upload-artifact@v4
         if: always()
-        with: { name: promptfoo-offline, path: promptfoo/out/offline.json, retention-days: 30 }
+        with: { name: promptfoo-offline, path: guardrails/promptfoo/out/offline.json, retention-days: 30 }
 
   # ---------------------------------------------------------------- LLM quality gate (real model, main only)
   # Real MiniMax + Langfuse experiment over the golden set. Needs the secrets of the `llm-eval` environment, which
@@ -246,10 +246,10 @@ jobs:
       - name: promptfoo live suite (prompt injection and agent purpose, real model)
         env:
           MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
-        run: scripts/promptfoo.sh live
+        run: guardrails/run-suite.sh live
       - uses: actions/upload-artifact@v4
         if: always()
-        with: { name: eval-report, path: "evals/report.json\npromptfoo/out/live.json", retention-days: 30 }
+        with: { name: eval-report, path: "evals/report.json\nguardrails/promptfoo/out/live.json", retention-days: 30 }
 
   # ---------------------------------------------------------------- LLM quality gate on the pull request (real model, no Langfuse)
   # The same golden-set evaluation and live promptfoo suite as `llm-eval`, BEFORE the merge, when the change can alter what the model
@@ -273,7 +273,7 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
         run: |
-          changed=$(git diff --name-only "origin/${BASE_REF}...HEAD" | grep -E '^(packages/llm/|packages/core/src/|packages/detector/|evals/|promptfoo/|prompts/)' || true)
+          changed=$(git diff --name-only "origin/${BASE_REF}...HEAD" | grep -E '^(packages/llm/|packages/core/src/|guardrails/detector/|evals/|guardrails/promptfoo/|prompts/)' || true)
           if [ -n "$changed" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; echo "::notice title=Real-model evaluation will run::$(echo $changed | tr '\n' ' ')"
           else echo "run=false" >> "$GITHUB_OUTPUT"; echo "No prompt, LLM, guard or eval file changed: the real-model evaluation is not needed."; fi
       - if: steps.scope.outputs.run == 'true'
@@ -296,16 +296,16 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         env:
           MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
-        run: scripts/promptfoo.sh live
+        run: guardrails/run-suite.sh live
       - uses: actions/upload-artifact@v4
         if: always() && steps.scope.outputs.run == 'true'
-        with: { name: eval-report-pr, path: "evals/report.json\npromptfoo/out/live.json", retention-days: 30 }
+        with: { name: eval-report-pr, path: "evals/report.json\nguardrails/promptfoo/out/live.json", retention-days: 30 }
 
   # ---------------------------------------------------------------- red team sample (every PR from this repository, and every merge to main)
   # 50 FROZEN attacks (en, pt, es; 12 intents with canaries; Base64, ROT13, leetspeak, jailbreak templates, other tones) run through the real
   # pipeline: first offline (guard, language policy, fake model), then live (MiniMax). Plain code decides: a canary in the reply fails the job.
   # Same rules as llm-eval-pr: only MINIMAX_API_KEY (environment `llm-eval-pr`, no Langfuse keys), never for pull requests from forks.
-  # NOT a required check (the maintainer decides). Details: promptfoo/README.md.
+  # NOT a required check (the maintainer decides). Details: guardrails/promptfoo/README.md.
   redteam-sample:
     name: redteam-sample
     if: (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name == 'push' && github.ref == 'refs/heads/main')
@@ -321,10 +321,10 @@ jobs:
       - name: Red team sample (offline stage, then live stage; fails if a canary leaks)
         env:
           MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
-        run: scripts/promptfoo.sh redteam-sample
+        run: guardrails/run-suite.sh redteam-sample
       - uses: actions/upload-artifact@v4
         if: always()
-        with: { name: redteam-sample, path: "promptfoo/out/redteam-sample-offline.json\npromptfoo/out/redteam-sample-live.json", retention-days: 30 }
+        with: { name: redteam-sample, path: "guardrails/promptfoo/out/redteam-sample-offline.json\npromptfoo/out/redteam-sample-live.json", retention-days: 30 }
 
   # ---------------------------------------------------------------- prompts to Langfuse (main only, after every gate)
   # A prompt reaches Langfuse Prompt Management ONLY from here: after the pull request checks passed (and blocked the merge if not),
@@ -387,10 +387,10 @@ jobs:
       - name: "Build and push api, worker (detector + slim) and redteam (tagged with the commit sha; immutable; an existing tag is skipped)"
         run: |
           images="
-          api|$TAG|apps/api/Dockerfile|
-          worker|$TAG|apps/worker/Dockerfile|--target runtime-detector
-          worker|$TAG-slim|apps/worker/Dockerfile|--target runtime
-          redteam|$TAG|docker/redteam/Dockerfile|--build-arg GIT_SHA=$TAG
+          api|$TAG|api/Dockerfile|
+          worker|$TAG|worker/Dockerfile|--target runtime-detector
+          worker|$TAG-slim|worker/Dockerfile|--target runtime
+          redteam|$TAG|guardrails/promptfoo/Dockerfile|--build-arg GIT_SHA=$TAG
           "
           echo "$images" | grep . | while IFS='|' read -r name tag dockerfile extra; do
             repo="${{ steps.ecr.outputs.registry }}/quizforge/$name"
