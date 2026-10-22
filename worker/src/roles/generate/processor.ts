@@ -140,7 +140,7 @@ export async function processQuizJob(
         }
       }
     }
-    // A flag from the classifier puts the output rails in strict link mode (like a keyword finding does): see packages/llm/src/output-guard.ts
+    // A flag from the classifier puts the output rails in strict link mode (like a keyword finding does): see packages/llm/src/guard/output-guard.ts
     const flaggedExcerpts = screened && (screened.status === "flagged" || screened.status === "blocked") ? [screened.result.excerpt ?? ""] : undefined;
     const sourceId = await upsertSource(d.db, { url: quiz.sourceUrl, rawUrl: src.rawUrl, sha256: src.sha256, text: doc.text });
 

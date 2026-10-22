@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { GeneratedQuestion } from "@quizforge/core";
-import { createFakeLlm } from "./fake.js";
-import type { LlmClient } from "./llm.js";
+import { createFakeLlm } from "../model/fake.js";
+import type { LlmClient } from "../model/llm.js";
 import { scoreExistingQuiz } from "./scoring.js";
 
 const DOC = `# Zephyr Cache

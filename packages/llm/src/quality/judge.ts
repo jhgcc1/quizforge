@@ -1,9 +1,9 @@
 import { z } from "zod";
 import type { GeneratedQuestion } from "@quizforge/core";
-import type { JobBudget, Usage } from "./budget.js";
-import type { LlmClient } from "./llm.js";
-import { JUDGE_SYSTEM, neutralize } from "./prompts.js";
-import { generateStructured } from "./structured.js";
+import type { JobBudget, Usage } from "../model/budget.js";
+import type { LlmClient } from "../model/llm.js";
+import { JUDGE_SYSTEM, neutralize } from "../prompts/prompts.js";
+import { generateStructured } from "../model/structured.js";
 
 const Score = z.number().min(1).max(5);
 export const JudgeSchema = z.object({

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { GeneratedQuestionSchema } from "@quizforge/core";
-import { JobBudget } from "./budget.js";
+import { JobBudget } from "../model/budget.js";
 import { judgeQuiz } from "./judge.js";
-import type { LlmClient } from "./llm.js";
+import type { LlmClient } from "../model/llm.js";
 
 const q = GeneratedQuestionSchema.parse({
   prompt: "Which component carries the audio between client and bot?",

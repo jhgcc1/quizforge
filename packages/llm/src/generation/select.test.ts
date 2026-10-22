@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { GeneratedQuestion } from "@quizforge/core";
 import { pickSections, selectQuestions, sortByDifficulty } from "./select.js";
-import type { Section } from "./source.js";
+import type { Section } from "../source.js";
 
 const sec = (i: number, text = "word ".repeat(200), tokens = 200): Section => ({ heading: `S${i}`, level: 2, text, tokens });
 const gq = (prompt: string, difficulty: GeneratedQuestion["difficulty"]): GeneratedQuestion =>

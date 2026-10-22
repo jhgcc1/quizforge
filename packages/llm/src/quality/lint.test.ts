@@ -79,7 +79,7 @@ describe("quality scoring", () => {
   });
 });
 
-import { neutralize, sectionUser, singleShotUser } from "./prompts.js";
+import { neutralize, sectionUser, singleShotUser } from "../prompts/prompts.js";
 
 describe("prompt delimiter safety", () => {
   it("a document cannot close the <document> tag or forge a new one", () => {

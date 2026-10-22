@@ -9,7 +9,7 @@ import {
   toRawUrl,
   type SourceDeps,
 } from "./source.js";
-import { chooseStrategy } from "./router.js";
+import { chooseStrategy } from "./generation/router.js";
 
 const publicDns = async () => ["140.82.112.3"];
 const md = (text: string, init: ResponseInit = {}) =>

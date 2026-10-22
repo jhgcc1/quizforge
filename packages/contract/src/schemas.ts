@@ -63,7 +63,7 @@ export const IdempotencyKeySchema = z.string().regex(/^[A-Za-z0-9_\-:.]{8,128}$/
 const iso = z.string();
 const status = z.enum(["queued", "generating", "ready", "failed"]);
 
-/** The phases of a generation, in order (see packages/llm/src/progress.ts for what each one is). The list may grow; see GenerationProgressSchema. */
+/** The phases of a generation, in order (see packages/llm/src/generation/progress.ts for what each one is). The list may grow; see GenerationProgressSchema. */
 export const GENERATION_PHASES = ["reading_document", "planning", "writing_questions", "checking", "reviewing", "saving"] as const;
 
 /**

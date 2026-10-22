@@ -4,13 +4,13 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { JobBudget } from "./budget.js";
-import { UnsafeOutputError } from "./errors.js";
-import type { ChatMessage, LlmClient } from "./llm.js";
-import { GENERATION_SYSTEM } from "./prompts.js";
+import { JobBudget } from "../model/budget.js";
+import { UnsafeOutputError } from "../model/errors.js";
+import type { ChatMessage, LlmClient } from "../model/llm.js";
+import { GENERATION_SYSTEM } from "../prompts/prompts.js";
 import { COMMON_WORDS, COMMON_WORDS_THRESHOLD } from "./common-words.generated.js";
 import { assertQuizOutput, leakedPromptText, linkTrust, looksLikeQuestion, quizOutputProblems, quizReplyCheck, replyFormatProblem } from "./output-guard.js";
-import { generateStructured } from "./structured.js";
+import { generateStructured } from "../model/structured.js";
 
 const DOC = "Orbit Scheduler retries a failed job three times. The delay doubles after each failure, starting at 5 seconds. See https://example.com/docs for details.";
 const q = (over: Partial<GeneratedQuestion> = {}): GeneratedQuestion => ({
@@ -240,7 +240,8 @@ describe("output rails: planted words (a word only an instruction of the documen
 });
 
 describe("output rails: planted words are narrow (ordinary words of a quoted attack line are never planted)", () => {
-  const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+  // this file sits at packages/llm/src/guard/, so four levels up is the repository root
+  const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
   const fixture = (name: string): string => readFileSync(join(ROOT, "evals", "fixtures", name), "utf8");
   const SHOWN = /only an instruction of the document/;
   const BASE = "Tidepool is a small command line tool that converts CSV files into Parquet files. Use the option --compression to choose snappy, zstd or none.";

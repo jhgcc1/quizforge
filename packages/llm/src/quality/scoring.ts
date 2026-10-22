@@ -1,10 +1,10 @@
 import type { GeneratedQuestion } from "@quizforge/core";
-import { JobBudget, type Usage } from "./budget.js";
-import { BudgetExceededError } from "./errors.js";
+import { JobBudget, type Usage } from "../model/budget.js";
+import { BudgetExceededError } from "../model/errors.js";
 import { judgeQuiz, type JudgeResult } from "./judge.js";
-import { guardLlm } from "./llm-input.js";
-import type { LlmClient } from "./llm.js";
-import { scoreTrace, traced, withGenerationTracing } from "./observability.js";
+import { guardLlm } from "../guard/llm-input.js";
+import type { LlmClient } from "../model/llm.js";
+import { scoreTrace, traced, withGenerationTracing } from "../observability.js";
 import { QUALITY_VERSION, scoreQuiz } from "./quality.js";
 
 /**

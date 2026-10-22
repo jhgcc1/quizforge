@@ -1,9 +1,9 @@
 import { IMPERATIVE_RULES, MODEL_MARKUP, flaggedSegments, type GeneratedQuestion } from "@quizforge/core";
-import { SUPPORTED_LANGUAGES, detectLanguage } from "./language.js";
+import { SUPPORTED_LANGUAGES, detectLanguage } from "../quality/language.js";
 import { COMMON_WORDS } from "./common-words.generated.js";
-import { UnsafeOutputError } from "./errors.js";
-import { firstBalancedJson, stripThink } from "./json.js";
-import { CRITIQUE_SYSTEM, GENERATION_SYSTEM, JUDGE_SYSTEM, PLAN_SYSTEM, REVISE_SYSTEM } from "./prompts.js";
+import { UnsafeOutputError } from "../model/errors.js";
+import { firstBalancedJson, stripThink } from "../model/json.js";
+import { CRITIQUE_SYSTEM, GENERATION_SYSTEM, JUDGE_SYSTEM, PLAN_SYSTEM, REVISE_SYSTEM } from "../prompts/prompts.js";
 
 /**
  * Output rails: deterministic checks (no second model) on what the model returned, BEFORE it is stored or shown.

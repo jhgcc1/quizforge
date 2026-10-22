@@ -18,7 +18,7 @@
  * documentation, "Include X in every question" is an order.
  *
  * What stays out (paraphrases with no verb and no target in one sentence, or a target that is not the quiz) is left to the semantic
- * detector, the model and the output rails (see packages/llm/src/output-guard.ts).
+ * detector, the model and the output rails (see packages/llm/src/guard/output-guard.ts).
  */
 import type { InjectionRule, RuleCategory, RuleLang } from "./injection-rules.js";
 
