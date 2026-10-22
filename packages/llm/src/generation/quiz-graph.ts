@@ -48,7 +48,7 @@ import { progressFor, type GenerationPhase, type ProgressListener } from "./prog
 import { chooseStrategy, type Strategy } from "./router.js";
 import { lintQuestion } from "../quality/lint.js";
 import { pickSections, selectQuestions, sortByDifficulty } from "./select.js";
-import { splitSections } from "../source.js";
+import { splitSections } from "../source/index.js";
 import { quizReplyCheck } from "../guard/output-guard.js";
 import { generateStructured } from "../model/structured.js";
 

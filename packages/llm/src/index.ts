@@ -7,7 +7,7 @@
  * instead: the module graph is shared, the process is not.
  */
 export * from "./model/json.js";
-export * from "./source.js";
+export * from "./source/index.js";
 export * from "./generation/router.js";
 export * from "./model/errors.js";
 export * from "./model/budget.js";
@@ -25,7 +25,7 @@ export * from "./model/fake.js";
 export * from "./quality/similarity.js";
 export * from "./quality/quality.js";
 export * from "./quality/scoring.js";
-export * from "./quality/language.js";
+export * from "./guard/language.js";
 export * from "./guard/llm-input.js";
 export * from "./guard/output-guard.js";
 export * from "./guard/detector.js";

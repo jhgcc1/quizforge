@@ -1,4 +1,4 @@
-import { estimateTokens, splitSections } from "../source.js";
+import { estimateTokens, splitSections } from "../source/index.js";
 
 export type Strategy = "single-shot" | "section-map-reduce";
 

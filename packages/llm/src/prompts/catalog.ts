@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { CRITIQUE_SYSTEM, JUDGE_SYSTEM, PLAN_SYSTEM, PROMPT_VERSION, REVISE_SYSTEM, generationSystem } from "./prompts.js";
 
 /**
- * The system prompts of the agent, by name: the unit that is versioned, locked in Git (prompts/prompts.lock.json) and published to
+ * The system prompts of the agent, by name: the unit that is versioned, locked in Git (prompts.lock.json) and published to
  * Langfuse Prompt Management by the pipeline. Git is the source of truth; Langfuse only receives what the pipeline has approved.
  */
 export interface CatalogPrompt {
@@ -28,7 +28,7 @@ export interface PromptLock {
   prompts: Record<string, string>;
 }
 
-/** What prompts/prompts.lock.json must contain for the current code. */
+/** What prompts.lock.json must contain for the current code. */
 export const currentLock = (): PromptLock => ({
   promptVersion: PROMPT_VERSION,
   prompts: Object.fromEntries(PROMPT_CATALOG.map((p) => [p.name, hashPrompt(p.text)])),

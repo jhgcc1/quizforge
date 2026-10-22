@@ -1,5 +1,5 @@
 import type { Finding } from "@quizforge/core";
-import type { Lang } from "../quality/language.js";
+import type { Lang } from "./language.js";
 
 /**
  * Seam for an OPTIONAL semantic prompt-injection detector (a classifier model). The implementation lives in

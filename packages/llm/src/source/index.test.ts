@@ -8,8 +8,8 @@ import {
   splitSections,
   toRawUrl,
   type SourceDeps,
-} from "./source.js";
-import { chooseStrategy } from "./generation/router.js";
+} from "./index.js";
+import { chooseStrategy } from "../generation/router.js";
 
 const publicDns = async () => ["140.82.112.3"];
 const md = (text: string, init: ResponseInit = {}) =>
@@ -184,7 +184,7 @@ describe("the default network dependencies", () => {
     const fetchSpy = vi.fn(async () => md("# from the default deps"));
     vi.stubGlobal("fetch", fetchSpy);
     try {
-      const fresh = await import("./source.js");
+      const fresh = await import("./index.js");
       const r = await fresh.fetchMarkdown("https://raw.githubusercontent.com/o/r/main/R.md");
       expect(r.text).toBe("# from the default deps");
       expect(lookup).toHaveBeenCalledWith("raw.githubusercontent.com", { all: true });

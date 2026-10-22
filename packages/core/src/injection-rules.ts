@@ -3,7 +3,7 @@
  * the output rail and the tests.
  *
  * LANGUAGES. QuizForge only accepts documents in English, Portuguese and Spanish (the language policy rejects the rest before
- * the model, see packages/llm/src/quality/language.ts), so these are the only languages with keyword rules. Every rule id is
+ * the model, see packages/llm/src/guard/language.ts), so these are the only languages with keyword rules. Every rule id is
  * `<lang>-<suffix>` and the SAME suffixes exist for en, pt and es (a unit test enforces the parity). Rules that do not depend on a
  * language (a closing `</document>` tag, a fake `<system>` tag) have lang "all".
  *

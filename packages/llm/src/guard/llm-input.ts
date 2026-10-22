@@ -1,7 +1,7 @@
 import { binaryLike, checkShortText, inspectText, blockReason, type Finding } from "@quizforge/core";
 import { z } from "zod";
 import { InvalidLlmInputError, NotTextError, UnsafeDocumentError } from "../model/errors.js";
-import { assertAllowedLanguage, SUPPORTED_LANGUAGES, type Lang, type SupportedLanguage } from "../quality/language.js";
+import { assertAllowedLanguage, SUPPORTED_LANGUAGES, type Lang, type SupportedLanguage } from "./language.js";
 import type { ChatMessage, CompleteOptions, LlmClient, LlmResponse } from "../model/llm.js";
 import { PROMPT_VARIANTS } from "../prompts/prompts.js";
 import type { QuizGraphInput } from "../generation/quiz-graph.js";
