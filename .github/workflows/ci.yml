@@ -120,7 +120,7 @@ jobs:
       - name: Migration policy (expand/contract, released migrations are immutable)
         if: github.event_name == 'pull_request'
         env: { BASE_REF: "origin/${{ github.base_ref }}" }
-        run: node cicd/check-migrations.mjs
+        run: node packages/db/policy/check-migrations.mjs
 
       - name: Apply all migrations to an empty database with the production entrypoint
         run: pnpm --filter @quizforge/db db:migrate

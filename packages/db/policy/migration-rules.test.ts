@@ -34,7 +34,7 @@ describe("migration policy (expand/contract)", () => {
   });
   it("the migrations already in the repo satisfy their own policy (initial schema is additive)", async () => {
     const { readdirSync, readFileSync } = await import("node:fs");
-    const dir = new URL("../packages/db/migrations/", import.meta.url);
+    const dir = new URL("../migrations/", import.meta.url);
     for (const f of readdirSync(dir).filter((x) => x.endsWith(".sql"))) {
       expect(rules(readFileSync(new URL(f, dir), "utf8")), f).toEqual([]);
     }

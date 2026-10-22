@@ -9,7 +9,7 @@ export default defineConfig({
       "worker/src/**/*.test.ts",
       "guardrails/*/src/**/*.test.ts",
       "guardrails/promptfoo/**/*.test.{ts,mjs}",
-      "cicd/**/*.test.ts",
+      "packages/db/policy/*.test.ts",
       "evals/src/**/*.test.ts",
     ],
     exclude: ["**/node_modules/**"],

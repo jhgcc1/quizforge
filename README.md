@@ -37,21 +37,20 @@ itself locally).
 | `pnpm test` | unit + property tests (scoring, schemas, SSRF guard, JSON extraction, graph, migration policy) |
 | `pnpm test:integration` | real Postgres: idempotency, concurrency, API, worker, sweeper, migrate entrypoint |
 | `pnpm test:e2e` | Playwright against the whole stack: login → generate → answer → **reload** → submit → score |
-| `pnpm --filter @quizforge/llm smoke <url>` | live run against MiniMax, traced in Langfuse |
 | `pnpm --filter @quizforge/evals eval` | **LLM regression suite** over a golden set (grounding, lint, LLM-judge, prompt-injection, language) with thresholds; runs in CI on every merge to main (`llm-eval`, it gates the deploy) and on demand (`eval.yml`) |
-| `scripts/smoke-api.mjs` | black-box API test usable against local containers and AWS (the read-only audit of the deployed infrastructure, `audit-aws.sh`, is in the infrastructure repository) |
 
 ## Repository structure
 
-Every top-level folder answers one question: **what runs it?**
+Two questions decide where a thing lives. For something that is deployed or executed, **what runs it**; for a
+library, **what it is about**. Both are below, because pretending one rule covers everything is how a folder ends
+up holding three files that have nothing else in common.
 
 | Path | What runs it | What it is |
 |---|---|---|
 | `api/` | the `api` ECS service | the REST API (Fastify). `src/app.ts` only registers; the work is in `plugins/`, `routes/v1/` and `lib/` |
 | `worker/` | three ECS units from one image | the roles under `src/roles/`: **generate** (builds the quiz), **score** (judges a saved one), **sweep** (the scheduled safety net). `src/shared/` holds what they share — environment schema, JSON logger, SQS poll loop, service wiring. `src/main.ts` picks the role for the two services; `src/sweeper.ts` is the scheduled task's entrypoint |
-| `packages/` | the api and worker images | the libraries both carry: `contract` (browser-safe public contract, published to npm, the only thing the front end imports), `core` (guard, keyword rules, quiz schema, scoring, catalogue), `db` (every query), `llm` (model client, the generation graph, the judge, the output rails) |
+| `packages/` | the api and worker images | the libraries both carry: `contract` (browser-safe public contract, published to npm, the only thing the front end imports), `core` (guard, keyword rules, quiz schema, scoring, catalogue), `db` (every query, the migrations, and in `policy/` the expand/contract rule CI applies to them), `llm` (model client, the generation graph, the judge, the output rails) |
 | `guardrails/` | CI, and the nightly task on AWS | everything that proves the defences hold: `promptfoo/` (the suites and the red team), `detector/` (Llama Prompt Guard 2), `tools/` (the generator of the common-word list the guard uses), `run-suite.sh` (the suites, used by CI and by the nightly) and `run-nightly.sh` (the Fargate task's entrypoint) |
-| `cicd/` | GitHub Actions | the gates that only exist for CI: the expand/contract migration policy and the check that applies it |
 | `evals/` | CI, on every PR and on main | the golden set: quality thresholds that fail the build before a deploy |
 | `e2e/` | the **front end's** CI | the browser test. It lives here because its harness does — `prepare.ts` runs the real migrations and starts the API and the worker — while the UI it drives lives in `jhgcc1/quizforge-web`, whose CI checks this repository out and runs `pnpm test:e2e`. Its `publish` job needs it |
 | `local/` | **your machine, and nothing else** | the compose file and the SQS emulator's config. Nothing here is built, deployed or read by AWS — production is the three images `publish` pushes to ECR, wired by Terraform in the infrastructure repository. If a file is in this folder it is local; if it is not, it ships in an image or runs in CI |
