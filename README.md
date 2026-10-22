@@ -19,12 +19,18 @@ Browser ─HTTPS─> CloudFront + WAF ─> ALB ─┬─ /v1/* /docs ─> api   
 
 ```bash
 pnpm install
-scripts/web.sh                               # the front end is its own repository: checks out its main into ./web
-docker compose --profile app up --build      # Postgres, SQS emulator, migrate, api, worker (fake LLM), web
-open http://localhost:13000                  # dev login → create quiz → answer → score
+git clone --depth 1 https://github.com/jhgcc1/quizforge-web web   # the front end is its own repository
+pnpm stack:up                                                     # Postgres, SQS, migrate, api, worker (fake model), web
+open http://localhost:13000                                       # dev login → create quiz → answer → score
 ```
 
-Real model: `LLM_MODE=minimax MINIMAX_API_KEY=… docker compose --profile app up --build worker scorer` (the scorer is what scores the quizzes; set `MINIMAX_JUDGE_MODEL` in the compose environment to judge with another model, otherwise the generator judges itself locally).
+Everything the local stack needs is in [`local/`](local/) and nothing else is: if a file lives there it runs on
+your machine, and if it does not it either ships in an image or runs in CI. `pnpm db:up` brings up just Postgres
+and the SQS emulator, which is what `pnpm test:integration` needs.
+
+Real model: `LLM_MODE=minimax MINIMAX_API_KEY=… pnpm stack:up` (the scorer is what scores the quizzes; set
+`MINIMAX_JUDGE_MODEL` in the compose environment to judge with another model, otherwise the generator judges
+itself locally).
 
 | | |
 |---|---|
@@ -48,6 +54,7 @@ Every top-level folder answers one question: **what runs it?**
 | `cicd/` | GitHub Actions | the gates that only exist for CI: the expand/contract migration policy and the check that applies it |
 | `evals/` | CI, on every PR and on main | the golden set: quality thresholds that fail the build before a deploy |
 | `e2e/` | the **front end's** CI | the browser test. It lives here because its harness does — `prepare.ts` runs the real migrations and starts the API and the worker — while the UI it drives lives in `jhgcc1/quizforge-web`, whose CI checks this repository out and runs `pnpm test:e2e`. Its `publish` job needs it |
+| `local/` | **your machine, and nothing else** | the compose file and the SQS emulator's config. Nothing here is built, deployed or read by AWS — production is the three images `publish` pushes to ECR, wired by Terraform in the infrastructure repository. If a file is in this folder it is local; if it is not, it ships in an image or runs in CI |
 | `docs/` | nobody; it is reading material | the architecture reports, frozen snapshots with their charts embedded |
 | Infrastructure | — | not here: Terraform, the IAM/OIDC bootstrap, GitHub rulesets, the operations scripts and the deploy are in [`jhgcc1/quizforge-infra`](https://github.com/jhgcc1/quizforge-infra) |
 

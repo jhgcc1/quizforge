@@ -11,12 +11,15 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --config vitest.coverage.config.ts --coverage",
     "test:integration": "vitest run --config vitest.integration.config.ts",
-    "db:up": "docker compose up -d postgres elasticmq",
+    "db:up": "docker compose -f local/docker-compose.yml up -d postgres elasticmq",
     "test:e2e": "tsx e2e/prepare.ts && playwright test --config e2e/playwright.config.ts",
     "typecheck": "pnpm -r typecheck",
     "lint": "eslint .",
     "prompts:lock": "pnpm --filter @quizforge/evals exec tsx src/publish-prompts.ts --write-lock",
-    "prompts:publish": "pnpm --filter @quizforge/evals exec tsx src/publish-prompts.ts"
+    "prompts:publish": "pnpm --filter @quizforge/evals exec tsx src/publish-prompts.ts",
+    "stack:up": "docker compose -f local/docker-compose.yml --profile app up --build -d",
+    "stack:down": "docker compose -f local/docker-compose.yml --profile app down --remove-orphans",
+    "stack:logs": "docker compose -f local/docker-compose.yml logs -f"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

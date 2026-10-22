@@ -36,13 +36,13 @@ services:
       - "9324:9324"
       - "9325:9325"
     volumes:
-      - ./docker/elasticmq.conf:/opt/elasticmq.conf:ro
+      - ./elasticmq.conf:/opt/elasticmq.conf:ro
 
-  # ---- full stack in containers (the same images that run on ECS):  docker compose --profile app up --build
+  # ---- full stack in containers (the same images that run on ECS):  pnpm stack:up
   # Local auth + fake LLM by default so it runs offline; set LLM_MODE=minimax and MINIMAX_API_KEY to use the real model.
   migrate:
     profiles: ["app"]
-    build: { context: ., dockerfile: api/Dockerfile }
+    build: { context: .., dockerfile: api/Dockerfile }
     image: quizforge-api:local
     command: ["node", "--import", "tsx", "node_modules/@quizforge/db/src/migrate.ts"]
     environment: { DATABASE_URL: "postgres://quizforge:quizforge@postgres:5432/quizforge" }
@@ -68,7 +68,7 @@ services:
   # INJECTION_DETECTOR=off disables it. The first build downloads 1.1 GB (verified by sha256); later builds reuse the layer.
   worker:
     profiles: ["app"]
-    build: { context: ., dockerfile: worker/Dockerfile, target: runtime-detector }
+    build: { context: .., dockerfile: worker/Dockerfile, target: runtime-detector }
     image: quizforge-worker:local
     mem_limit: 4g
     environment:
@@ -101,9 +101,9 @@ services:
   web:
     profiles: ["app"]
     # The front end is its own repository. Check its main out into ./web (git-ignored) before `--profile app`:
-    #   git clone --depth 1 https://github.com/jhgcc1/quizforge-web web
+    #   git clone --depth 1 https://github.com/jhgcc1/quizforge-web web    (from the repository root)
     # There is no pinned commit between the two repositories: each side is tested against the main of the other.
-    build: { context: ./web }
+    build: { context: ../web }
     image: quizforge-web:local
     environment:
       AUTH_MODE: local

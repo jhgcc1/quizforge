@@ -6,7 +6,7 @@ infrastructure repository: [docs/auth-setup.md](https://github.com/jhgcc1/quizfo
 ## Locally there is no Cognito
 
 The local stack runs with `AUTH_MODE=local`. The buttons go to the dev login page, which says **SIMULATION**: no
-real Google or Facebook is involved, and any user name works. That is what `docker compose --profile app up` gives
+real Google or Facebook is involved, and any user name works. That is what `pnpm stack:up` gives
 you, and what the e2e test drives.
 
 Running the local stack against the **real** user pool used to be possible here, through a compose overlay and a
