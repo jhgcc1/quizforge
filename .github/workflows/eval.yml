@@ -63,4 +63,4 @@ jobs:
           guardrails/run-suite.sh live
       - uses: actions/upload-artifact@v4
         if: always()
-        with: { name: eval-report, path: "evals/report.json\npromptfoo/out/live.json", retention-days: 30 }
+        with: { name: eval-report, path: "evals/report.json\nguardrails/promptfoo/out/live.json", retention-days: 30 }

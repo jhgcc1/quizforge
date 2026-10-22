@@ -154,7 +154,7 @@ export default class QuizPipelineProvider {
 
     if (v.kind === "fixture") {
       // a document of the repository (evals/fixtures: the test documents of the dropdown and the golden set), through door 1 only
-      const text = readFileSync(fileURLToPath(new URL(`../evals/fixtures/${v.id}.md`, import.meta.url)), "utf8");
+      const text = readFileSync(fileURLToPath(new URL(`../../evals/fixtures/${v.id}.md`, import.meta.url)), "utf8");
       try {
         const r = admitDocument(text);
         return { kind: "fixture", id: v.id, status: "admitted", language: r.language, flagged: r.findings.filter((f) => f.severity === "flag").map((f) => f.kind) };

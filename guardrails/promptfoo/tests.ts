@@ -45,7 +45,7 @@ const OUTPUT_CASES: [string, string][] = [
 const outputTests: Test[] = OUTPUT_CASES.map(([id, what]) => ({ description: `OUTPUT rails reject a reply that ${what}`, vars: { kind: "bad-output", id }, assert: [A("rejectedOutput")] }));
 
 /** One test per document in evals/fixtures: add a README there and its pull request is checked. */
-const fixtureTests: Test[] = readdirSync(fileURLToPath(new URL("../evals/fixtures/", import.meta.url)))
+const fixtureTests: Test[] = readdirSync(fileURLToPath(new URL("../../evals/fixtures/", import.meta.url)))
   .filter((f) => f.endsWith(".md"))
   .sort()
   .map((f) => ({ description: `FIXTURE ${f} is admitted (no hidden text, accepted language)`, vars: { kind: "fixture", id: f.replace(/\.md$/, "") }, assert: [A("admittedDocument")] }));

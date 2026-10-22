@@ -208,7 +208,7 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
         run: |
-          changed=$(git diff --name-only "origin/${BASE_REF}...HEAD" | grep -E '^(packages/llm/src/(prompts|judge|quiz-graph|llm-input|language|output-guard|structured|detector)\.ts|packages/core/src/(guard|attacks|injection-rules)\.ts|guardrails/detector/|evals/fixtures/|promptfoo/|prompts/)' || true)
+          changed=$(git diff --name-only "origin/${BASE_REF}...HEAD" | grep -E '^(packages/llm/src/(prompts|judge|quiz-graph|llm-input|language|output-guard|structured|detector)\.ts|packages/core/src/(guard|attacks|injection-rules)\.ts|guardrails/detector/|evals/fixtures/|guardrails/promptfoo/|prompts/)' || true)
           if [ -n "$changed" ]; then
             echo "::notice title=Prompt or guard files changed::The live promptfoo suite (real model) runs on main before the deploy and every night. Files: $(echo $changed | tr '\n' ' ')"
           fi
@@ -249,7 +249,7 @@ jobs:
         run: guardrails/run-suite.sh live
       - uses: actions/upload-artifact@v4
         if: always()
-        with: { name: eval-report, path: "evals/report.json\npromptfoo/out/live.json", retention-days: 30 }
+        with: { name: eval-report, path: "evals/report.json\nguardrails/promptfoo/out/live.json", retention-days: 30 }
 
   # ---------------------------------------------------------------- LLM quality gate on the pull request (real model, no Langfuse)
   # The same golden-set evaluation and live promptfoo suite as `llm-eval`, BEFORE the merge, when the change can alter what the model
@@ -273,7 +273,7 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
         run: |
-          changed=$(git diff --name-only "origin/${BASE_REF}...HEAD" | grep -E '^(packages/llm/|packages/core/src/|guardrails/detector/|evals/|promptfoo/|prompts/)' || true)
+          changed=$(git diff --name-only "origin/${BASE_REF}...HEAD" | grep -E '^(packages/llm/|packages/core/src/|guardrails/detector/|evals/|guardrails/promptfoo/|prompts/)' || true)
           if [ -n "$changed" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; echo "::notice title=Real-model evaluation will run::$(echo $changed | tr '\n' ' ')"
           else echo "run=false" >> "$GITHUB_OUTPUT"; echo "No prompt, LLM, guard or eval file changed: the real-model evaluation is not needed."; fi
       - if: steps.scope.outputs.run == 'true'
@@ -299,7 +299,7 @@ jobs:
         run: guardrails/run-suite.sh live
       - uses: actions/upload-artifact@v4
         if: always() && steps.scope.outputs.run == 'true'
-        with: { name: eval-report-pr, path: "evals/report.json\npromptfoo/out/live.json", retention-days: 30 }
+        with: { name: eval-report-pr, path: "evals/report.json\nguardrails/promptfoo/out/live.json", retention-days: 30 }
 
   # ---------------------------------------------------------------- red team sample (every PR from this repository, and every merge to main)
   # 50 FROZEN attacks (en, pt, es; 12 intents with canaries; Base64, ROT13, leetspeak, jailbreak templates, other tones) run through the real

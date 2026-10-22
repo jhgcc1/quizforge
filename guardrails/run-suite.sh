@@ -55,7 +55,7 @@ case "$suite" in
   offline|live)
     if [ "$suite" = offline ]; then config=guard; extra=(); else config=live; extra=(-j 3); fi
     code=0
-    eval_config "promptfoo/${config}.yaml" "guardrails/promptfoo/out/${suite}.json" "${extra[@]}" || code=$?
+    eval_config "guardrails/promptfoo/${config}.yaml" "guardrails/promptfoo/out/${suite}.json" "${extra[@]}" || code=$?
     # a readable table for the job summary (or the terminal)
     node guardrails/promptfoo/summary.mjs "$suite" >> "$summary" || true
     exit $code
