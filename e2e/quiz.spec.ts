@@ -30,8 +30,8 @@
  *
  * In the FRONT END's CI, not this one. There is no e2e job here any more: the test drives a UI that lives there, so
  * it belongs to the pull requests that change that UI. What covers this side is packages/contract and its boundary
- * tests, the integration suite against a real Postgres, and e2e/aws.spec.ts driving the DEPLOYED stack in a browser
- * after every deploy (the smoke step in quizforge-infra's apply.yml), with rollback.yml to go back.
+ * tests, the integration suite against a real Postgres, and the smoke test the deploy runs against the deployed
+ * stack after every deploy (the smoke step in quizforge-infra's apply.yml), with rollback.yml to go back.
  */
 import { expect, test, type Page } from "@playwright/test";
 import pg from "pg";

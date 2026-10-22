@@ -136,8 +136,8 @@ jobs:
   # belongs to the pull requests that change that UI.
   #
   # What covers this side instead: the API is pinned by packages/contract and its boundary tests, the integration
-  # suite exercises the API and the worker against a real Postgres, and e2e/aws.spec.ts drives the DEPLOYED stack in
-  # a browser after every deploy (the smoke step in quizforge-infra's apply.yml), with rollback.yml to go back.
+  # suite exercises the API and the worker against a real Postgres, and the deployed stack is smoke-tested in a
+  # browser after every deploy (the smoke step in quizforge-infra's apply.yml), with rollback.yml to go back.
   #
   # The trade: a back end change that breaks the UI is caught after the deploy rather than before it. That is the
   # usual arrangement for a service deployed on its own, and the smoke test plus rollback is what makes it safe.

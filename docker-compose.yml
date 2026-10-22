@@ -100,7 +100,9 @@ services:
 
   web:
     profiles: ["app"]
-    # the front end is its own repository (jhgcc1/quizforge-web): check its main out into ./web first
+    # The front end is its own repository. Check its main out into ./web (git-ignored) before `--profile app`:
+    #   git clone --depth 1 https://github.com/jhgcc1/quizforge-web web
+    # There is no pinned commit between the two repositories: each side is tested against the main of the other.
     build: { context: ./web }
     image: quizforge-web:local
     environment:

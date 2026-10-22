@@ -53,7 +53,12 @@ Every top-level folder answers one question: **what runs it?**
 
 The front end (Next.js BFF + UI) is its own repository, [`jhgcc1/quizforge-web`](https://github.com/jhgcc1/quizforge-web).
 There is no pinned commit between the two: **each side is tested against the main of the other**, which is the pair
-that runs in production. Check it out into `web/` (git-ignored) to run the containerised stack locally.
+that runs in production. The containerised stack builds it from `web/`, which is git-ignored and which you
+populate yourself:
+
+```bash
+git clone --depth 1 https://github.com/jhgcc1/quizforge-web web
+```
 
 ## REST API
 
