@@ -1,5 +1,5 @@
 import { IMPERATIVE_RULES, MODEL_MARKUP, flaggedSegments, type GeneratedQuestion } from "@quizforge/core";
-import { SUPPORTED_LANGUAGES, detectLanguage } from "../quality/language.js";
+import { SUPPORTED_LANGUAGES, detectLanguage } from "./language.js";
 import { COMMON_WORDS } from "./common-words.generated.js";
 import { UnsafeOutputError } from "../model/errors.js";
 import { firstBalancedJson, stripThink } from "../model/json.js";

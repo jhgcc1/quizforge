@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { InvalidLlmInputError, NotTextError, UnsafeDocumentError } from "../model/errors.js";
 import { createFakeLlm } from "../model/fake.js";
 import { generateQuiz } from "../generation/generate.js";
-import { UnsupportedLanguageError } from "../quality/language.js";
+import { UnsupportedLanguageError } from "./language.js";
 import { DEFAULT_MAX_OUTPUT_TOKENS, admitDocument, assertLlmRequest, guardLlm, parseQuizInput } from "./llm-input.js";
 import type { ChatMessage, LlmClient } from "../model/llm.js";
 import { inspectText } from "@quizforge/core";

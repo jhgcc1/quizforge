@@ -1,6 +1,6 @@
 import { checkGrounding, visibleText, type GeneratedQuestion } from "@quizforge/core";
 import type { JudgeResult } from "./judge.js";
-import { detectLanguage, type Lang } from "./language.js";
+import { detectLanguage, type Lang } from "../guard/language.js";
 import { quizMetrics } from "./lint.js";
 import { cosine, maxPairwise, tfidfEmbedder } from "./similarity.js";
 import { splitSections } from "../source.js";
